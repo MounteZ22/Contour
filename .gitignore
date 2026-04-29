@@ -1,0 +1,22 @@
+# Local planning and private project notes
+docs/
+project-background.md
+
+# Local agent instruction files
+AGENTS.md
+CLAUDE.md
+.obsidian/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Generated example outputs
+example_vault/context_packs/*.md
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+assets:
+  - id: DA_001
+    type: processed_data
+    format: csv
+    path: data/processed/framing_notes.csv
+    description: Small table summarizing wording constraints and interpretation boundaries for later cycles.
+    role: support_material
+    generated_in: C001
+    used_for:
+      - CLM_001
+    ai_access:
+      readable: true
+      analyzable: true
+      editable: false

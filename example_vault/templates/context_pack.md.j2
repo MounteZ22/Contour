@@ -1,0 +1,63 @@
+# Current Task
+
+{{ task }}
+
+## Project Background
+
+{{ project_background }}
+
+## Selected Cycle Summaries
+
+{% for cycle in cycles %}
+### {{ cycle.id }} {{ cycle.title }}
+
+{{ cycle.summary }}
+
+{% endfor %}
+## Selected Claims
+
+{% if claims %}
+{% for claim in claims %}
+### {{ claim.id }} (status: {{ claim.status }}, confidence: {{ claim.confidence }})
+
+{{ claim.body }}
+
+{% endfor %}
+{% else %}
+No claims were selected.
+
+{% endif %}
+## Selected Data Assets
+
+{% if assets %}
+{% for asset in assets %}
+- `{{ asset.id }}` | type: `{{ asset.type }}` | format: `{{ asset.format }}` | path: `{{ asset.path }}`
+  {{ asset.description }}
+  AI access: readable={{ asset.ai_access.readable }}, analyzable={{ asset.ai_access.analyzable }}, editable={{ asset.ai_access.editable }}
+{% endfor %}
+{% else %}
+No data assets were selected.
+
+{% endif %}
+## Known Uncertainties
+
+{% if uncertainties %}
+{% for item in uncertainties %}
+### {{ item.source }}
+
+{{ item.text }}
+
+{% endfor %}
+{% else %}
+No explicit uncertainty sections were found in the selected materials.
+
+{% endif %}
+## Instructions for the Agent
+
+{{ instructions }}
+
+## Expected Output Format
+
+```markdown
+{{ expected_output }}
+```
