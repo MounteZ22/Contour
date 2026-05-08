@@ -49,7 +49,12 @@ npm install
 npm run dev
 ```
 
-打开 `http://localhost:3000`，Vault 数据默认读取 `D:\Contour-dev`（可通过 `~/.contour/settings.json` 配置）。
+打开 `http://localhost:3000`，Vault 数据默认读取 `D:\Contour`。
+
+首次启动会自动创建该目录。如需自定义路径，编辑 `~/.contour/settings.json`：
+```json
+{ "vaultsPath": "你的 vault 路径" }
+```
 
 ## 核心设计原则
 

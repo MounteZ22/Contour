@@ -49,7 +49,12 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The vault path defaults to `D:\Contour-dev` (configurable via `~/.contour/settings.json`).
+Open `http://localhost:3000`. The vault path defaults to `D:\Contour`.
+
+The directory is auto-created on first launch. To use a custom path, edit `~/.contour/settings.json`:
+```json
+{ "vaultsPath": "/your/vault/path" }
+```
 
 ## Core Design Principles
 
