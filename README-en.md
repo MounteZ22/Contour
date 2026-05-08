@@ -1,94 +1,60 @@
 # Contour
 
-Contour is an early-stage local tool for organizing research context before collaborating with external AI agents.
+Contour is a local-first research cognition workbench for experimental scientists in chemistry, biology, materials science, and related fields.
 
-Its goal is not to replace researchers or become a full agent platform. The aim is simpler and more practical:
+It is not a replacement for researchers, nor a general-purpose AI agent platform. Its role is simpler:
 
-> help a researcher collect project background, cycle history, claims, evidence, and uncertainty into a structured vault, then generate a task-specific context pack that can be handed to an external AI tool.
+> Help researchers capture judgments, evidence, uncertainties, and failed paths from experiments, characterization, data analysis, and literature review into structured flows, claims, and documents. AI assists with organization, rewriting, and discussion around the current flow — but every formal record must be confirmed by the user.
 
-In short, Contour is trying to improve the part that often fails first in AI collaboration:
+## Product Shape
 
-- the human knows the real project background
-- the AI only sees a narrow prompt
-- previous decisions, failed paths, and uncertainty are missing
+Flow-based research workspace for human-AI scientific collaboration.
 
-Contour tries to narrow that gap with a lightweight Markdown/YAML workflow.
-
-## What Contour Does
-
-At the current stage, Contour focuses on a small core loop:
-
-1. maintain a local research vault
-2. store project notes, cycle records, claims, and linked assets
-3. validate that the vault structure and references make sense
-4. build a context pack for one specific task
-5. give that pack to an external AI tool for discussion, analysis, or drafting
-
-In the long run, Contour may still grow into a richer framework, including local GUI layers, integration with existing agent systems, or stronger context orchestration and collaboration mechanisms. At this stage, though, the focus is still on getting the small core right first.
+```
+One research project
+→ multiple research flows
+→ user-defined sections within each flow
+→ AI collaborates around the current project / flow / section / selected text
+```
 
 ## Current Status
 
-Contour is still at an early prototype stage.
+Contour is transitioning from concept prototype to interactive product.
 
-The current milestone is a CLI-first foundation with three commands:
+- **Done**: Markdown + YAML vault structure; file-system vault scanner; REST API for projects, flows, documents, and claims
+- **Done**: React frontend — project dashboard, flow workspace (read / edit / add / delete sections), background document reader
+- **In progress**: AI Chat Panel, Context Builder, Draft Review
+- **Later**: Electron desktop packaging
 
-- `contour init`
-- `contour validate`
-- `contour build-context`
+## Tech Stack
 
-## Repository Layout
-
-If you are exploring the project for the first time, these paths matter most:
-
-- [example_vault](example_vault): example research vault
-- [contour/cli.py](contour/cli.py): CLI entrypoint
-- [contour/validators.py](contour/validators.py): vault validation logic
-- [contour/context_builder.py](contour/context_builder.py): context pack generation
-- [README.md](README.md): Chinese main readme
+| Layer | Choice |
+|-------|--------|
+| Frontend | Vite + React 19 + TypeScript + react-router-dom |
+| Backend | Node.js + Express + TypeScript |
+| Data | Markdown + YAML frontmatter + filesystem (no database) |
+| Markdown | gray-matter + react-markdown |
 
 ## Quick Start
 
-Using `uv`:
-
 ```bash
-uv venv
-uv pip install -e .[dev]
+# Backend (port 3001)
+cd contour-web/backend
+npm install
+npm run dev
+
+# Frontend (port 3000, proxies /api to backend)
+cd contour-web/frontend
+npm install
+npm run dev
 ```
 
-Using plain `pip`:
+Open `http://localhost:3000`. The vault path defaults to `D:\Contour-dev` (configurable via `~/.contour/settings.json`).
 
-```bash
-python -m pip install -e .[dev]
-```
+## Core Design Principles
 
-Validate the example vault:
-
-```bash
-python -m contour validate .\example_vault
-```
-
-Build a context pack:
-
-```bash
-python -m contour build-context ^
-  --vault .\example_vault ^
-  --task "Discuss the interpretation of PA-PVDF flux decline in FGDW" ^
-  --cycles C001 C002 ^
-  --claims CLM_001 ^
-  --assets DA_001 DA_002
-```
-
-## Design Direction
-
-The project currently follows a few simple principles:
-
-- context before agent capability
-- files before databases
-- human confirmation over automatic memory
-- small core before large platform
-
-Those principles may evolve, but they are the current guardrails for keeping the project useful and understandable.
-
-## Notes
-
-This repository is still in a formative stage. As real usage grows, its structure, templates, and workflows will likely continue to change.
+- **Knowledge structure first**, not AI-first
+- **Activate the human, don't replace them** — AI proposal → user review → formal record
+- **Failed paths are first-class citizens** — preserve excluded approaches, anomalous data, unexplained phenomena
+- **Progressive disclosure** — AI collaboration injects flow summaries by default; details fetched on demand
+- **Files before databases** — vaults work with Obsidian, VS Code, and Git out of the box
