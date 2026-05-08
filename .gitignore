@@ -17,6 +17,10 @@ venv/
 # Generated example outputs
 example_vault/context_packs/*.md
 
+# Node / JS
+node_modules/
+dist/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
