@@ -1,4 +1,4 @@
-import { ArrowRight, GitBranch, Trash2 } from 'lucide-react';
+import { ArrowRight, GitBranch, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Flow } from '../types';
@@ -38,16 +38,21 @@ export function ContourMap({
   flows,
   projectId,
   onDeleteFlow,
+  onCreateFlow,
 }: {
   flows: Flow[];
   projectId: string;
   onDeleteFlow?: (flowId: string, title: string) => void;
+  onCreateFlow?: (parentFlowId: string, title: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [creatingFromId, setCreatingFromId] = useState<string | null>(null);
+  const [createTitle, setCreateTitle] = useState('');
 
   // 用 ref 追踪已初始化的 flowId，避免每次 prop 变化都重置位置
   const initializedRef = useRef<Set<string>>(new Set());
@@ -57,6 +62,8 @@ export function ContourMap({
   const hasDraggedRef = useRef(false);
   // 阻止下一次 click 导航（拖拽结束后 Link 会收到 click 事件）
   const preventClickRef = useRef(false);
+  // 多选模式下，候选切换选中的节点
+  const candidateSelectRef = useRef<string | null>(null);
 
   // 只给新出现的 flow 初始化位置，已有本地位置的保留
   useEffect(() => {
@@ -108,6 +115,7 @@ export function ContourMap({
       dragStartRef.current = { x: mouseX, y: mouseY };
       hasDraggedRef.current = false;
       preventClickRef.current = false;
+      candidateSelectRef.current = multiSelectMode ? flowId : null;
 
       setDragOffset({
         x: mouseX - pos.x,
@@ -115,22 +123,11 @@ export function ContourMap({
       });
       setDraggingId(flowId);
 
-      // Ctrl+点击多选
-      if (e.ctrlKey || e.metaKey) {
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(flowId)) {
-            next.delete(flowId);
-          } else {
-            next.add(flowId);
-          }
-          return next;
-        });
-      } else {
-        setSelectedIds(new Set([flowId]));
+      if (!multiSelectMode) {
+        setSelectedIds(new Set());
       }
     },
-    [positions],
+    [positions, multiSelectMode],
   );
 
   useEffect(() => {
@@ -159,21 +156,37 @@ export function ContourMap({
     };
 
     const handleMouseUp = () => {
-      if (draggingId && hasDraggedRef.current) {
-        // 发生了有效拖拽，阻止接下来的 click 事件
-        preventClickRef.current = true;
+      if (draggingId) {
+        if (hasDraggedRef.current) {
+          // 发生了有效拖拽，阻止接下来的 click 事件
+          preventClickRef.current = true;
 
-        // 立即保存位置（不等 debounce）
-        const pos = positions.get(draggingId);
-        if (pos) {
-          fetch(`/api/flows/${draggingId}/position`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
-          }).catch((err) => console.error('保存位置失败:', err));
+          // 立即保存位置（不等 debounce）
+          const pos = positions.get(draggingId);
+          if (pos) {
+            fetch(`/api/flows/${draggingId}/position`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
+            }).catch((err) => console.error('保存位置失败:', err));
+          }
+        } else if (multiSelectMode && candidateSelectRef.current) {
+          // 多选模式下点击（非拖拽）切换选中状态，阻止导航
+          preventClickRef.current = true;
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            const id = candidateSelectRef.current!;
+            if (next.has(id)) {
+              next.delete(id);
+            } else {
+              next.add(id);
+            }
+            return next;
+          });
         }
       }
       setDraggingId(null);
+      candidateSelectRef.current = null;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -182,7 +195,7 @@ export function ContourMap({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingId, dragOffset, positions]);
+  }, [draggingId, dragOffset, positions, multiSelectMode]);
 
   const canvasWidth = 1200;
   const canvasHeight = 400;
@@ -235,7 +248,7 @@ export function ContourMap({
               isDragging ? 'cursor-grabbing z-50' : 'cursor-grab z-10'
             } ${
               isSelected
-                ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface-container'
+                ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-[var(--token-surface-container)]'
                 : ''
             }`}
             key={flow.flowId}
@@ -249,7 +262,7 @@ export function ContourMap({
             <Link
               className="block bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm hover:border-primary/30 transition-colors"
               onClick={(e) => {
-                if (preventClickRef.current) {
+                if (preventClickRef.current || multiSelectMode) {
                   e.preventDefault();
                   preventClickRef.current = false;
                 }
@@ -294,9 +307,99 @@ export function ContourMap({
                 </div>
               </div>
             </Link>
+
+            {/* 从此节点创建新 Flow */}
+            {creatingFromId !== flow.flowId && (
+              <button
+                className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center cursor-pointer hover:scale-110 transition-all shadow-sm z-20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCreatingFromId(flow.flowId);
+                  setCreateTitle('');
+                }}
+                title="从此节点创建新 Flow"
+                type="button"
+              >
+                <Plus size={12} />
+              </button>
+            )}
+
+            {creatingFromId === flow.flowId && (
+              <div
+                className="absolute left-0 top-full mt-2 w-[220px] bg-surface-container-lowest border border-primary/25 rounded-lg shadow-lg p-3 z-50"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <input
+                  autoFocus
+                  className="w-full px-2.5 py-1.5 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-xs outline-none focus:border-primary/40 font-mono mb-2"
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && createTitle.trim()) {
+                      onCreateFlow?.(flow.flowId, createTitle.trim());
+                      setCreatingFromId(null);
+                      setCreateTitle('');
+                    }
+                    if (e.key === 'Escape') {
+                      setCreatingFromId(null);
+                      setCreateTitle('');
+                    }
+                  }}
+                  placeholder="新 Flow 标题"
+                  type="text"
+                  value={createTitle}
+                />
+                <div className="flex gap-2">
+                  <button
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
+                    onClick={() => {
+                      if (createTitle.trim()) {
+                        onCreateFlow?.(flow.flowId, createTitle.trim());
+                      }
+                      setCreatingFromId(null);
+                      setCreateTitle('');
+                    }}
+                    type="button"
+                  >
+                    创建
+                  </button>
+                  <button
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
+                    onClick={() => {
+                      setCreatingFromId(null);
+                      setCreateTitle('');
+                    }}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
+
+      {/* 右上角控制栏：多选模式开关 */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        <button
+          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors font-mono ${
+            multiSelectMode
+              ? 'bg-primary-container/30 border-primary/30 text-primary'
+              : 'bg-surface-container/80 border-outline-variant/40 text-on-surface-variant hover:border-primary/20'
+          }`}
+          onClick={() => {
+            setMultiSelectMode((prev) => {
+              const next = !prev;
+              if (!next) setSelectedIds(new Set());
+              return next;
+            });
+          }}
+          type="button"
+        >
+          <span className={`w-2 h-2 rounded-full ${multiSelectMode ? 'bg-primary' : 'bg-outline-variant'}`} />
+          {multiSelectMode ? '多选模式' : '单选模式'}
+        </button>
+      </div>
 
       {/* 节点数量提示 */}
       <div className="absolute bottom-3 right-3 text-[11px] font-mono text-on-surface-variant bg-surface-container/80 px-2 py-1 rounded">

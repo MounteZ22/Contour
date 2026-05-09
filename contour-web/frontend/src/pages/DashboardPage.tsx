@@ -2,7 +2,6 @@ import { FlaskConical, FolderOpen, Layers, Map, Plus, Trash2 } from 'lucide-reac
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ContourMap } from '../components/ContourMap';
-import { FlowCard } from '../components/FlowCard';
 import type { Flow, ProjectData } from '../types';
 
 export function DashboardPage({
@@ -19,9 +18,6 @@ export function DashboardPage({
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [newProjectGoal, setNewProjectGoal] = useState('');
-
-  const [showNewFlow, setShowNewFlow] = useState(false);
-  const [newFlowTitle, setNewFlowTitle] = useState('');
 
   const [showNewDoc, setShowNewDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -48,8 +44,6 @@ export function DashboardPage({
     localStorage.setItem('contour:lastProjectId', project.projectId);
     setSelectedProject(project);
     setLocalFlows(project.flows);
-    setShowNewFlow(false);
-    setNewFlowTitle('');
   };
 
   const handleAddProject = async () => {
@@ -82,8 +76,7 @@ export function DashboardPage({
     onRefresh();
   };
 
-  const handleAddFlow = async () => {
-    if (!newFlowTitle.trim()) return;
+  const handleCreateFlowFromNode = async (parentFlowId: string, title: string) => {
     const newId = `F${String(localFlows.length + 1).padStart(3, '0')}`;
 
     try {
@@ -93,9 +86,9 @@ export function DashboardPage({
         body: JSON.stringify({
           projectId: selectedProject.projectId,
           flowId: newId,
-          title: newFlowTitle.trim(),
+          title,
           type: 'general',
-          parentFlows: localFlows.length > 0 ? [localFlows[localFlows.length - 1].flowId] : [],
+          parentFlows: [parentFlowId],
         }),
       });
       const result = await res.json();
@@ -108,8 +101,6 @@ export function DashboardPage({
       return;
     }
 
-    setNewFlowTitle('');
-    setShowNewFlow(false);
     onRefresh();
   };
 
@@ -348,83 +339,16 @@ export function DashboardPage({
               </div>
               <div className="flex items-center gap-2 text-xs text-on-surface-variant font-mono">
                 <Map size={14} />
-                <span>Ctrl+点击多选 · 拖拽调整位置</span>
+                <span>点击节点进入 Flow · 拖拽调整位置 · 节点旁 + 创建新 Flow</span>
               </div>
             </div>
 
             <ContourMap
               flows={localFlows}
+              onCreateFlow={handleCreateFlowFromNode}
               onDeleteFlow={handleDeleteFlow}
               projectId={selectedProject.projectId}
             />
-          </div>
-
-          {/* Flow 卡片网格 */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
-            {localFlows.map((flow) => (
-              <FlowCard
-                flow={flow}
-                key={flow.flowId}
-                onDelete={() => handleDeleteFlow(flow.flowId, flow.title)}
-                projectId={selectedProject.projectId}
-              />
-            ))}
-
-            {showNewFlow ? (
-              <div className="border border-outline-variant bg-surface-container rounded-xl p-5 block">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
-                    <Plus size={16} />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">New</p>
-                    <h3 className="text-base font-semibold text-on-surface font-headline">New Flow</h3>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  <input
-                    autoFocus
-                    className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
-                    onChange={(e) => setNewFlowTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleAddFlow();
-                      if (e.key === 'Escape') setShowNewFlow(false);
-                    }}
-                    placeholder="Flow title"
-                    type="text"
-                    value={newFlowTitle}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
-                      onClick={handleAddFlow}
-                      type="button"
-                    >
-                      创建
-                    </button>
-                    <button
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
-                      onClick={() => setShowNewFlow(false)}
-                      type="button"
-                    >
-                      取消
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <button
-                className="flex flex-col items-center justify-center gap-2.5 min-h-[160px] border border-dashed border-outline-variant bg-transparent cursor-pointer hover:border-primary/30 hover:bg-primary-container/5 rounded-xl p-5 transition-all"
-                onClick={() => setShowNewFlow(true)}
-                type="button"
-              >
-                <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
-                  <Plus size={20} />
-                </div>
-                <h3 className="text-base font-semibold text-primary font-headline">New Flow</h3>
-                <p className="text-xs text-on-surface-variant font-mono">在当前项目后添加新的研究推进单元</p>
-              </button>
-            )}
           </div>
 
           {/* 文档区域 */}
