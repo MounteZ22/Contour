@@ -198,6 +198,12 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     // ignore
   }
 
+  const posX = fm['position_x'];
+  const posY = fm['position_y'];
+  const position = (typeof posX === 'number' && typeof posY === 'number')
+    ? { x: posX, y: posY }
+    : undefined;
+
   return {
     flowId: getString(fm, 'flow_id', flowId),
     title: getString(fm, 'title', flowMd.title || flowId),
@@ -211,6 +217,7 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     openUncertainties: [],
     summary,
     sections,
+    position,
   };
 }
 

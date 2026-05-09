@@ -1,6 +1,7 @@
-import { FlaskConical, FolderOpen, Layers, Map, MoveRight, Plus, Trash2 } from 'lucide-react';
+import { FlaskConical, FolderOpen, Layers, Map, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ContourMap } from '../components/ContourMap';
 import { FlowCard } from '../components/FlowCard';
 import type { Flow, ProjectData } from '../types';
 
@@ -338,7 +339,7 @@ export function DashboardPage({
             </div>
           </div>
 
-          {/* Flow 链 */}
+          {/* Flow 网络画布 */}
           <div>
             <div className="flex items-end justify-between gap-4 mb-4">
               <div>
@@ -347,21 +348,15 @@ export function DashboardPage({
               </div>
               <div className="flex items-center gap-2 text-xs text-on-surface-variant font-mono">
                 <Map size={14} />
-                <span>当前显示简单的父流链式关系</span>
+                <span>Ctrl+点击多选 · 拖拽调整位置</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              {localFlows.map((flow, index) => (
-                <div className="flex items-center gap-2" key={flow.flowId}>
-                  <div className="rounded-full px-4 py-2.5 bg-surface-container-high border border-outline-variant flex items-center gap-2 text-sm">
-                    <span className="text-primary font-mono text-xs">{flow.flowId}</span>
-                    <span className="text-on-surface-variant text-sm">{flow.title}</span>
-                  </div>
-                  {index < localFlows.length - 1 ? <MoveRight className="text-primary" size={16} /> : null}
-                </div>
-              ))}
-            </div>
+            <ContourMap
+              flows={localFlows}
+              onDeleteFlow={handleDeleteFlow}
+              projectId={selectedProject.projectId}
+            />
           </div>
 
           {/* Flow 卡片网格 */}

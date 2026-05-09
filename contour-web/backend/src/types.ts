@@ -38,6 +38,7 @@ export interface Flow {
   openUncertainties: string[];
   summary: string;
   sections: FlowSection[];
+  position?: { x: number; y: number };
 }
 
 export interface ProjectData {

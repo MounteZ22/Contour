@@ -431,4 +431,62 @@ async function findProjectDir(projectId: string): Promise<string | null> {
   return null;
 }
 
+// PUT /api/flows/:flowId/position - 更新 Flow 在 Contour Map 中的位置
+router.put('/:flowId/position', async (req, res) => {
+  try {
+    const { flowId } = req.params;
+    const { x, y } = req.body as { x?: number; y?: number };
+
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      const response: ApiResponse<never> = { success: false, error: 'x and y coordinates are required' };
+      res.status(400).json(response);
+      return;
+    }
+
+    const projectDir = await findProjectDirForFlow(flowId);
+    if (!projectDir) {
+      const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
+      res.status(404).json(response);
+      return;
+    }
+
+    const flowsDir = path.join(projectDir, 'flows');
+    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
+    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
+    if (!flowDirName) {
+      const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
+      res.status(404).json(response);
+      return;
+    }
+    const flowDir = path.join(flowsDir, flowDirName);
+
+    const flowMdPath = path.join(flowDir, 'flow.md');
+    let raw = '';
+    try {
+      raw = await fs.readFile(flowMdPath, 'utf-8');
+    } catch {
+      const response: ApiResponse<never> = { success: false, error: 'flow.md not found' };
+      res.status(404).json(response);
+      return;
+    }
+
+    const fmText = extractFrontmatterText(raw);
+    if (fmText !== null) {
+      let updatedFm = fmText.replace(/^position_x:.*/m, `position_x: ${x}`);
+      if (!/^position_x:/m.test(updatedFm)) updatedFm += `\nposition_x: ${x}`;
+      let updatedFm2 = updatedFm.replace(/^position_y:.*/m, `position_y: ${y}`);
+      if (!/^position_y:/m.test(updatedFm2)) updatedFm2 += `\nposition_y: ${y}`;
+      const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
+      await fs.writeFile(flowMdPath, `---\n${updatedFm2}\n---\n${body}`, 'utf-8');
+    }
+
+    invalidateCache();
+    const response: ApiResponse<{ x: number; y: number }> = { success: true, data: { x, y } };
+    res.json(response);
+  } catch (err) {
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    res.status(500).json(response);
+  }
+});
+
 export default router;
