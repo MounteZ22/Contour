@@ -31,7 +31,6 @@ export function ProjectDocPage() {
     );
     setIsEditing(false);
 
-    // 调用后端 API 保存
     try {
       const res = await fetch(`/api/docs/${activeDoc.id}`, {
         method: 'PUT',
@@ -52,34 +51,34 @@ export function ProjectDocPage() {
   };
 
   return (
-    <div className="workspace-page">
-      <div className="contour-breadcrumb">
-        <Link className="breadcrumb-link" to="/">
+    <div className="grid gap-6">
+      <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
+        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
           <ArrowLeft size={16} />
           Back to Projects
         </Link>
-        <span className="breadcrumb-sep">/</span>
-        <span className="breadcrumb-current">Background</span>
+        <span className="text-outline-variant">/</span>
+        <span className="text-on-surface font-medium">Background</span>
       </div>
 
-      <header className="workspace-header">
+      <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
         <div>
-          <p className="eyebrow">Background</p>
-          <h2>{activeDoc.title}</h2>
+          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">Background</p>
+          <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
         </div>
-        <div className="workspace-meta">
-          <span>{activeDoc.type.replace('_', ' ')}</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-on-surface-variant font-mono">{activeDoc.type.replace('_', ' ')}</span>
           {isEditing ? (
-            <div className="edit-actions">
-              <button className="edit-btn edit-btn-save" onClick={handleSave} type="button">
+            <div className="flex gap-2">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleSave} type="button">
                 保存
               </button>
-              <button className="edit-btn edit-btn-cancel" onClick={handleCancel} type="button">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={handleCancel} type="button">
                 取消
               </button>
             </div>
           ) : (
-            <button className="edit-btn" onClick={handleEdit} type="button">
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono" onClick={handleEdit} type="button">
               <Edit3 size={14} />
               编辑
             </button>
@@ -87,49 +86,55 @@ export function ProjectDocPage() {
         </div>
       </header>
 
-      <div className="workspace-grid">
-        <aside className="panel-card nav-panel">
-          <div className="panel-card-header">
-            <div className="panel-icon">
+      <div className="grid grid-cols-[260px_1fr_320px] gap-4 items-start max-xl:grid-cols-1">
+        <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
               <Library size={18} />
             </div>
             <div>
-              <p className="eyebrow">Project Docs</p>
-              <h3>Browse references</h3>
+              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Project Docs</p>
+              <h3 className="text-base font-semibold text-on-surface font-headline">Browse references</h3>
             </div>
           </div>
 
-          <div className="workspace-nav-list">
+          <div className="grid gap-3 mt-4">
             {localDocs.map((doc) => (
               <NavLink
                 className={({ isActive }) =>
-                  isActive ? 'workspace-nav-item workspace-nav-item-active' : 'workspace-nav-item'
+                  `w-full text-left border rounded-lg p-3 flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                    isActive
+                      ? 'border-primary/20 bg-primary-container/5'
+                      : 'border-transparent bg-surface-container-low/50 hover:border-primary/20 hover:bg-primary-container/5'
+                  }`
                 }
                 key={doc.id}
                 to={`/project/${project.projectId}/docs/${doc.id}`}
               >
-                <strong>{doc.title}</strong>
-                <span>{doc.summary}</span>
+                <div className="grid gap-1">
+                  <strong className="text-sm text-on-surface">{doc.title}</strong>
+                  <span className="text-xs text-on-surface-variant line-clamp-2">{doc.summary}</span>
+                </div>
               </NavLink>
             ))}
           </div>
         </aside>
 
-        <section className="panel-card article-panel">
-          <div className="panel-card-header">
-            <div className="panel-icon">
+        <section className="border border-outline-variant bg-surface-container rounded-xl p-5 min-h-[70vh]">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
               <FileStack size={18} />
             </div>
             <div>
-              <p className="eyebrow">{isEditing ? '编辑模式' : '文档阅读器'}</p>
-              <h3>{activeDoc.title}</h3>
+              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">{isEditing ? '编辑模式' : '文档阅读器'}</p>
+              <h3 className="text-base font-semibold text-on-surface font-headline">{activeDoc.title}</h3>
             </div>
-            {isEditing ? <Edit3 size={16} className="edit-indicator" /> : <Eye size={16} className="edit-indicator" />}
+            {isEditing ? <Edit3 size={16} className="text-primary" /> : <Eye size={16} className="text-primary" />}
           </div>
 
           {isEditing ? (
             <textarea
-              className="markdown-editor"
+              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-container-lowest border border-primary/25 text-on-surface font-mono text-sm leading-7 resize-y outline-none focus:border-primary/40"
               onChange={(e) => setEditedContent(e.target.value)}
               value={editedContent}
             />

@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ==========================================
+     Color Tokens (mapped to CSS variables)
+     ========================================== */
+  --color-primary: var(--token-primary);
+  --color-on-primary: var(--token-on-primary);
+  --color-primary-container: var(--token-primary-container);
+  --color-on-primary-container: var(--token-on-primary-container);
+  --color-primary-fixed: var(--token-primary-fixed);
+  --color-primary-fixed-dim: var(--token-primary-fixed-dim);
+  --color-on-primary-fixed: var(--token-on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--token-on-primary-fixed-variant);
+
+  --color-secondary: var(--token-secondary);
+  --color-on-secondary: var(--token-on-secondary);
+  --color-secondary-container: var(--token-secondary-container);
+  --color-on-secondary-container: var(--token-on-secondary-container);
+  --color-secondary-fixed: var(--token-secondary-fixed);
+  --color-secondary-fixed-dim: var(--token-secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--token-on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(--token-on-secondary-fixed-variant);
+
+  --color-tertiary: var(--token-tertiary);
+  --color-on-tertiary: var(--token-on-tertiary);
+  --color-tertiary-container: var(--token-tertiary-container);
+  --color-on-tertiary-container: var(--token-on-tertiary-container);
+  --color-tertiary-fixed: var(--token-tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--token-tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--token-on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--token-on-tertiary-fixed-variant);
+
+  --color-error: var(--token-error);
+  --color-on-error: var(--token-on-error);
+  --color-error-container: var(--token-error-container);
+  --color-on-error-container: var(--token-on-error-container);
+
+  --color-background: var(--token-background);
+  --color-on-background: var(--token-on-background);
+  --color-surface: var(--token-surface);
+  --color-on-surface: var(--token-on-surface);
+  --color-surface-variant: var(--token-surface-variant);
+  --color-surface-dim: var(--token-surface-dim);
+  --color-surface-bright: var(--token-surface-bright);
+  --color-surface-container-lowest: var(--token-surface-container-lowest);
+  --color-surface-container-low: var(--token-surface-container-low);
+  --color-surface-container: var(--token-surface-container);
+  --color-surface-container-high: var(--token-surface-container-high);
+  --color-surface-container-highest: var(--token-surface-container-highest);
+  --color-inverse-surface: var(--token-inverse-surface);
+  --color-inverse-on-surface: var(--token-inverse-on-surface);
+  --color-inverse-primary: var(--token-inverse-primary);
+  --color-outline: var(--token-outline);
+  --color-outline-variant: var(--token-outline-variant);
+  --color-surface-tint: var(--token-surface-tint);
+
+  /* ==========================================
+     Typography
+     ========================================== */
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --font-headline: "Hanken Grotesk", "Inter", sans-serif;
+  --font-body: "Inter", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+
+  --text-headline-lg: 32px;
+  --text-headline-md: 24px;
+  --text-headline-sm: 18px;
+  --text-body-lg: 16px;
+  --text-body-md: 14px;
+  --text-label-mono: 13px;
+  --text-code-block: 13px;
+
+  --font-weight-headline-lg: 700;
+  --font-weight-headline-md: 600;
+  --font-weight-headline-sm: 600;
+  --font-weight-body: 400;
+  --font-weight-label-mono: 500;
+
+  --line-height-headline-lg: 1.2;
+  --line-height-headline-md: 1.3;
+  --line-height-headline-sm: 1.4;
+  --line-height-body-lg: 1.6;
+  --line-height-body-md: 1.5;
+  --line-height-label-mono: 1.2;
+  --line-height-code-block: 1.6;
+
+  --tracking-label-mono: -0.01em;
+
+  /* ==========================================
+     Spacing
+     ========================================== */
+  --spacing-sidebar: 320px;
+  --spacing-page: 2rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-node: 2rem;
+
+  /* ==========================================
+     Border Radius
+     ========================================== */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+  --radius-full: 9999px;
+}
+
+/* ==========================================
+   Light Scientific Theme (default)
+   ========================================== */
+:root,
+.theme-light-scientific {
+  --token-primary: #004ac6;
+  --token-on-primary: #ffffff;
+  --token-primary-container: #2563eb;
+  --token-on-primary-container: #eeefff;
+  --token-primary-fixed: #dbe1ff;
+  --token-primary-fixed-dim: #b4c5ff;
+  --token-on-primary-fixed: #00174b;
+  --token-on-primary-fixed-variant: #003ea8;
+
+  --token-secondary: #6b38d4;
+  --token-on-secondary: #ffffff;
+  --token-secondary-container: #8455ef;
+  --token-on-secondary-container: #fffbff;
+  --token-secondary-fixed: #e9ddff;
+  --token-secondary-fixed-dim: #d0bcff;
+  --token-on-secondary-fixed: #23005c;
+  --token-on-secondary-fixed-variant: #5516be;
+
+  --token-tertiary: #006242;
+  --token-on-tertiary: #ffffff;
+  --token-tertiary-container: #007d55;
+  --token-on-tertiary-container: #bdffdb;
+  --token-tertiary-fixed: #6ffbbe;
+  --token-tertiary-fixed-dim: #4edea3;
+  --token-on-tertiary-fixed: #002113;
+  --token-on-tertiary-fixed-variant: #005236;
+
+  --token-error: #ba1a1a;
+  --token-on-error: #ffffff;
+  --token-error-container: #ffdad6;
+  --token-on-error-container: #93000a;
+
+  --token-background: #f8f9ff;
+  --token-on-background: #0d1c2e;
+  --token-surface: #f8f9ff;
+  --token-on-surface: #0d1c2e;
+  --token-surface-variant: #d5e3fc;
+  --token-surface-dim: #ccdbf3;
+  --token-surface-bright: #f8f9ff;
+  --token-surface-container-lowest: #ffffff;
+  --token-surface-container-low: #eff4ff;
+  --token-surface-container: #e6eeff;
+  --token-surface-container-high: #dce9ff;
+  --token-surface-container-highest: #d5e3fc;
+  --token-inverse-surface: #233144;
+  --token-inverse-on-surface: #eaf1ff;
+  --token-inverse-primary: #b4c5ff;
+  --token-outline: #737686;
+  --token-outline-variant: #c3c6d7;
+  --token-surface-tint: #0053db;
+}
+
+/* ==========================================
+   Dark Scientific Theme
+   ========================================== */
+.theme-dark-scientific {
+  --token-primary: #b4c5ff;
+  --token-on-primary: #00174b;
+  --token-primary-container: #003ea8;
+  --token-on-primary-container: #dbe1ff;
+  --token-primary-fixed: #004ac6;
+  --token-primary-fixed-dim: #2563eb;
+  --token-on-primary-fixed: #ffffff;
+  --token-on-primary-fixed-variant: #b4c5ff;
+
+  --token-secondary: #d0bcff;
+  --token-on-secondary: #23005c;
+  --token-secondary-container: #5516be;
+  --token-on-secondary-container: #e9ddff;
+  --token-secondary-fixed: #6b38d4;
+  --token-secondary-fixed-dim: #8455ef;
+  --token-on-secondary-fixed: #ffffff;
+  --token-on-secondary-fixed-variant: #d0bcff;
+
+  --token-tertiary: #4edea3;
+  --token-on-tertiary: #002113;
+  --token-tertiary-container: #005236;
+  --token-on-tertiary-container: #6ffbbe;
+  --token-tertiary-fixed: #006242;
+  --token-tertiary-fixed-dim: #007d55;
+  --token-on-tertiary-fixed: #ffffff;
+  --token-on-tertiary-fixed-variant: #4edea3;
+
+  --token-error: #ffb4ab;
+  --token-on-error: #690005;
+  --token-error-container: #93000a;
+  --token-on-error-container: #ffdad6;
+
+  --token-background: #0d1c2e;
+  --token-on-background: #eaf1ff;
+  --token-surface: #0d1c2e;
+  --token-on-surface: #eaf1ff;
+  --token-surface-variant: #233144;
+  --token-surface-dim: #06111f;
+  --token-surface-bright: #233144;
+  --token-surface-container-lowest: #0d1c2e;
+  --token-surface-container-low: #112136;
+  --token-surface-container: #172740;
+  --token-surface-container-high: #1d2f4a;
+  --token-surface-container-highest: #233855;
+  --token-inverse-surface: #eaf1ff;
+  --token-inverse-on-surface: #0d1c2e;
+  --token-inverse-primary: #004ac6;
+  --token-outline: #8a919e;
+  --token-outline-variant: #3a4555;
+  --token-surface-tint: #b4c5ff;
+}
+
+/* Override legacy global styles */
+html {
+  background: var(--token-background);
+}
+
+body {
+  color: var(--token-on-background);
+}

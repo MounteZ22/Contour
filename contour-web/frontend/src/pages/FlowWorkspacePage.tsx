@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit3, Eye, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
@@ -32,16 +32,16 @@ export function FlowWorkspacePage() {
 
   if (!activeSection) {
     return (
-      <div className="workspace-page">
-        <div className="contour-breadcrumb">
-          <Link className="breadcrumb-link" to="/">
+      <div className="grid gap-6">
+        <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
+          <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
             <ArrowLeft size={16} />
             Back to Projects
           </Link>
         </div>
-        <div className="panel-card" style={{ padding: 40, textAlign: 'center' }}>
-          <p style={{ color: 'var(--muted)' }}>此 Flow 暂无 Section</p>
-          <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
+        <div className="border border-outline-variant rounded-xl p-10 bg-surface-container text-center">
+          <p className="text-on-surface-variant">此 Flow 暂无 Section</p>
+          <p className="text-on-surface-variant text-sm mt-2">
             请在左侧添加新的 Section
           </p>
         </div>
@@ -55,7 +55,6 @@ export function FlowWorkspacePage() {
   };
 
   const handleSave = async () => {
-    // 先更新本地状态
     setLocalSections((prev) =>
       prev.map((section) =>
         section.id === activeSection.id ? { ...section, content: editedContent } : section
@@ -63,7 +62,6 @@ export function FlowWorkspacePage() {
     );
     setIsEditing(false);
 
-    // 调用后端 API 保存
     try {
       const res = await fetch(`/api/flows/${initialFlow.flowId}/sections/${activeSection.id}`, {
         method: 'PUT',
@@ -88,7 +86,6 @@ export function FlowWorkspacePage() {
     const newId = `section_${Date.now()}`;
     const title = newSectionTitle.trim();
 
-    // 先调后端创建文件
     try {
       const res = await fetch(`/api/flows/${initialFlow.flowId}/sections`, {
         method: 'POST',
@@ -142,78 +139,78 @@ export function FlowWorkspacePage() {
   };
 
   return (
-    <div className="workspace-page">
-      <div className="contour-breadcrumb">
-        <Link className="breadcrumb-link" to="/">
+    <div className="grid gap-6">
+      <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
+        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
           <ArrowLeft size={16} />
           Back to Projects
         </Link>
-        <span className="breadcrumb-sep">/</span>
-        <span className="breadcrumb-current">{initialFlow.flowId}</span>
+        <span className="text-outline-variant">/</span>
+        <span className="text-on-surface font-medium">{initialFlow.flowId}</span>
       </div>
 
-      <header className="workspace-header">
+      <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
         <div>
-          <p className="eyebrow">{initialFlow.flowId}</p>
-          <h2>{initialFlow.title}</h2>
+          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">{initialFlow.flowId}</p>
+          <h2 className="text-xl font-bold text-on-background font-headline">{initialFlow.title}</h2>
         </div>
-        <div className="workspace-metadata-cluster">
+        <div className="flex items-center gap-3 flex-wrap">
           <StatusBadge status={initialFlow.status} />
-          <span>{initialFlow.type.replace('_', ' ')}</span>
-          <span>更新于 {initialFlow.updated}</span>
+          <span className="text-xs text-on-surface-variant font-mono">{initialFlow.type.replace('_', ' ')}</span>
+          <span className="text-xs text-on-surface-variant font-mono">更新于 {initialFlow.updated}</span>
         </div>
       </header>
 
-      <section className="flow-meta-banner">
+      <section className="grid grid-cols-3 gap-4 border border-outline-variant rounded-xl p-5 bg-surface-container max-lg:grid-cols-1">
         <div>
-          <p className="eyebrow">待解决的不确定性</p>
-          <strong>{initialFlow.openUncertainties[0]}</strong>
+          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">待解决的不确定性</p>
+          <strong className="text-sm text-on-surface font-mono">{initialFlow.openUncertainties[0]}</strong>
         </div>
         <div>
-          <p className="eyebrow">父节点</p>
-          <strong>{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
+          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">父节点</p>
+          <strong className="text-sm text-on-surface font-mono">{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
         </div>
         <div>
-          <p className="eyebrow">标签</p>
-          <strong>{initialFlow.tags.join(' · ')}</strong>
+          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">标签</p>
+          <strong className="text-sm text-on-surface font-mono">{initialFlow.tags.join(' · ')}</strong>
         </div>
       </section>
 
-      <div className="workspace-grid">
-        <aside className="panel-card nav-panel">
-          <div className="panel-card-header">
-            <div className="panel-icon">
+      <div className="grid grid-cols-[260px_1fr_320px] gap-4 items-start max-xl:grid-cols-1">
+        <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
               <Files size={18} />
             </div>
             <div>
-              <p className="eyebrow">Sections</p>
-              <h3>Flow documents</h3>
+              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Sections</p>
+              <h3 className="text-base font-semibold text-on-surface font-headline">Flow documents</h3>
             </div>
           </div>
 
-          <div className="workspace-nav-list">
+          <div className="grid gap-3 mt-4">
             {localSections.map((section) => (
               <div
-                className={
+                className={`w-full text-left border rounded-lg p-3.5 flex items-center justify-between gap-2 cursor-pointer transition-all ${
                   section.id === activeSection.id
-                    ? 'workspace-nav-item workspace-nav-item-active'
-                    : 'workspace-nav-item'
-                }
+                    ? 'border-primary/20 bg-primary-container/5'
+                    : 'border-transparent bg-surface-container-low/50 hover:border-primary/20 hover:bg-primary-container/5'
+                }`}
                 key={section.id}
               >
                 <button
-                  className="workspace-nav-item-content"
+                  className="flex-1 grid gap-1.5 bg-transparent border-none text-inherit text-left p-0 cursor-pointer font-inherit"
                   onClick={() => {
                     setActiveSectionId(section.id);
                     setIsEditing(false);
                   }}
                   type="button"
                 >
-                  <strong>{section.title}</strong>
-                  <span>{section.filename}</span>
+                  <strong className="text-sm text-on-surface">{section.title}</strong>
+                  <span className="text-[11px] text-on-surface-variant font-mono">{section.filename}</span>
                 </button>
                 <button
-                  className="delete-btn delete-btn-small"
+                  className="w-6 h-6 rounded-md border border-outline-variant/50 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/20 hover:border-error/30 hover:text-error"
                   onClick={() => handleDeleteSection(section.id, section.title)}
                   title="删除 Section"
                   type="button"
@@ -224,10 +221,10 @@ export function FlowWorkspacePage() {
             ))}
 
             {showNewSection ? (
-              <div className="new-section-form">
+              <div className="grid gap-2 p-3 border border-primary/25 rounded-lg bg-primary-container/5">
                 <input
                   autoFocus
-                  className="new-section-input"
+                  className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
                   onChange={(e) => setNewSectionTitle(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAddSection();
@@ -237,17 +234,17 @@ export function FlowWorkspacePage() {
                   type="text"
                   value={newSectionTitle}
                 />
-                <div className="new-section-actions">
-                  <button className="edit-btn edit-btn-save" onClick={handleAddSection} type="button">
+                <div className="flex gap-2">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleAddSection} type="button">
                     添加
                   </button>
-                  <button className="edit-btn edit-btn-cancel" onClick={() => setShowNewSection(false)} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={() => setShowNewSection(false)} type="button">
                     取消
                   </button>
                 </div>
               </div>
             ) : (
-              <button className="new-section-trigger" onClick={() => setShowNewSection(true)} type="button">
+              <button className="w-full text-left border border-dashed border-outline-variant rounded-lg p-3 bg-transparent text-on-surface-variant inline-flex items-center gap-2 cursor-pointer hover:border-primary/40 hover:text-primary hover:bg-surface-container-low transition-all" onClick={() => setShowNewSection(true)} type="button">
                 <Plus size={14} />
                 New Section
               </button>
@@ -255,27 +252,27 @@ export function FlowWorkspacePage() {
           </div>
         </aside>
 
-        <section className="panel-card article-panel">
-          <div className="panel-card-header">
-            <div className="panel-icon">
+        <section className="border border-outline-variant bg-surface-container rounded-xl p-5 min-h-[70vh]">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
               <Sparkles size={18} />
             </div>
             <div>
-              <p className="eyebrow">{isEditing ? '编辑模式' : '阅读区'}</p>
-              <h3>{activeSection.title}</h3>
+              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">{isEditing ? '编辑模式' : '阅读区'}</p>
+              <h3 className="text-base font-semibold text-on-surface font-headline">{activeSection.title}</h3>
             </div>
-            <div className="article-actions">
+            <div className="flex gap-2 items-center">
               {isEditing ? (
                 <>
-                  <button className="edit-btn edit-btn-save" onClick={handleSave} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleSave} type="button">
                     保存
                   </button>
-                  <button className="edit-btn edit-btn-cancel" onClick={handleCancel} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={handleCancel} type="button">
                     取消
                   </button>
                 </>
               ) : (
-                <button className="edit-btn" onClick={handleEdit} type="button">
+                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono" onClick={handleEdit} type="button">
                   <Edit3 size={14} />
                   编辑
                 </button>
@@ -285,7 +282,7 @@ export function FlowWorkspacePage() {
 
           {isEditing ? (
             <textarea
-              className="markdown-editor"
+              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-container-lowest border border-primary/25 text-on-surface font-mono text-sm leading-7 resize-y outline-none focus:border-primary/40"
               onChange={(e) => setEditedContent(e.target.value)}
               value={editedContent}
             />

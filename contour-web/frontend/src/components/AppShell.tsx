@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { Outlet } from 'react-router-dom';
+import { ThemeToggle } from './ThemeToggle';
 import type { ProjectData } from '../types';
 
 export function AppShell({ onRefresh, projects }: { onRefresh: () => void; projects: ProjectData[] }) {
@@ -8,28 +9,27 @@ export function AppShell({ onRefresh, projects }: { onRefresh: () => void; proje
 
   if (!project) {
     return (
-      <div className="app-shell">
-        <main className="page-frame">
-          <p>项目未找到</p>
+      <div className="min-h-screen bg-background">
+        <main className="p-8">
+          <p className="text-on-surface-variant">项目未找到</p>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Contour</p>
-          <h1>{project.title}</h1>
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between gap-6 px-8 h-16 border-b border-outline-variant backdrop-blur-xl bg-surface/60 sticky top-0 z-20">
+        <div className="flex items-center gap-6">
+          <h1 className="text-xl font-bold text-on-background font-headline">{project.title}</h1>
         </div>
-        <div className="topbar-meta">
-          <span>科研认知工作台</span>
+        <div className="flex items-center gap-4 text-sm text-on-surface-variant font-mono">
           <span>{project.currentStage}</span>
+          <ThemeToggle />
         </div>
       </header>
 
-      <main className="page-frame">
+      <main className="p-8">
         <Outlet context={{ onRefresh, project, projects }} />
       </main>
     </div>
