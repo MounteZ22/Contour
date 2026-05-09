@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowRightLeft, GitBranch, Trash2 } from 'lucide-react';
+import { ArrowRight, GitBranch, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Flow } from '../types';
@@ -11,10 +11,8 @@ interface NodePos {
 
 function getNodePos(flow: Flow, index: number, total: number): NodePos {
   if (flow.position) return flow.position;
-  // 默认水平排列，中心在画布中间
   const spacing = 240;
-  const totalWidth = (total - 1) * spacing;
-  const startX = 80; // padding left
+  const startX = 80;
   const centerY = 120;
   return {
     x: startX + index * spacing,
@@ -40,27 +38,46 @@ export function ContourMap({
   flows,
   projectId,
   onDeleteFlow,
-  onRefresh,
 }: {
   flows: Flow[];
   projectId: string;
   onDeleteFlow?: (flowId: string, title: string) => void;
-  onRefresh?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 初始化位置（优先用 flow.position，否则自动计算）
+  // 用 ref 追踪已初始化的 flowId，避免每次 prop 变化都重置位置
+  const initializedRef = useRef<Set<string>>(new Set());
+  // 追踪拖拽起点，用于区分拖拽和点击
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  // 标记是否发生了有效拖拽（移动超过阈值）
+  const hasDraggedRef = useRef(false);
+  // 阻止下一次 click 导航（拖拽结束后 Link 会收到 click 事件）
+  const preventClickRef = useRef(false);
+
+  // 只给新出现的 flow 初始化位置，已有本地位置的保留
   useEffect(() => {
-    const map = new Map<string, NodePos>();
-    flows.forEach((flow, i) => {
-      map.set(flow.flowId, getNodePos(flow, i, flows.length));
+    setPositions((prev) => {
+      const next = new Map(prev);
+      flows.forEach((flow, i) => {
+        if (!initializedRef.current.has(flow.flowId)) {
+          next.set(flow.flowId, getNodePos(flow, i, flows.length));
+          initializedRef.current.add(flow.flowId);
+        }
+      });
+      // 清理已不存在的 flow
+      const currentIds = new Set(flows.map((f) => f.flowId));
+      for (const id of next.keys()) {
+        if (!currentIds.has(id)) {
+          next.delete(id);
+          initializedRef.current.delete(id);
+        }
+      }
+      return next;
     });
-    setPositions(map);
   }, [flows]);
 
   const edges = useMemo(() => {
@@ -77,13 +94,24 @@ export function ContourMap({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, flowId: string) => {
+      // 只有左键才触发拖拽
+      if (e.button !== 0) return;
       e.preventDefault();
+
       const pos = positions.get(flowId);
       if (!pos || !containerRef.current) return;
+
       const rect = containerRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      dragStartRef.current = { x: mouseX, y: mouseY };
+      hasDraggedRef.current = false;
+      preventClickRef.current = false;
+
       setDragOffset({
-        x: e.clientX - rect.left - pos.x,
-        y: e.clientY - rect.top - pos.y,
+        x: mouseX - pos.x,
+        y: mouseY - pos.y,
       });
       setDraggingId(flowId);
 
@@ -113,6 +141,16 @@ export function ContourMap({
       const rect = containerRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left - dragOffset.x;
       const y = e.clientY - rect.top - dragOffset.y;
+
+      // 检查是否移动超过阈值，标记为有效拖拽
+      if (dragStartRef.current) {
+        const dx = e.clientX - rect.left - dragStartRef.current.x;
+        const dy = e.clientY - rect.top - dragStartRef.current.y;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          hasDraggedRef.current = true;
+        }
+      }
+
       setPositions((prev) => {
         const next = new Map(prev);
         next.set(draggingId, { x: Math.max(0, x), y: Math.max(0, y) });
@@ -121,18 +159,18 @@ export function ContourMap({
     };
 
     const handleMouseUp = () => {
-      if (draggingId) {
+      if (draggingId && hasDraggedRef.current) {
+        // 发生了有效拖拽，阻止接下来的 click 事件
+        preventClickRef.current = true;
+
+        // 立即保存位置（不等 debounce）
         const pos = positions.get(draggingId);
         if (pos) {
-          // debounce save
-          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = setTimeout(() => {
-            fetch(`/api/flows/${draggingId}/position`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
-            }).catch((err) => console.error('保存位置失败:', err));
-          }, 300);
+          fetch(`/api/flows/${draggingId}/position`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
+          }).catch((err) => console.error('保存位置失败:', err));
         }
       }
       setDraggingId(null);
@@ -193,11 +231,13 @@ export function ContourMap({
 
         return (
           <div
-            className={`absolute cursor-grab active:cursor-grabbing select-none ${
+            className={`absolute select-none ${
+              isDragging ? 'cursor-grabbing z-50' : 'cursor-grab z-10'
+            } ${
               isSelected
                 ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface-container'
                 : ''
-            } ${isDragging ? 'z-50' : 'z-10'}`}
+            }`}
             key={flow.flowId}
             onMouseDown={(e) => handleMouseDown(e, flow.flowId)}
             style={{
@@ -209,8 +249,9 @@ export function ContourMap({
             <Link
               className="block bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm hover:border-primary/30 transition-colors"
               onClick={(e) => {
-                if (draggingId) {
+                if (preventClickRef.current) {
                   e.preventDefault();
+                  preventClickRef.current = false;
                 }
               }}
               to={`/project/${projectId}/flows/${flow.flowId}`}
