@@ -1,10 +1,11 @@
-import { ArrowLeft, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, ChevronDown, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { showToast } from '../components/Toast';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import { StatusBadge } from '../components/StatusBadge';
-import type { ProjectData } from '../types';
+import type { FlowStatus, ProjectData } from '../types';
 
 export function FlowWorkspacePage() {
   const { onRefresh, project, projects } = useOutletContext<{ onRefresh: () => void; project: ProjectData; projects: ProjectData[] }>();
@@ -21,6 +22,46 @@ export function FlowWorkspacePage() {
   const [editedContent, setEditedContent] = useState('');
   const [showNewSection, setShowNewSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState('');
+
+  // 状态编辑
+  const [flowStatus, setFlowStatus] = useState<FlowStatus>(initialFlow.status);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setFlowStatus(initialFlow.status);
+  }, [initialFlow.status]);
+
+  // 点击外部关闭状态菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setShowStatusMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleStatusChange = async (newStatus: FlowStatus) => {
+    setShowStatusMenu(false);
+    try {
+      const res = await fetch(`/api/flows/${initialFlow.flowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setFlowStatus(newStatus);
+        onRefresh();
+      } else {
+        showToast(`更新状态失败：${result.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`更新状态请求失败：${(err as Error).message}`, 'error');
+    }
+  };
 
   useEffect(() => {
     const currentFlow = project.flows.find((item) => item.flowId === flowId) ?? project.flows[0];
@@ -70,10 +111,10 @@ export function FlowWorkspacePage() {
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('保存 Section 失败:', result.error);
+        showToast(`保存 Section 失败：${result.error}`, 'error');
       }
     } catch (err) {
-      console.error('保存 Section 请求失败:', err);
+      showToast(`保存 Section 请求失败：${(err as Error).message}`, 'error');
     }
   };
 
@@ -94,11 +135,11 @@ export function FlowWorkspacePage() {
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('创建 Section 失败:', result.error);
+        showToast(`创建 Section 失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      console.error('创建 Section 请求失败:', err);
+      showToast(`创建 Section 请求失败：${(err as Error).message}`, 'error');
       return;
     }
 
@@ -124,7 +165,7 @@ export function FlowWorkspacePage() {
       );
       const result = await res.json();
       if (!result.success) {
-        console.error('删除 Section 失败:', result.error);
+        showToast(`删除 Section 失败：${result.error}`, 'error');
         return;
       }
       setLocalSections((prev) => prev.filter((s) => s.id !== sectionId));
@@ -134,7 +175,7 @@ export function FlowWorkspacePage() {
       }
       onRefresh();
     } catch (err) {
-      console.error('删除 Section 请求失败:', err);
+      showToast(`删除 Section 请求失败：${(err as Error).message}`, 'error');
     }
   };
 
@@ -155,7 +196,37 @@ export function FlowWorkspacePage() {
           <h2 className="text-xl font-bold text-on-background font-headline">{initialFlow.title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <StatusBadge status={initialFlow.status} />
+          <div className="relative" ref={statusMenuRef}>
+            <button
+              className="cursor-pointer"
+              onClick={() => setShowStatusMenu((prev) => !prev)}
+              type="button"
+            >
+              <StatusBadge status={flowStatus} />
+            </button>
+            {showStatusMenu && (
+              <div className="absolute top-full left-0 mt-1.5 z-20 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg p-1.5 min-w-[140px]"
+              >
+                {(['in_progress', 'completed', 'archived', 'abandoned'] as FlowStatus[]).map((s) => (
+                  <button
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-mono transition-colors cursor-pointer ${
+                      s === flowStatus
+                        ? 'bg-primary/10 text-primary'
+                        : 'hover:bg-surface-container-high text-on-surface'
+                    }`}
+                    key={s}
+                    onClick={() => handleStatusChange(s)}
+                    type="button"
+                  >
+                    {s === 'in_progress' && '进行'}
+                    {s === 'completed' && '完成'}
+                    {s === 'archived' && '归档'}
+                    {s === 'abandoned' && '放弃'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="text-xs text-on-surface-variant font-mono">{initialFlow.type.replace('_', ' ')}</span>
           <span className="text-xs text-on-surface-variant font-mono">更新于 {initialFlow.updated}</span>
         </div>

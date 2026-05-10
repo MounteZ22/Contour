@@ -27,6 +27,7 @@ function extractTitle(content: string): string | null {
 export function getString(data: Record<string, unknown>, key: string, fallback = ''): string {
   const val = data[key];
   if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
   if (val instanceof Date) {
     // YYYY-MM-DD format
     return val.toISOString().split('T')[0];

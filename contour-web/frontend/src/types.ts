@@ -1,4 +1,4 @@
-export type FlowStatus = 'planned' | 'in_progress' | 'completed' | 'archived' | 'abandoned';
+export type FlowStatus = 'in_progress' | 'completed' | 'archived' | 'abandoned';
 
 export interface ProjectDoc {
   id: string;

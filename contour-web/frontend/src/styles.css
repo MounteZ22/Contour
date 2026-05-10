@@ -299,12 +299,6 @@ button {
   border-color: rgba(73, 159, 232, 0.26);
 }
 
-.status-planned {
-  color: #d6c278;
-  background: rgba(107, 87, 20, 0.24);
-  border-color: rgba(198, 170, 71, 0.24);
-}
-
 .status-archived {
   color: #cb9cff;
   background: rgba(98, 54, 138, 0.24);

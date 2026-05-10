@@ -104,7 +104,7 @@ router.post('/', async (req, res) => {
     const flowMd = `---
 flow_id: ${flowId}
 title: ${title}
-status: planned
+status: in_progress
 stage: ${type || 'general'}
 created: "${today}"
 updated: "${today}"
@@ -158,6 +158,63 @@ tags: []
     invalidateCache();
     const response: ApiResponse<{ flowId: string }> = { success: true, data: { flowId } };
     res.status(201).json(response);
+  } catch (err) {
+    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
+    res.status(500).json(response);
+  }
+});
+
+// PUT /api/flows/:flowId - 更新 flow frontmatter
+router.put('/:flowId', async (req, res) => {
+  try {
+    const { flowId } = req.params;
+    const { status } = req.body as { status?: string };
+
+    if (status === undefined) {
+      const response: ApiResponse<never> = { success: false, error: 'status is required' };
+      res.status(400).json(response);
+      return;
+    }
+
+    const projectDir = await findProjectDirForFlow(flowId);
+    if (!projectDir) {
+      const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
+      res.status(404).json(response);
+      return;
+    }
+
+    const flowsDir = path.join(projectDir, 'flows');
+    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
+    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
+    if (!flowDirName) {
+      const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
+      res.status(404).json(response);
+      return;
+    }
+    const flowDir = path.join(flowsDir, flowDirName);
+
+    const flowMdPath = path.join(flowDir, 'flow.md');
+    let raw = '';
+    try {
+      raw = await fs.readFile(flowMdPath, 'utf-8');
+    } catch {
+      const response: ApiResponse<never> = { success: false, error: 'flow.md not found' };
+      res.status(404).json(response);
+      return;
+    }
+
+    const fmText = extractFrontmatterText(raw);
+    if (fmText !== null) {
+      let updatedFm = fmText.replace(/^status:.*/m, `status: ${status}`);
+      if (!/^status:/m.test(updatedFm)) updatedFm += `\nstatus: ${status}`;
+      const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
+      await fs.writeFile(flowMdPath, `---\n${updatedFm}\n---\n${body}`, 'utf-8');
+      await updateFlowTimestamp(flowDir);
+    }
+
+    invalidateCache();
+    const response: ApiResponse<{ status: string }> = { success: true, data: { status } };
+    res.json(response);
   } catch (err) {
     const response: ApiResponse<never> = { success: false, error: (err as Error).message };
     res.status(500).json(response);

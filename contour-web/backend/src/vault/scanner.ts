@@ -207,7 +207,7 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
   return {
     flowId: getString(fm, 'flow_id', flowId),
     title: getString(fm, 'title', flowMd.title || flowId),
-    status: getString(fm, 'status', 'planned') as Flow['status'],
+    status: getString(fm, 'status', 'in_progress') as Flow['status'],
     type: getString(fm, 'stage', 'general'),
     created: getString(fm, 'created', ''),
     updated: getString(fm, 'updated', ''),

@@ -1,11 +1,10 @@
 import type { FlowStatus } from '../types';
 
 const statusLabels: Record<FlowStatus, string> = {
-  planned: '计划中',
-  in_progress: '进行中',
-  completed: '已完成',
-  archived: '已归档',
-  abandoned: '已放弃',
+  in_progress: '进行',
+  completed: '完成',
+  archived: '归档',
+  abandoned: '放弃',
 };
 
 const statusStyles: Record<FlowStatus, { wrapper: string; dot: string }> = {
@@ -16,10 +15,6 @@ const statusStyles: Record<FlowStatus, { wrapper: string; dot: string }> = {
   in_progress: {
     wrapper: 'text-primary bg-primary/10 border-primary/20',
     dot: 'bg-primary',
-  },
-  planned: {
-    wrapper: 'text-tertiary bg-tertiary/10 border-tertiary/20',
-    dot: 'bg-tertiary',
   },
   archived: {
     wrapper: 'text-secondary bg-secondary/10 border-secondary/20',

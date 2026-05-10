@@ -1,4 +1,4 @@
-import { ArrowRight, GitBranch, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Check, GitBranch, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Flow } from '../types';
@@ -39,18 +39,22 @@ export function ContourMap({
   projectId,
   onDeleteFlow,
   onCreateFlow,
+  contextSelectMode,
+  selectedFlowIds,
+  onToggleFlowSelection,
 }: {
   flows: Flow[];
   projectId: string;
   onDeleteFlow?: (flowId: string, title: string) => void;
   onCreateFlow?: (parentFlowId: string, title: string) => void;
+  contextSelectMode?: boolean;
+  selectedFlowIds?: Set<string>;
+  onToggleFlowSelection?: (flowId: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [creatingFromId, setCreatingFromId] = useState<string | null>(null);
   const [createTitle, setCreateTitle] = useState('');
 
@@ -62,8 +66,6 @@ export function ContourMap({
   const hasDraggedRef = useRef(false);
   // 阻止下一次 click 导航（拖拽结束后 Link 会收到 click 事件）
   const preventClickRef = useRef(false);
-  // 多选模式下，候选切换选中的节点
-  const candidateSelectRef = useRef<string | null>(null);
 
   // 只给新出现的 flow 初始化位置，已有本地位置的保留
   useEffect(() => {
@@ -101,8 +103,17 @@ export function ContourMap({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, flowId: string) => {
-      // 只有左键才触发拖拽
+      // 只有左键才触发
       if (e.button !== 0) return;
+
+      // AI 上下文选择模式下，点击切换选中，不拖拽
+      if (contextSelectMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleFlowSelection?.(flowId);
+        return;
+      }
+
       e.preventDefault();
 
       const pos = positions.get(flowId);
@@ -115,19 +126,14 @@ export function ContourMap({
       dragStartRef.current = { x: mouseX, y: mouseY };
       hasDraggedRef.current = false;
       preventClickRef.current = false;
-      candidateSelectRef.current = multiSelectMode ? flowId : null;
 
       setDragOffset({
         x: mouseX - pos.x,
         y: mouseY - pos.y,
       });
       setDraggingId(flowId);
-
-      if (!multiSelectMode) {
-        setSelectedIds(new Set());
-      }
     },
-    [positions, multiSelectMode],
+    [positions, contextSelectMode, onToggleFlowSelection],
   );
 
   useEffect(() => {
@@ -170,23 +176,9 @@ export function ContourMap({
               body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
             }).catch((err) => console.error('保存位置失败:', err));
           }
-        } else if (multiSelectMode && candidateSelectRef.current) {
-          // 多选模式下点击（非拖拽）切换选中状态，阻止导航
-          preventClickRef.current = true;
-          setSelectedIds((prev) => {
-            const next = new Set(prev);
-            const id = candidateSelectRef.current!;
-            if (next.has(id)) {
-              next.delete(id);
-            } else {
-              next.add(id);
-            }
-            return next;
-          });
         }
       }
       setDraggingId(null);
-      candidateSelectRef.current = null;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -195,7 +187,7 @@ export function ContourMap({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingId, dragOffset, positions, multiSelectMode]);
+  }, [draggingId, dragOffset, positions]);
 
   const canvasWidth = 1200;
   const canvasHeight = 400;
@@ -239,17 +231,57 @@ export function ContourMap({
       {flows.map((flow) => {
         const pos = positions.get(flow.flowId);
         if (!pos) return null;
-        const isSelected = selectedIds.has(flow.flowId);
+        const isContextSelected = selectedFlowIds?.has(flow.flowId) ?? false;
         const isDragging = draggingId === flow.flowId;
+
+        const nodeContent = (
+          <>
+            <div className="px-3.5 py-2 border-b border-outline-variant bg-surface-container-low rounded-t-lg flex items-center justify-between">
+              <span className="text-[11px] font-mono text-primary">{flow.flowId}</span>
+              <div className="flex items-center gap-1.5">
+                <StatusBadge status={flow.status} />
+                {!contextSelectMode && onDeleteFlow && (
+                  <button
+                    className="w-5 h-5 rounded border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onDeleteFlow(flow.flowId, flow.title);
+                    }}
+                    title="删除 Flow"
+                    type="button"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="p-3.5">
+              <h4 className="text-sm font-semibold text-on-surface font-headline line-clamp-1">
+                {flow.title}
+              </h4>
+              <div className="flex items-center justify-between mt-2 text-xs text-on-surface-variant font-mono">
+                <span className="inline-flex items-center gap-1">
+                  <GitBranch size={12} />
+                  {flow.parentFlows.length === 0
+                    ? 'Root'
+                    : flow.parentFlows.join(', ')}
+                </span>
+                {!contextSelectMode && (
+                  <span className="inline-flex items-center gap-1 text-primary">
+                    <ArrowRight size={12} />
+                    Open
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        );
 
         return (
           <div
             className={`absolute select-none ${
-              isDragging ? 'cursor-grabbing z-50' : 'cursor-grab z-10'
-            } ${
-              isSelected
-                ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-[var(--token-surface-container)]'
-                : ''
+              isDragging ? 'cursor-grabbing z-50' : contextSelectMode ? 'cursor-pointer z-10' : 'cursor-grab z-10'
             }`}
             key={flow.flowId}
             onMouseDown={(e) => handleMouseDown(e, flow.flowId)}
@@ -259,57 +291,38 @@ export function ContourMap({
               width: nodeWidth,
             }}
           >
-            <Link
-              className="block bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm hover:border-primary/30 transition-colors"
-              onClick={(e) => {
-                if (preventClickRef.current || multiSelectMode) {
-                  e.preventDefault();
-                  preventClickRef.current = false;
-                }
-              }}
-              to={`/project/${projectId}/flows/${flow.flowId}`}
-            >
-              <div className="px-3.5 py-2 border-b border-outline-variant bg-surface-container-low rounded-t-lg flex items-center justify-between">
-                <span className="text-[11px] font-mono text-primary">{flow.flowId}</span>
-                <div className="flex items-center gap-1.5">
-                  <StatusBadge status={flow.status} />
-                  {onDeleteFlow && (
-                    <button
-                      className="w-5 h-5 rounded border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onDeleteFlow(flow.flowId, flow.title);
-                      }}
-                      title="删除 Flow"
-                      type="button"
-                    >
-                      <Trash2 size={10} />
-                    </button>
-                  )}
-                </div>
+            {contextSelectMode ? (
+              <div
+                className={`block relative bg-surface-container-lowest border rounded-lg shadow-sm transition-colors ${
+                  isContextSelected
+                    ? 'border-primary/50 bg-primary-container/5'
+                    : 'border-outline-variant hover:border-primary/30'
+                }`}
+              >
+                {isContextSelected && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <Check size={12} className="text-primary" />
+                  </div>
+                )}
+                {nodeContent}
               </div>
-              <div className="p-3.5">
-                <h4 className="text-sm font-semibold text-on-surface font-headline line-clamp-1">
-                  {flow.title}
-                </h4>
-                <div className="flex items-center justify-between mt-2 text-xs text-on-surface-variant font-mono">
-                  <span className="inline-flex items-center gap-1">
-                    <GitBranch size={12} />
-                    {flow.parentFlows.length === 0
-                      ? 'Root'
-                      : flow.parentFlows.join(', ')}
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-primary">
-                    <ArrowRight size={12} />
-                    Open
-                  </span>
-                </div>
-              </div>
-            </Link>
+            ) : (
+              <Link
+                className="block bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm hover:border-primary/30 transition-colors"
+                onClick={(e) => {
+                  if (preventClickRef.current) {
+                    e.preventDefault();
+                    preventClickRef.current = false;
+                  }
+                }}
+                to={`/project/${projectId}/flows/${flow.flowId}`}
+              >
+                {nodeContent}
+              </Link>
+            )}
 
-            {/* 从此节点创建新 Flow */}
-            {creatingFromId !== flow.flowId && (
+            {/* 从此节点创建新 Flow — 多选模式下隐藏 */}
+            {!contextSelectMode && creatingFromId !== flow.flowId && (
               <button
                 className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center cursor-pointer hover:scale-110 transition-all shadow-sm z-20"
                 onClick={(e) => {
@@ -379,36 +392,9 @@ export function ContourMap({
         );
       })}
 
-      {/* 右上角控制栏：多选模式开关 */}
-      <div className="absolute top-3 right-3 flex items-center gap-2">
-        <button
-          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors font-mono ${
-            multiSelectMode
-              ? 'bg-primary-container/30 border-primary/30 text-primary'
-              : 'bg-surface-container/80 border-outline-variant/40 text-on-surface-variant hover:border-primary/20'
-          }`}
-          onClick={() => {
-            setMultiSelectMode((prev) => {
-              const next = !prev;
-              if (!next) setSelectedIds(new Set());
-              return next;
-            });
-          }}
-          type="button"
-        >
-          <span className={`w-2 h-2 rounded-full ${multiSelectMode ? 'bg-primary' : 'bg-outline-variant'}`} />
-          {multiSelectMode ? '多选模式' : '单选模式'}
-        </button>
-      </div>
-
       {/* 节点数量提示 */}
       <div className="absolute bottom-3 right-3 text-[11px] font-mono text-on-surface-variant bg-surface-container/80 px-2 py-1 rounded">
         {flows.length} nodes · {edges.length} edges
-        {selectedIds.size > 0 && (
-          <span className="ml-2 text-primary">
-            · {selectedIds.size} selected
-          </span>
-        )}
       </div>
     </div>
   );

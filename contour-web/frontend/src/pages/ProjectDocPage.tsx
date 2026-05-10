@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit3, Eye, FileStack, Library } from 'lucide-react';
 import { useState } from 'react';
+import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
 import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
 import { MarkdownArticle } from '../components/MarkdownArticle';
@@ -39,10 +40,10 @@ export function ProjectDocPage() {
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('保存 Doc 失败:', result.error);
+        showToast(`保存文档失败：${result.error}`, 'error');
       }
     } catch (err) {
-      console.error('保存 Doc 请求失败:', err);
+      showToast(`保存文档请求失败：${(err as Error).message}`, 'error');
     }
   };
 

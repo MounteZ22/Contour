@@ -1,6 +1,10 @@
 import { FlaskConical, FolderOpen, Layers, Map, Plus, Trash2 } from 'lucide-react';
+import { showToast } from '../components/Toast';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
+import type { AIContextItem } from '../components/AIWorkbenchPanel';
+import { ContextActionBar } from '../components/ContextActionBar';
 import { ContourMap } from '../components/ContourMap';
 import type { Flow, ProjectData } from '../types';
 
@@ -23,6 +27,12 @@ export function DashboardPage({
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState('background');
 
+  // AI 上下文选择器状态
+  const [contextSelectMode, setContextSelectMode] = useState(false);
+  const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+
   useEffect(() => {
     setLocalProjects(projects);
 
@@ -44,6 +54,12 @@ export function DashboardPage({
     localStorage.setItem('contour:lastProjectId', project.projectId);
     setSelectedProject(project);
     setLocalFlows(project.flows);
+    // 切换项目时自动退出多选模式
+    if (contextSelectMode) {
+      setContextSelectMode(false);
+      setSelectedFlows(new Set());
+      setSelectedDocs(new Set());
+    }
   };
 
   const handleAddProject = async () => {
@@ -62,11 +78,11 @@ export function DashboardPage({
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('创建项目失败:', result.error);
+        showToast(`创建项目失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      console.error('创建项目请求失败:', err);
+      showToast(`创建项目请求失败：${(err as Error).message}`, 'error');
       return;
     }
 
@@ -93,11 +109,11 @@ export function DashboardPage({
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('创建 Flow 失败:', result.error);
+        showToast(`创建 Flow 失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      console.error('创建 Flow 请求失败:', err);
+      showToast(`创建 Flow 请求失败：${(err as Error).message}`, 'error');
       return;
     }
 
@@ -121,11 +137,11 @@ export function DashboardPage({
       });
       const result = await res.json();
       if (!result.success) {
-        console.error('创建文档失败:', result.error);
+        showToast(`创建文档失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      console.error('创建文档请求失败:', err);
+      showToast(`创建文档请求失败：${(err as Error).message}`, 'error');
       return;
     }
 
@@ -141,11 +157,11 @@ export function DashboardPage({
       const res = await fetch(`/api/project/${projectId}`, { method: 'DELETE' });
       const result = await res.json();
       if (!result.success) {
-        alert(`删除项目失败: ${result.error}`);
+        showToast(`删除项目失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      alert(`删除项目请求失败: ${(err as Error).message}`);
+      showToast(`删除项目请求失败：${(err as Error).message}`, 'error');
       return;
     }
     onRefresh();
@@ -157,11 +173,11 @@ export function DashboardPage({
       const res = await fetch(`/api/flows/${flowId}?projectId=${selectedProject.projectId}`, { method: 'DELETE' });
       const result = await res.json();
       if (!result.success) {
-        alert(`删除 Flow 失败: ${result.error}`);
+        showToast(`删除 Flow 失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      alert(`删除 Flow 请求失败: ${(err as Error).message}`);
+      showToast(`删除 Flow 请求失败：${(err as Error).message}`, 'error');
       return;
     }
     onRefresh();
@@ -173,15 +189,75 @@ export function DashboardPage({
       const res = await fetch(`/api/docs/${docId}`, { method: 'DELETE' });
       const result = await res.json();
       if (!result.success) {
-        alert(`删除文档失败: ${result.error}`);
+        showToast(`删除文档失败：${result.error}`, 'error');
         return;
       }
     } catch (err) {
-      alert(`删除文档请求失败: ${(err as Error).message}`);
+      showToast(`删除文档请求失败：${(err as Error).message}`, 'error');
       return;
     }
     onRefresh();
   };
+
+  // --- AI 上下文选择器 handlers ---
+  const toggleContextSelectMode = () => {
+    setContextSelectMode((prev) => {
+      const next = !prev;
+      if (next) {
+        // 启动时自动全选所有文档
+        setSelectedDocs(new Set(selectedProject.docs.map((d) => d.id)));
+      } else {
+        // 关闭时清空
+        setSelectedFlows(new Set());
+        setSelectedDocs(new Set());
+      }
+      return next;
+    });
+  };
+
+  const toggleFlowSelection = (flowId: string) => {
+    setSelectedFlows((prev) => {
+      const next = new Set(prev);
+      if (next.has(flowId)) next.delete(flowId);
+      else next.add(flowId);
+      return next;
+    });
+  };
+
+  const toggleDocSelection = (docId: string) => {
+    setSelectedDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  };
+
+  const clearAllSelections = () => {
+    setSelectedFlows(new Set());
+    setSelectedDocs(new Set(selectedProject.docs.map((d) => d.id)));
+  };
+
+  const handleDiscussWithAI = () => {
+    setAiPanelOpen(true);
+  };
+
+  const handleClearContext = () => {
+    clearAllSelections();
+    setAiPanelOpen(false);
+  };
+
+  // 组装 AI Workbench 上下文数据
+  const contextItems: AIContextItem[] = [
+    ...Array.from(selectedFlows).map((id) => {
+      const flow = localFlows.find((f) => f.flowId === id);
+      return { id, title: flow?.title ?? id, type: 'flow' as const };
+    }),
+    ...Array.from(selectedDocs).map((id) => {
+      const doc = selectedProject.docs.find((d) => d.id === id);
+      return { id, title: doc?.title ?? id, type: 'doc' as const };
+    }),
+  ];
 
   if (!selectedProject) {
     return (
@@ -306,8 +382,9 @@ export function DashboardPage({
         </aside>
 
         {/* 右侧主内容 */}
-        <section className="grid gap-8">
-          {/* Hero 卡片 */}
+        <section className={aiPanelOpen ? 'grid grid-cols-[1fr_340px] gap-8' : 'grid gap-8'}>
+          <div className={aiPanelOpen ? 'grid gap-8' : undefined}>
+            {/* Hero 卡片 */}
           <div className="border border-outline-variant bg-surface-container rounded-xl p-6 grid grid-cols-[1.5fr_0.8fr] gap-6 max-lg:grid-cols-1">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">{selectedProject.projectId}</p>
@@ -337,17 +414,37 @@ export function DashboardPage({
                 <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Project Contour</p>
                 <h2 className="text-xl font-bold text-on-background font-headline">研究推进轮廓</h2>
               </div>
-              <div className="flex items-center gap-2 text-xs text-on-surface-variant font-mono">
-                <Map size={14} />
-                <span>点击节点进入 Flow · 拖拽调整位置 · 节点旁 + 创建新 Flow</span>
+              <div className="flex items-center gap-3">
+                <button
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all cursor-pointer ${
+                    contextSelectMode
+                      ? 'bg-primary-container/30 border-primary/30 text-primary'
+                      : 'bg-surface-container border-outline-variant text-on-surface-variant hover:border-primary/20'
+                  }`}
+                  onClick={toggleContextSelectMode}
+                  title="开启后可多选 Flow 和文档，发送给 AI 讨论"
+                  type="button"
+                >
+                  <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-primary' : 'bg-outline-variant'}`} />
+                  {contextSelectMode ? '多选模式' : '单选模式'}
+                </button>
+                {!contextSelectMode && (
+                  <div className="flex items-center gap-2 text-xs text-on-surface-variant font-mono">
+                    <Map size={14} />
+                    <span>点击节点进入 Flow · 拖拽调整位置 · 节点旁 + 创建新 Flow</span>
+                  </div>
+                )}
               </div>
             </div>
 
             <ContourMap
+              contextSelectMode={contextSelectMode}
               flows={localFlows}
               onCreateFlow={handleCreateFlowFromNode}
               onDeleteFlow={handleDeleteFlow}
+              onToggleFlowSelection={toggleFlowSelection}
               projectId={selectedProject.projectId}
+              selectedFlowIds={selectedFlows}
             />
           </div>
 
@@ -359,34 +456,64 @@ export function DashboardPage({
             </div>
 
             <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
-              {selectedProject.docs.map((doc) => (
-                <Link
-                  className="block border border-outline-variant bg-surface-container rounded-xl p-5 transition-all hover:border-primary/25"
-                  key={doc.id}
-                  to={`/project/${selectedProject.projectId}/docs/${doc.id}`}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="inline-flex items-center gap-2 text-on-surface-variant">
-                      <FolderOpen size={16} />
-                      <span className="text-xs font-mono">{doc.type.replace('_', ' ')}</span>
+              {selectedProject.docs.map((doc) => {
+                const isDocSelected = selectedDocs.has(doc.id);
+                const cardContent = (
+                  <>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="inline-flex items-center gap-2 text-on-surface-variant">
+                        <FolderOpen size={16} />
+                        <span className="text-xs font-mono">{doc.type.replace('_', ' ')}</span>
+                      </div>
+                      {!contextSelectMode && (
+                        <button
+                          className="w-6 h-6 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteDoc(doc.id, doc.title);
+                          }}
+                          title="删除文档"
+                          type="button"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                      {contextSelectMode && isDocSelected && (
+                        <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
+                          <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                      )}
                     </div>
-                    <button
-                      className="w-6 h-6 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteDoc(doc.id, doc.title);
-                      }}
-                      title="删除文档"
-                      type="button"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <h3 className="text-base font-semibold text-on-surface font-headline mb-1">{doc.title}</h3>
+                    <p className="text-xs text-on-surface-variant line-clamp-2">{doc.summary}</p>
+                  </>
+                );
+
+                return contextSelectMode ? (
+                  <div
+                    className={`block border rounded-xl p-5 transition-all cursor-pointer ${
+                      isDocSelected
+                        ? 'border-primary/50 bg-primary-container/5'
+                        : 'border-outline-variant bg-surface-container hover:border-primary/25'
+                    }`}
+                    key={doc.id}
+                    onClick={() => toggleDocSelection(doc.id)}
+                  >
+                    {cardContent}
                   </div>
-                  <h3 className="text-base font-semibold text-on-surface font-headline mb-1">{doc.title}</h3>
-                  <p className="text-xs text-on-surface-variant line-clamp-2">{doc.summary}</p>
-                </Link>
-              ))}
+                ) : (
+                  <Link
+                    className="block border border-outline-variant bg-surface-container rounded-xl p-5 transition-all hover:border-primary/25"
+                    key={doc.id}
+                    to={`/project/${selectedProject.projectId}/docs/${doc.id}`}
+                  >
+                    {cardContent}
+                  </Link>
+                );
+              })}
 
               {showNewDoc ? (
                 <div className="border border-outline-variant bg-surface-container rounded-xl p-5 block">
@@ -451,6 +578,23 @@ export function DashboardPage({
               )}
             </div>
           </div>
+
+          {/* AI 上下文选择器 — 底部浮动操作栏 */}
+          {contextSelectMode && (
+            <ContextActionBar
+              onClear={clearAllSelections}
+              onDiscuss={handleDiscussWithAI}
+              selectedDocCount={selectedDocs.size}
+              selectedFlowCount={selectedFlows.size}
+            />
+          )}
+          </div>
+          {aiPanelOpen && (
+            <AIWorkbenchPanel
+              initialContext={contextItems}
+              onClearContext={handleClearContext}
+            />
+          )}
         </section>
       </div>
     </div>
