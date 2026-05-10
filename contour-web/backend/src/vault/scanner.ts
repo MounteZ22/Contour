@@ -214,7 +214,7 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     parentFlows: getStringArray(fm, 'parent_flows'),
     linkedClaims: getStringArray(fm, 'related_claims'),
     tags: getStringArray(fm, 'tags'),
-    openUncertainties: [],
+    openUncertainties: getStringArray(fm, 'open_uncertainties'),
     summary,
     sections,
     position,

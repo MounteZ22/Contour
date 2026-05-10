@@ -5,6 +5,9 @@ import { CONFIG } from '../config.js';
 import type { ApiResponse, ProjectData } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
+import { findProjectDir } from '../vault/locate.js';
+import { atomicWriteFile } from '../vault/atomic.js';
+import { yamlSafeValue } from '../vault/yaml-utils.js';
 
 const router = Router();
 
@@ -41,6 +44,8 @@ router.post('/', async (req, res) => {
 
     validateId(projectId, 'projectId');
 
+    const safeTitle = yamlSafeValue(title);
+    const safeGoal = yamlSafeValue(researchGoal || '');
     const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'project'), { recursive: true });
@@ -50,8 +55,8 @@ router.post('/', async (req, res) => {
 
     const briefContent = `---
 project_id: ${projectId}
-title: ${title}
-research_goal: "${researchGoal || ''}"
+title: ${safeTitle}
+research_goal: ${safeGoal}
 current_stage: "刚创建"
 ---
 
@@ -65,7 +70,7 @@ ${researchGoal || '待补充研究目标'}
 
 项目刚创建。
 `;
-    await fs.writeFile(path.join(projectDir, 'project', 'project_brief.md'), briefContent, 'utf-8');
+    await atomicWriteFile(path.join(projectDir, 'project', 'project_brief.md'), briefContent);
 
     invalidateCache();
     const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId } };
@@ -104,25 +109,5 @@ router.delete('/:projectId', async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
-
-async function findProjectDir(projectId: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith(projectId)) {
-        return path.join(CONFIG.VAULTS_DIR, entry.name);
-      }
-    }
-  } catch {
-    // vaults/ 不存在
-  }
-  try {
-    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
-    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 export default router;

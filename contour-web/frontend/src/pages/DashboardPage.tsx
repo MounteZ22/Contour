@@ -64,7 +64,7 @@ export function DashboardPage({
 
   const handleAddProject = async () => {
     if (!newProjectTitle.trim()) return;
-    const newId = `PRJ_${String(localProjects.length + 1).padStart(3, '0')}`;
+    const newId = `PRJ_${crypto.randomUUID().slice(0, 8)}`;
 
     try {
       const res = await fetch('/api/project', {
@@ -93,7 +93,7 @@ export function DashboardPage({
   };
 
   const handleCreateFlowFromNode = async (parentFlowId: string, title: string) => {
-    const newId = `F${String(localFlows.length + 1).padStart(3, '0')}`;
+    const newId = `F${crypto.randomUUID().slice(0, 8)}`;
 
     try {
       const res = await fetch('/api/flows', {
@@ -122,7 +122,7 @@ export function DashboardPage({
 
   const handleAddDoc = async () => {
     if (!newDocTitle.trim()) return;
-    const newId = `doc_${Date.now()}`;
+    const newId = `doc_${crypto.randomUUID().slice(0, 8)}`;
 
     try {
       const res = await fetch('/api/docs', {

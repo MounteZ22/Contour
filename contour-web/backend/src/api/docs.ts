@@ -5,6 +5,9 @@ import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
+import { findProjectDir, findProjectDirForDoc, extractFrontmatterText } from '../vault/locate.js';
+import { atomicWriteFile } from '../vault/atomic.js';
+import { yamlSafeValue } from '../vault/yaml-utils.js';
 
 const router = Router();
 
@@ -34,10 +37,11 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    const safeTitle = yamlSafeValue(title);
     const targetFile = path.join(projectDir, 'project', `${docId}.md`);
     const content = `---
 id: ${docId}
-title: ${title}
+title: ${safeTitle}
 type: ${type || 'background'}
 ---
 
@@ -45,7 +49,7 @@ type: ${type || 'background'}
 
 在此输入内容...
 `;
-    await fs.writeFile(targetFile, content, 'utf-8');
+    await atomicWriteFile(targetFile, content);
     invalidateCache();
 
     const response: ApiResponse<{ docId: string }> = { success: true, data: { docId } };
@@ -91,7 +95,6 @@ router.put('/:docId', async (req, res) => {
 
     const targetFile = path.join(projectDir, 'project', `${docId}.md`);
 
-    // 保持 frontmatter 文本不变
     let finalContent = content;
     try {
       const existing = await fs.readFile(targetFile, 'utf-8');
@@ -103,7 +106,7 @@ router.put('/:docId', async (req, res) => {
       // 文件不存在或无 frontmatter
     }
 
-    await fs.writeFile(targetFile, finalContent, 'utf-8');
+    await atomicWriteFile(targetFile, finalContent);
     invalidateCache();
 
     const response: ApiResponse<null> = { success: true, data: null };
@@ -149,57 +152,5 @@ router.delete('/:docId', async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
-
-function extractFrontmatterText(raw: string): string | null {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n/);
-  return match ? match[1] : null;
-}
-
-async function findProjectDir(projectId: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith(projectId)) {
-        return path.join(CONFIG.VAULTS_DIR, entry.name);
-      }
-    }
-  } catch {
-    // vaults/ 不存在
-  }
-  try {
-    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
-    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-async function findProjectDirForDoc(docId: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const projectDocsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'project');
-      try {
-        const files = await fs.readdir(projectDocsDir);
-        if (files.includes(`${docId}.md`)) {
-          return path.join(CONFIG.VAULTS_DIR, entry.name);
-        }
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // vaults/ 不存在
-  }
-  try {
-    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
-    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 export default router;

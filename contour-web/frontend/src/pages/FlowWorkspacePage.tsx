@@ -96,6 +96,7 @@ export function FlowWorkspacePage() {
   };
 
   const handleSave = async () => {
+    const previousSections = localSections;
     setLocalSections((prev) =>
       prev.map((section) =>
         section.id === activeSection.id ? { ...section, content: editedContent } : section
@@ -111,9 +112,13 @@ export function FlowWorkspacePage() {
       });
       const result = await res.json();
       if (!result.success) {
+        setLocalSections(previousSections);
+        setIsEditing(true);
         showToast(`保存 Section 失败：${result.error}`, 'error');
       }
     } catch (err) {
+      setLocalSections(previousSections);
+      setIsEditing(true);
       showToast(`保存 Section 请求失败：${(err as Error).message}`, 'error');
     }
   };
@@ -124,7 +129,7 @@ export function FlowWorkspacePage() {
 
   const handleAddSection = async () => {
     if (!newSectionTitle.trim()) return;
-    const newId = `section_${Date.now()}`;
+    const newId = `section_${crypto.randomUUID().slice(0, 8)}`;
     const title = newSectionTitle.trim();
 
     try {

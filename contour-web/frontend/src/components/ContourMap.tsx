@@ -58,6 +58,14 @@ export function ContourMap({
   const [creatingFromId, setCreatingFromId] = useState<string | null>(null);
   const [createTitle, setCreateTitle] = useState('');
 
+  // Refs for drag state — avoids re-registering event listeners on every frame
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
+  const dragOffsetRef = useRef(dragOffset);
+  dragOffsetRef.current = dragOffset;
+  const draggingIdRef = useRef(draggingId);
+  draggingIdRef.current = draggingId;
+
   // 用 ref 追踪已初始化的 flowId，避免每次 prop 变化都重置位置
   const initializedRef = useRef<Set<string>>(new Set());
   // 追踪拖拽起点，用于区分拖拽和点击
@@ -142,10 +150,10 @@ export function ContourMap({
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left - dragOffset.x;
-      const y = e.clientY - rect.top - dragOffset.y;
+      const offset = dragOffsetRef.current;
+      const x = e.clientX - rect.left - offset.x;
+      const y = e.clientY - rect.top - offset.y;
 
-      // 检查是否移动超过阈值，标记为有效拖拽
       if (dragStartRef.current) {
         const dx = e.clientX - rect.left - dragStartRef.current.x;
         const dy = e.clientY - rect.top - dragStartRef.current.y;
@@ -154,23 +162,22 @@ export function ContourMap({
         }
       }
 
+      const currentDraggingId = draggingIdRef.current;
       setPositions((prev) => {
         const next = new Map(prev);
-        next.set(draggingId, { x: Math.max(0, x), y: Math.max(0, y) });
+        next.set(currentDraggingId!, { x: Math.max(0, x), y: Math.max(0, y) });
         return next;
       });
     };
 
     const handleMouseUp = () => {
-      if (draggingId) {
+      const currentDraggingId = draggingIdRef.current;
+      if (currentDraggingId) {
         if (hasDraggedRef.current) {
-          // 发生了有效拖拽，阻止接下来的 click 事件
           preventClickRef.current = true;
-
-          // 立即保存位置（不等 debounce）
-          const pos = positions.get(draggingId);
+          const pos = positionsRef.current.get(currentDraggingId);
           if (pos) {
-            fetch(`/api/flows/${draggingId}/position`, {
+            fetch(`/api/flows/${currentDraggingId}/position`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
@@ -187,7 +194,7 @@ export function ContourMap({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingId, dragOffset, positions]);
+  }, [draggingId]);
 
   const canvasWidth = 1200;
   const canvasHeight = 400;

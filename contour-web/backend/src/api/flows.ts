@@ -5,6 +5,9 @@ import { CONFIG } from '../config.js';
 import type { ApiResponse, Flow } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
+import { findProjectDir, findProjectDirForFlow, extractFrontmatterText } from '../vault/locate.js';
+import { atomicWriteFile } from '../vault/atomic.js';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
 
 const router = Router();
 
@@ -100,7 +103,6 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    // 确定 flow 目录路径
     const projectDir = await findProjectDir(projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
@@ -108,6 +110,7 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    const safeTitle = yamlSafeValue(title);
     const flowDir = path.join(projectDir, 'flows', `${flowId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
     await fs.mkdir(flowDir, { recursive: true });
     await fs.mkdir(path.join(flowDir, 'sections'), { recursive: true });
@@ -115,7 +118,7 @@ router.post('/', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const flowMd = `---
 flow_id: ${flowId}
-title: ${title}
+title: ${safeTitle}
 status: in_progress
 stage: ${type || 'general'}
 created: "${today}"
@@ -162,10 +165,10 @@ tags: []
 
 待规划。
 `;
-    await fs.writeFile(path.join(flowDir, 'flow.md'), flowMd, 'utf-8');
-    await fs.writeFile(path.join(flowDir, 'sections', 'flow.md'), sectionMd, 'utf-8');
-    await fs.writeFile(path.join(flowDir, 'context_summary.md'), '', 'utf-8');
-    await fs.writeFile(path.join(flowDir, 'assets.yaml'), '[]\n', 'utf-8');
+    await atomicWriteFile(path.join(flowDir, 'flow.md'), flowMd);
+    await atomicWriteFile(path.join(flowDir, 'sections', 'flow.md'), sectionMd);
+    await atomicWriteFile(path.join(flowDir, 'context_summary.md'), '');
+    await atomicWriteFile(path.join(flowDir, 'assets.yaml'), '[]\n');
 
     invalidateCache();
     const response: ApiResponse<{ flowId: string }> = { success: true, data: { flowId } };
@@ -221,12 +224,11 @@ router.put('/:flowId', async (req, res) => {
       return;
     }
 
-    const fmText = extractFrontmatterText(raw);
-    if (fmText !== null) {
-      let updatedFm = fmText.replace(/^status:.*/m, `status: ${status}`);
-      if (!/^status:/m.test(updatedFm)) updatedFm += `\nstatus: ${status}`;
-      const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
-      await fs.writeFile(flowMdPath, `---\n${updatedFm}\n---\n${body}`, 'utf-8');
+    const parsed = parseFrontmatter(raw);
+    if (parsed) {
+      parsed.fm['status'] = status;
+      const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
+      await atomicWriteFile(flowMdPath, updated);
       await updateFlowTimestamp(flowDir);
     }
 
@@ -365,21 +367,21 @@ router.post('/:flowId/sections', async (req, res) => {
     }
     const flowDir = path.join(flowsDir, flowDirName);
 
-    // 确保 sections/ 目录存在
     const sectionsDir = path.join(flowDir, 'sections');
     await fs.mkdir(sectionsDir, { recursive: true });
 
+    const safeTitle = yamlSafeValue(title);
     const filename = `${sectionId}.md`;
     const sectionContent = `---
 section_id: ${sectionId}
-title: ${title}
+title: ${safeTitle}
 ---
 
 # ${title}
 
 在此输入内容...
 `;
-    await fs.writeFile(path.join(sectionsDir, filename), sectionContent, 'utf-8');
+    await atomicWriteFile(path.join(sectionsDir, filename), sectionContent);
     await updateFlowTimestamp(flowDir);
     invalidateCache();
 
@@ -450,7 +452,7 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
       // 文件不存在
     }
 
-    await fs.writeFile(targetFile, finalContent, 'utf-8');
+    await atomicWriteFile(targetFile, finalContent);
     await updateFlowTimestamp(flowDir);
     invalidateCache();
 
@@ -465,75 +467,6 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
-
-function extractFrontmatterText(raw: string): string | null {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n/);
-  return match ? match[1] : null;
-}
-
-async function updateFlowTimestamp(flowDir: string) {
-  const flowMdPath = path.join(flowDir, 'flow.md');
-  try {
-    const raw = await fs.readFile(flowMdPath, 'utf-8');
-    const fmText = extractFrontmatterText(raw);
-    if (fmText !== null) {
-      const today = new Date().toISOString().split('T')[0];
-      const updatedFm = fmText.replace(/^updated:.*/m, `updated: "${today}"`);
-      const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
-      await fs.writeFile(flowMdPath, `---\n${updatedFm}\n---\n${body}`, 'utf-8');
-    }
-  } catch {
-    // ignore
-  }
-}
-
-async function findProjectDirForFlow(flowId: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const flowsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'flows');
-      try {
-        const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-        if (flowEntries.some((e) => e.isDirectory() && e.name.startsWith(flowId))) {
-          return path.join(CONFIG.VAULTS_DIR, entry.name);
-        }
-      } catch {
-        // ignore
-      }
-    }
-  } catch {
-    // vaults/ 不存在
-  }
-  try {
-    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
-    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-async function findProjectDir(projectId: string): Promise<string | null> {
-  try {
-    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith(projectId)) {
-        return path.join(CONFIG.VAULTS_DIR, entry.name);
-      }
-    }
-  } catch {
-    // vaults/ 不存在
-  }
-  // 回退 legacy
-  try {
-    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
-    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
-  } catch {
-    // ignore
-  }
-  return null;
-}
 
 // PUT /api/flows/:flowId/position - 更新 Flow 在 Contour Map 中的位置
 router.put('/:flowId/position', async (req, res) => {
@@ -576,14 +509,12 @@ router.put('/:flowId/position', async (req, res) => {
       return;
     }
 
-    const fmText = extractFrontmatterText(raw);
-    if (fmText !== null) {
-      let updatedFm = fmText.replace(/^position_x:.*/m, `position_x: ${x}`);
-      if (!/^position_x:/m.test(updatedFm)) updatedFm += `\nposition_x: ${x}`;
-      let updatedFm2 = updatedFm.replace(/^position_y:.*/m, `position_y: ${y}`);
-      if (!/^position_y:/m.test(updatedFm2)) updatedFm2 += `\nposition_y: ${y}`;
-      const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
-      await fs.writeFile(flowMdPath, `---\n${updatedFm2}\n---\n${body}`, 'utf-8');
+    const parsed = parseFrontmatter(raw);
+    if (parsed) {
+      parsed.fm['position_x'] = x;
+      parsed.fm['position_y'] = y;
+      const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
+      await atomicWriteFile(flowMdPath, updated);
     }
 
     invalidateCache();
@@ -598,5 +529,21 @@ router.put('/:flowId/position', async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
+
+async function updateFlowTimestamp(flowDir: string) {
+  const flowMdPath = path.join(flowDir, 'flow.md');
+  try {
+    const raw = await fs.readFile(flowMdPath, 'utf-8');
+    const parsed = parseFrontmatter(raw);
+    if (parsed) {
+      const today = new Date().toISOString().split('T')[0];
+      parsed.fm['updated'] = today;
+      const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
+      await atomicWriteFile(flowMdPath, updated);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export default router;

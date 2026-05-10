@@ -25,6 +25,7 @@ export function ProjectDocPage() {
   };
 
   const handleSave = async () => {
+    const previousDocs = localDocs;
     setLocalDocs((prev) =>
       prev.map((doc) =>
         doc.id === activeDoc.id ? { ...doc, content: editedContent } : doc
@@ -40,9 +41,13 @@ export function ProjectDocPage() {
       });
       const result = await res.json();
       if (!result.success) {
+        setLocalDocs(previousDocs);
+        setIsEditing(true);
         showToast(`保存文档失败：${result.error}`, 'error');
       }
     } catch (err) {
+      setLocalDocs(previousDocs);
+      setIsEditing(true);
       showToast(`保存文档请求失败：${(err as Error).message}`, 'error');
     }
   };
