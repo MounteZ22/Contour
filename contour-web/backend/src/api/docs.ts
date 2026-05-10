@@ -4,6 +4,7 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
+import { validateId, ValidationError } from '../vault/validate.js';
 
 const router = Router();
 
@@ -22,6 +23,9 @@ router.post('/', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(projectId, 'projectId');
+    validateId(docId, 'docId');
 
     const projectDir = await findProjectDir(projectId);
     if (!projectDir) {
@@ -47,8 +51,12 @@ type: ${type || 'background'}
     const response: ApiResponse<{ docId: string }> = { success: true, data: { docId } };
     res.status(201).json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -63,6 +71,8 @@ router.put('/:docId', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(docId, 'docId');
 
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
@@ -99,8 +109,12 @@ router.put('/:docId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -108,6 +122,7 @@ router.put('/:docId', async (req, res) => {
 router.delete('/:docId', async (req, res) => {
   try {
     const { docId } = req.params;
+    validateId(docId, 'docId');
     const projectDir = await findProjectDirForDoc(docId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Doc not found' };
@@ -126,8 +141,12 @@ router.delete('/:docId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

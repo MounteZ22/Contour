@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { FlowWorkspacePage } from './pages/FlowWorkspacePage';
 import { ProjectDocPage } from './pages/ProjectDocPage';
 import { ToastContainer } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { ContourAppData } from './types';
 
 export default function App() {
@@ -71,21 +72,23 @@ export default function App() {
 
   return (
     <>
-      <Routes>
-        <Route
-          element={<DashboardPage onRefresh={refreshProjects} projects={appData.projects} />}
-          path="/"
-        />
-        <Route
-          element={<AppShell onRefresh={refreshProjects} projects={appData.projects} />}
-          path="/project/:projectId/*"
-        >
-          <Route element={<Navigate replace to="/" />} index />
-          <Route element={<FlowWorkspacePage />} path="flows/:flowId" />
-          <Route element={<ProjectDocPage />} path="docs/:docId" />
-        </Route>
-        <Route element={<Navigate replace to="/" />} path="*" />
-      </Routes>
+      <ErrorBoundary>
+        <Routes>
+          <Route
+            element={<DashboardPage onRefresh={refreshProjects} projects={appData.projects} />}
+            path="/"
+          />
+          <Route
+            element={<AppShell onRefresh={refreshProjects} projects={appData.projects} />}
+            path="/project/:projectId/*"
+          >
+            <Route element={<Navigate replace to="/" />} index />
+            <Route element={<FlowWorkspacePage />} path="flows/:flowId" />
+            <Route element={<ProjectDocPage />} path="docs/:docId" />
+          </Route>
+          <Route element={<Navigate replace to="/" />} path="*" />
+        </Routes>
+      </ErrorBoundary>
       <ToastContainer />
     </>
   );

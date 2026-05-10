@@ -4,18 +4,23 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse, ProjectData } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
+import { validateId, ValidationError } from '../vault/validate.js';
 
 const router = Router();
 
 // GET /api/project - 返回所有项目
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const response: ApiResponse<{ projects: ProjectData[] }> = { success: true, data: { projects } };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -33,6 +38,8 @@ router.post('/', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(projectId, 'projectId');
 
     const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
     await fs.mkdir(projectDir, { recursive: true });
@@ -64,8 +71,12 @@ ${researchGoal || '待补充研究目标'}
     const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId } };
     res.status(201).json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -73,6 +84,7 @@ ${researchGoal || '待补充研究目标'}
 router.delete('/:projectId', async (req, res) => {
   try {
     const { projectId } = req.params;
+    validateId(projectId, 'projectId');
     const projectDir = await findProjectDir(projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Project not found' };
@@ -84,8 +96,12 @@ router.delete('/:projectId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

@@ -4,11 +4,12 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse, Flow } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
+import { validateId, ValidationError } from '../vault/validate.js';
 
 const router = Router();
 
 // GET /api/flows - 所有 flow 列表（不含 sections 全文）
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const flows = projects.flatMap((p) =>
@@ -29,8 +30,12 @@ router.get('/', async (_req, res) => {
     const response: ApiResponse<{ flows: Omit<Flow, 'sections'>[] }> = { success: true, data: { flows } };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -58,8 +63,12 @@ router.get('/:flowId', async (req, res) => {
     const response: ApiResponse<Flow> = { success: true, data: flow };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -79,6 +88,9 @@ router.post('/', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(projectId, 'projectId');
+    validateId(flowId, 'flowId');
 
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const project = projects.find((p) => p.projectId === projectId);
@@ -159,8 +171,12 @@ tags: []
     const response: ApiResponse<{ flowId: string }> = { success: true, data: { flowId } };
     res.status(201).json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -175,6 +191,8 @@ router.put('/:flowId', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(flowId, 'flowId');
 
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
@@ -216,8 +234,12 @@ router.put('/:flowId', async (req, res) => {
     const response: ApiResponse<{ status: string }> = { success: true, data: { status } };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -225,6 +247,7 @@ router.put('/:flowId', async (req, res) => {
 router.delete('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
+    validateId(flowId, 'flowId');
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
@@ -246,8 +269,12 @@ router.delete('/:flowId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -255,6 +282,8 @@ router.delete('/:flowId', async (req, res) => {
 router.delete('/:flowId/sections/:sectionId', async (req, res) => {
   try {
     const { flowId, sectionId } = req.params;
+    validateId(flowId, 'flowId');
+    validateId(sectionId, 'sectionId');
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
@@ -295,8 +324,12 @@ router.delete('/:flowId/sections/:sectionId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -311,6 +344,9 @@ router.post('/:flowId/sections', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(flowId, 'flowId');
+    validateId(sectionId, 'sectionId');
 
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
@@ -350,8 +386,12 @@ title: ${title}
     const response: ApiResponse<{ sectionId: string }> = { success: true, data: { sectionId } };
     res.status(201).json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -366,6 +406,9 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
       res.status(400).json(response);
       return;
     }
+
+    validateId(flowId, 'flowId');
+    validateId(sectionId, 'sectionId');
 
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
@@ -414,8 +457,12 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -500,6 +547,8 @@ router.put('/:flowId/position', async (req, res) => {
       return;
     }
 
+    validateId(flowId, 'flowId');
+
     const projectDir = await findProjectDirForFlow(flowId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
@@ -541,8 +590,12 @@ router.put('/:flowId/position', async (req, res) => {
     const response: ApiResponse<{ x: number; y: number }> = { success: true, data: { x, y } };
     res.json(response);
   } catch (err) {
-    const response: ApiResponse<never> = { success: false, error: (err as Error).message };
-    res.status(500).json(response);
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 

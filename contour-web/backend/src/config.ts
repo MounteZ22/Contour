@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const isDev = process.env.NODE_ENV === 'development' || true; // 当前阶段默认开发模式
+const isDev = process.env.NODE_ENV !== 'production'; // 默认开发模式，设置 NODE_ENV=production 切换
 const userHome = os.homedir(); // e.g. C:\Users\Z
 
 // 固定配置目录
