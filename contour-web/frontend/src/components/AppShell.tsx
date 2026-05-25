@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
-import { Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router-dom';
+import { Settings } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import type { ProjectData } from '../types';
 
@@ -25,6 +26,14 @@ export function AppShell({ onRefresh, projects }: { onRefresh: () => void; proje
         </div>
         <div className="flex items-center gap-4 text-sm text-on-surface-variant font-mono">
           <span>{project.currentStage}</span>
+          <Link
+            to="/settings"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-high transition-colors"
+            title="设置"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">设置</span>
+          </Link>
           <ThemeToggle />
         </div>
       </header>

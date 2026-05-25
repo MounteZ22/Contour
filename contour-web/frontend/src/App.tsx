@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
 import { FlowWorkspacePage } from './pages/FlowWorkspacePage';
 import { ProjectDocPage } from './pages/ProjectDocPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import type { ContourAppData } from './types';
@@ -86,6 +87,7 @@ export default function App() {
             <Route element={<FlowWorkspacePage />} path="flows/:flowId" />
             <Route element={<ProjectDocPage />} path="docs/:docId" />
           </Route>
+          <Route element={<SettingsPage />} path="/settings" />
           <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
       </ErrorBoundary>

@@ -1,0 +1,138 @@
+import { Router } from 'express';
+import {
+  listChannels,
+  createChannel,
+  updateChannel,
+  deleteChannel,
+  testChannelDirect,
+  testChannelById,
+  fetchModels,
+} from '../services/channelManager.js';
+import type {
+  ApiResponse,
+  Channel,
+  ChannelCreateInput,
+  ChannelUpdateInput,
+  ChannelTestResult,
+  FetchModelsInput,
+  FetchModelsResult,
+} from '../types.js';
+
+const router = Router();
+
+// GET /api/channels - 获取所有渠道
+router.get('/', (req, res) => {
+  try {
+    const channels = listChannels();
+    const response: ApiResponse<{ channels: Channel[] }> = { success: true, data: { channels } };
+    res.json(response);
+  } catch (err) {
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '获取渠道列表失败' });
+  }
+});
+
+// POST /api/channels - 创建渠道
+router.post('/', (req, res) => {
+  try {
+    const input = req.body as ChannelCreateInput;
+    if (!input.name || !input.provider || !input.baseUrl || !input.apiKey) {
+      res.status(400).json({ success: false, error: '名称、供应商、Base URL 和 API Key 为必填项' });
+      return;
+    }
+    const channel = createChannel(input);
+    const response: ApiResponse<{ channel: Channel }> = { success: true, data: { channel } };
+    res.status(201).json(response);
+  } catch (err) {
+    if (err instanceof Error) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '创建渠道失败' });
+  }
+});
+
+// PATCH /api/channels/:id - 更新渠道
+router.patch('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const input = req.body as ChannelUpdateInput;
+    const channel = updateChannel(id, input);
+    const response: ApiResponse<{ channel: Channel }> = { success: true, data: { channel } };
+    res.json(response);
+  } catch (err) {
+    if (err instanceof Error) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '更新渠道失败' });
+  }
+});
+
+// DELETE /api/channels/:id - 删除渠道
+router.delete('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    deleteChannel(id);
+    const response: ApiResponse<null> = { success: true, data: null };
+    res.json(response);
+  } catch (err) {
+    if (err instanceof Error) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '删除渠道失败' });
+  }
+});
+
+// POST /api/channels/:id/test - 测试已保存渠道
+router.post('/:id/test', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await testChannelById(id);
+    const response: ApiResponse<ChannelTestResult> = { success: result.success, data: result };
+    res.json(response);
+  } catch (err) {
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '测试失败' });
+  }
+});
+
+// POST /api/channels/test-direct - 直接测试（无需已保存）
+router.post('/test-direct', async (req, res) => {
+  try {
+    const input = req.body as FetchModelsInput;
+    if (!input.provider || !input.baseUrl || !input.apiKey) {
+      res.status(400).json({ success: false, error: 'provider、baseUrl 和 apiKey 为必填项' });
+      return;
+    }
+    const result = await testChannelDirect(input);
+    const response: ApiResponse<ChannelTestResult> = { success: result.success, data: result };
+    res.json(response);
+  } catch (err) {
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '测试失败' });
+  }
+});
+
+// POST /api/channels/fetch-models - 拉取模型列表
+router.post('/fetch-models', async (req, res) => {
+  try {
+    const input = req.body as FetchModelsInput;
+    if (!input.provider || !input.baseUrl || !input.apiKey) {
+      res.status(400).json({ success: false, error: 'provider、baseUrl 和 apiKey 为必填项' });
+      return;
+    }
+    const result = await fetchModels(input);
+    const response: ApiResponse<FetchModelsResult> = { success: result.success, data: result };
+    res.json(response);
+  } catch (err) {
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '拉取模型失败' });
+  }
+});
+
+export default router;

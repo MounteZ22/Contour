@@ -54,3 +54,80 @@ export interface ProjectData {
 export interface ContourAppData {
   projects: ProjectData[];
 }
+
+// ===== 渠道配置类型 =====
+
+export type ProviderType =
+  | 'anthropic'
+  | 'deepseek'
+  | 'kimi-api'
+  | 'kimi-coding'
+  | 'custom';
+
+export const PROVIDER_DEFAULT_URLS: Record<ProviderType, string> = {
+  anthropic: 'https://api.anthropic.com',
+  deepseek: 'https://api.deepseek.com/anthropic',
+  'kimi-api': 'https://api.moonshot.cn/anthropic',
+  'kimi-coding': 'https://api.kimi.com/coding/v1',
+  custom: '',
+};
+
+export const PROVIDER_LABELS: Record<ProviderType, string> = {
+  anthropic: 'Anthropic',
+  deepseek: 'DeepSeek',
+  'kimi-api': 'Kimi API (Anthropic 协议)',
+  'kimi-coding': 'Kimi Coding Plan',
+  custom: '自定义 (Anthropic 兼容)',
+};
+
+export interface ChannelModel {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
+
+export interface Channel {
+  id: string;
+  name: string;
+  provider: ProviderType;
+  baseUrl: string;
+  apiKey: string;
+  models: ChannelModel[];
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChannelCreateInput {
+  name: string;
+  provider: ProviderType;
+  baseUrl: string;
+  apiKey: string;
+  models: ChannelModel[];
+  enabled: boolean;
+}
+
+export interface ChannelUpdateInput {
+  name?: string;
+  provider?: ProviderType;
+  baseUrl?: string;
+  apiKey?: string;
+  models?: ChannelModel[];
+  enabled?: boolean;
+}
+
+export interface ChannelTestResult {
+  success: boolean;
+  message: string;
+}
+
+export interface FetchModelsResult {
+  success: boolean;
+  message: string;
+  models: ChannelModel[];
+}
+
+// 应用设置
+export interface AppSettings {
+  agentChannelId?: string;
+}

@@ -1,5 +1,9 @@
-import { Bot, FileSearch, Highlighter, Lightbulb, Send, ShieldAlert, X } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { Bot, FileSearch, Highlighter, Lightbulb, Loader2, Send, ShieldAlert, X } from 'lucide-react';
 import type { Claim } from '../types';
+import { sendChatMessage } from '../state/aiApi';
+import type { ChatMessage } from '../state/aiApi';
+import { ChatMessageItem } from './ChatMessage';
 
 export interface AIContextItem {
   id: string;
@@ -43,8 +47,60 @@ export function AIWorkbenchPanel({
 }: AIWorkbenchPanelProps) {
   const hasContext = initialContext && initialContext.length > 0;
 
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const assistantMessage = await sendChatMessage(
+        trimmed,
+        initialContext || [],
+      );
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '发送失败，请重试';
+      setError(msg);
+      console.error('Chat error:', err);
+    } finally {
+      setIsLoading(false);
+      // 延迟滚动确保内容已渲染
+      setTimeout(scrollToBottom, 50);
+    }
+  }, [inputValue, isLoading, initialContext, scrollToBottom]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
+
   return (
-    <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static flex flex-col gap-4">
+    <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static flex flex-col gap-4 max-h-[calc(100vh-140px)]">
       {/* 标题区 */}
       <div className="flex items-start justify-between gap-3">
         <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-secondary-container/20 text-secondary">
@@ -92,31 +148,61 @@ export function AIWorkbenchPanel({
       {/* 主内容区 */}
       {hasContext ? (
         <>
-          {/* 聊天占位 */}
-          <div className="flex-1 min-h-[200px] flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-outline-variant bg-surface-container-low/50">
-            <Bot size={28} className="text-outline-variant" />
-            <p className="text-sm text-on-surface-variant text-center px-4">
-              AI 对话功能即将上线
-            </p>
-            <p className="text-xs text-on-surface-variant/60 text-center px-6">
-              您可以先在此面板确认选中的研究范围是否正确
-            </p>
+          {/* 消息列表 */}
+          <div className="flex-1 min-h-[200px] max-h-[50vh] overflow-y-auto flex flex-col gap-4 rounded-lg border border-outline-variant/40 bg-surface-container-low/50 p-3">
+            {messages.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                <Bot size={28} className="text-outline-variant" />
+                <p className="text-sm text-on-surface-variant text-center px-4">
+                  开始与 AI 讨论选中的研究内容
+                </p>
+                <p className="text-xs text-on-surface-variant/60 text-center px-6">
+                  您可以询问关于这些 Flow 或文档的问题
+                </p>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg) => (
+                  <ChatMessageItem key={msg.id} message={msg} />
+                ))}
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-on-surface-variant">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="text-xs">AI 正在思考...</span>
+                  </div>
+                )}
+                {error && (
+                  <div className="rounded-lg p-3 bg-error-container/30 border border-error/20 text-error text-xs">
+                    {error}
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
+            )}
           </div>
 
-          {/* 输入框占位 */}
+          {/* 输入框 */}
           <div className="flex items-center gap-2">
             <input
-              className="flex-1 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
-              disabled
+              className="flex-1 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono disabled:opacity-50"
+              disabled={isLoading}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="在此输入消息..."
               type="text"
+              value={inputValue}
             />
             <button
-              className="w-9 h-9 rounded-lg bg-primary/40 text-on-primary flex items-center justify-center cursor-not-allowed"
-              disabled
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+                isLoading || !inputValue.trim()
+                  ? 'bg-primary/40 text-on-primary cursor-not-allowed'
+                  : 'bg-primary text-on-primary hover:bg-primary/90'
+              }`}
+              disabled={isLoading || !inputValue.trim()}
+              onClick={handleSend}
               type="button"
             >
-              <Send size={14} />
+              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>
         </>

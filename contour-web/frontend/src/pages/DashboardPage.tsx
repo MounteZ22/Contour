@@ -1,4 +1,4 @@
-import { FlaskConical, FolderOpen, Layers, Map, Plus, Trash2 } from 'lucide-react';
+import { FlaskConical, FolderOpen, Layers, Map, Plus, Settings, Trash2 } from 'lucide-react';
 import { showToast } from '../components/Toast';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -269,9 +269,19 @@ export function DashboardPage({
 
   return (
     <div className="grid gap-8 p-8 bg-background min-h-screen">
-      <header className="pb-3 border-b border-outline-variant">
-        <h1 className="text-3xl font-bold text-on-background font-headline">Projects</h1>
-        <p className="mt-1 text-sm text-on-surface-variant font-mono">共 {localProjects.length} 个研究项目</p>
+      <header className="pb-3 border-b border-outline-variant flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-on-background font-headline">Projects</h1>
+          <p className="mt-1 text-sm text-on-surface-variant font-mono">共 {localProjects.length} 个研究项目</p>
+        </div>
+        <Link
+          to="/settings"
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors border border-outline-variant"
+          title="设置"
+        >
+          <Settings size={16} />
+          <span className="hidden sm:inline">设置</span>
+        </Link>
       </header>
 
       <div className="grid grid-cols-[380px_1fr] gap-8 max-lg:grid-cols-1">

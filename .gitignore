@@ -27,6 +27,7 @@ example_vault/context_packs/*.md
 node_modules/
 dist/
 *.log
+.env
 
 # OS / editor noise
 .DS_Store
