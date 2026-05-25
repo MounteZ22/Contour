@@ -2,8 +2,8 @@ import { FlaskConical, FolderOpen, Layers, Map, Plus, Settings, Trash2 } from 'l
 import { showToast } from '../components/Toast';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
 import type { AIContextItem } from '../components/AIWorkbenchPanel';
+import { BottomChatPanel } from '../components/BottomChatPanel';
 import { ContextActionBar } from '../components/ContextActionBar';
 import { ContourMap } from '../components/ContourMap';
 import type { Flow, ProjectData } from '../types';
@@ -31,7 +31,6 @@ export function DashboardPage({
   const [contextSelectMode, setContextSelectMode] = useState(false);
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   useEffect(() => {
     setLocalProjects(projects);
@@ -238,15 +237,6 @@ export function DashboardPage({
     setSelectedDocs(new Set(selectedProject.docs.map((d) => d.id)));
   };
 
-  const handleDiscussWithAI = () => {
-    setAiPanelOpen(true);
-  };
-
-  const handleClearContext = () => {
-    clearAllSelections();
-    setAiPanelOpen(false);
-  };
-
   // 组装 AI Workbench 上下文数据
   const contextItems: AIContextItem[] = [
     ...Array.from(selectedFlows).map((id) => {
@@ -268,7 +258,7 @@ export function DashboardPage({
   }
 
   return (
-    <div className="grid gap-8 p-8 bg-background min-h-screen">
+    <div className="grid gap-8 p-8 bg-background min-h-screen pb-32">
       <header className="pb-3 border-b border-outline-variant flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-on-background font-headline">Projects</h1>
@@ -392,9 +382,8 @@ export function DashboardPage({
         </aside>
 
         {/* 右侧主内容 */}
-        <section className={aiPanelOpen ? 'grid grid-cols-[1fr_340px] gap-8' : 'grid gap-8'}>
-          <div className={aiPanelOpen ? 'grid gap-8' : undefined}>
-            {/* Hero 卡片 */}
+        <section className="grid gap-8">
+          {/* Hero 卡片 */}
           <div className="border border-outline-variant bg-surface-container rounded-xl p-6 grid grid-cols-[1.5fr_0.8fr] gap-6 max-lg:grid-cols-1">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">{selectedProject.projectId}</p>
@@ -432,7 +421,7 @@ export function DashboardPage({
                       : 'bg-surface-container border-outline-variant text-on-surface-variant hover:border-primary/20'
                   }`}
                   onClick={toggleContextSelectMode}
-                  title="开启后可多选 Flow 和文档，发送给 AI 讨论"
+                  title="开启后可多选 Flow 和文档，作为 AI 对话上下文"
                   type="button"
                 >
                   <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-primary' : 'bg-outline-variant'}`} />
@@ -593,20 +582,21 @@ export function DashboardPage({
           {contextSelectMode && (
             <ContextActionBar
               onClear={clearAllSelections}
-              onDiscuss={handleDiscussWithAI}
+              onDiscuss={() => {}}
               selectedDocCount={selectedDocs.size}
               selectedFlowCount={selectedFlows.size}
             />
           )}
-          </div>
-          {aiPanelOpen && (
-            <AIWorkbenchPanel
-              initialContext={contextItems}
-              onClearContext={handleClearContext}
-            />
-          )}
         </section>
       </div>
+
+      {/* 底部 AI 聊天面板（始终可见） */}
+      <BottomChatPanel
+        initialContext={contextItems.length > 0 ? contextItems : undefined}
+        onClearContext={() => {
+          clearAllSelections();
+        }}
+      />
     </div>
   );
 }

@@ -27,7 +27,9 @@ export async function buildSystemPrompt(
   // 注入选中的 Flow 和 Doc 内容
   for (const item of contextItems) {
     if (item.type === 'flow') {
-      const flow = project?.flows.find((f) => f.flowId === item.id);
+      const flow =
+        project?.flows.find((f) => f.flowId === item.id) ??
+        projects.flatMap((p) => p.flows).find((f) => f.flowId === item.id);
       if (flow) {
         prompt += `## Flow: ${flow.title} (${flow.flowId})\n`;
         prompt += `- 状态：${flow.status}\n`;
@@ -39,7 +41,9 @@ export async function buildSystemPrompt(
         }
       }
     } else if (item.type === 'doc') {
-      const doc = project?.docs.find((d) => d.id === item.id);
+      const doc =
+        project?.docs.find((d) => d.id === item.id) ??
+        projects.flatMap((p) => p.docs).find((d) => d.id === item.id);
       if (doc) {
         prompt += `## 文档: ${doc.title} (${doc.id})\n`;
         prompt += `- 类型：${doc.type}\n`;

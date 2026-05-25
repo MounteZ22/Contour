@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Bot, FileSearch, Highlighter, Lightbulb, Loader2, Send, ShieldAlert, X } from 'lucide-react';
 import type { Claim } from '../types';
-import { sendChatMessage } from '../state/aiApi';
 import type { ChatMessage } from '../state/aiApi';
 import { ChatMessageItem } from './ChatMessage';
+import { useSmoothStream } from '../hooks/useSmoothStream';
+import { useChat } from '../hooks/useChat';
 
 export interface AIContextItem {
   id: string;
@@ -46,58 +47,28 @@ export function AIWorkbenchPanel({
   onClearContext,
 }: AIWorkbenchPanelProps) {
   const hasContext = initialContext && initialContext.length > 0;
-
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+  const {
+    messages,
+    inputValue,
+    setInputValue,
+    isLoading,
+    isStreaming,
+    streamingContent,
+    toolActivities,
+    error,
+    handleSend,
+    handleKeyDown,
+  } = useChat(initialContext || []);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputValue.trim();
-    if (!trimmed || isLoading) return;
+  const { displayedContent: rawSmoothContent } = useSmoothStream({
+    content: streamingContent,
+    isStreaming,
+  });
 
-    const userMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      role: 'user',
-      content: trimmed,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const assistantMessage = await sendChatMessage(
-        trimmed,
-        initialContext || [],
-      );
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '发送失败，请重试';
-      setError(msg);
-      console.error('Chat error:', err);
-    } finally {
-      setIsLoading(false);
-      // 延迟滚动确保内容已渲染
-      setTimeout(scrollToBottom, 50);
-    }
-  }, [inputValue, isLoading, initialContext, scrollToBottom]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
+  // 防闪屏守卫
+  const smoothContent = isStreaming || streamingContent ? rawSmoothContent : '';
 
   return (
     <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static flex flex-col gap-4 max-h-[calc(100vh-140px)]">
@@ -162,15 +133,26 @@ export function AIWorkbenchPanel({
               </div>
             ) : (
               <>
-                {messages.map((msg) => (
-                  <ChatMessageItem key={msg.id} message={msg} />
+                {messages.map((msg: ChatMessage) => (
+                  <ChatMessageItem key={msg.id} isStreaming={false} message={msg} />
                 ))}
-                {isLoading && (
+
+                {/* 流式消息气泡（实时打字机效果）*/}
+                {smoothContent && (
+                  <ChatMessageItem
+                    isStreaming={isStreaming}
+                    message={{ id: 'streaming', role: 'assistant', content: smoothContent, toolActivities }}
+                  />
+                )}
+
+                {/* 流式中但尚无内容时显示思考指示器 */}
+                {isStreaming && !smoothContent && toolActivities.length === 0 && (
                   <div className="flex items-center gap-2 text-on-surface-variant">
                     <Loader2 size={14} className="animate-spin" />
                     <span className="text-xs">AI 正在思考...</span>
                   </div>
                 )}
+
                 {error && (
                   <div className="rounded-lg p-3 bg-error-container/30 border border-error/20 text-error text-xs">
                     {error}

@@ -227,3 +227,42 @@ html {
 body {
   color: var(--token-on-background);
 }
+
+/* ==========================================
+   Animation Utilities (inspired by tailwindcss-animate)
+   ========================================== */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-in {
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-left-1 {
+  animation-name: slide-in-from-left;
+}
+
+.duration-150 {
+  animation-duration: 150ms;
+}
+
+.fill-mode-both {
+  animation-fill-mode: both;
+}
