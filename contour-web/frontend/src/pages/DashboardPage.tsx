@@ -6,6 +6,11 @@ import type { AIContextItem } from '../components/AIWorkbenchPanel';
 import { BottomChatPanel } from '../components/BottomChatPanel';
 import { ContextActionBar } from '../components/ContextActionBar';
 import { ContourMap } from '../components/ContourMap';
+import { Card } from '../components/ui/card';
+import { Button, buttonVariants } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { cn } from '@/lib/utils';
 import type { Flow, ProjectData } from '../types';
 
 export function DashboardPage({
@@ -252,22 +257,22 @@ export function DashboardPage({
   if (!selectedProject) {
     return (
       <div className="p-8">
-        <p className="text-on-surface-variant font-mono text-sm">暂无项目</p>
+        <p className="text-muted-foreground font-mono text-sm">暂无项目</p>
       </div>
     );
   }
 
   return (
     <div className="grid gap-8 p-8 bg-background min-h-screen pb-32">
-      <header className="pb-3 border-b border-outline-variant flex items-start justify-between gap-4">
+      <header className="pb-3 border-b border-border flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-on-background font-headline">Projects</h1>
-          <p className="mt-1 text-sm text-on-surface-variant font-mono">共 {localProjects.length} 个研究项目</p>
+          <h1 className="text-3xl font-bold text-foreground font-headline">Projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground font-mono">共 {localProjects.length} 个研究项目</p>
         </div>
         <Link
           to="/settings"
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors border border-outline-variant"
           title="设置"
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
         >
           <Settings size={16} />
           <span className="hidden sm:inline">设置</span>
@@ -276,35 +281,37 @@ export function DashboardPage({
 
       <div className="grid grid-cols-[380px_1fr] gap-8 max-lg:grid-cols-1">
         {/* 左侧项目列表 */}
-        <aside className="border border-outline-variant bg-surface-container rounded-lg p-5 shadow-sm self-start">
+        <Card className="p-5 self-start">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary/10 text-primary">
               <FolderOpen size={16} />
             </div>
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Projects</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">My Projects</h3>
+              <h3 className="text-base font-semibold text-foreground font-headline">My Projects</h3>
             </div>
           </div>
 
           <div className="grid gap-2 mt-4">
             {localProjects.map((project) => (
               <button
-                className={`w-full text-left border rounded-lg p-3 cursor-pointer transition-all ${
+                className={`w-full text-left rounded-lg p-3 cursor-pointer transition-all ${
                   project.projectId === selectedProject.projectId
-                    ? 'border-primary/25 bg-primary-container/8'
-                    : 'border-transparent hover:border-outline-variant hover:bg-surface-container-high'
+                    ? 'bg-primary/10 border border-primary/20'
+                    : 'border border-transparent hover:bg-accent'
                 }`}
                 key={project.projectId}
                 onClick={() => handleSelectProject(project)}
                 type="button"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-sm font-medium text-on-surface">{project.title}</h4>
+                  <h4 className="text-sm font-medium text-foreground">{project.title}</h4>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] text-primary font-mono">{project.projectId}</span>
-                    <button
-                      className="w-6 h-6 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteProject(project.projectId, project.title);
@@ -313,11 +320,11 @@ export function DashboardPage({
                       type="button"
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </Button>
                   </div>
                 </div>
-                <p className="mt-1.5 text-xs text-on-surface-variant line-clamp-2">{project.researchGoal}</p>
-                <div className="flex gap-3 mt-2 text-xs text-on-surface-variant font-mono">
+                <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{project.researchGoal}</p>
+                <div className="flex gap-3 mt-2 text-xs text-muted-foreground font-mono">
                   <span className="inline-flex items-center gap-1">
                     <FlaskConical size={12} />
                     {project.flows.length} Flows
@@ -331,10 +338,10 @@ export function DashboardPage({
             ))}
 
             {showNewProject ? (
-              <div className="grid gap-2 p-3 border border-primary/20 rounded-lg bg-primary-container/5">
-                <input
+              <div className="grid gap-2 p-3 border border-primary/20 rounded-lg bg-primary/5">
+                <Input
                   autoFocus
-                  className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+                  className="font-mono"
                   onChange={(e) => setNewProjectTitle(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAddProject();
@@ -344,91 +351,82 @@ export function DashboardPage({
                   type="text"
                   value={newProjectTitle}
                 />
-                <textarea
-                  className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 resize-y font-mono"
+                <Textarea
+                  className="font-mono resize-y"
                   onChange={(e) => setNewProjectGoal(e.target.value)}
                   placeholder="Research goal (optional)"
                   rows={2}
                   value={newProjectGoal}
                 />
                 <div className="flex gap-2">
-                  <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
-                    onClick={handleAddProject}
-                    type="button"
-                  >
+                  <Button size="sm" onClick={handleAddProject} type="button">
                     创建
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
-                    onClick={() => setShowNewProject(false)}
-                    type="button"
-                  >
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setShowNewProject(false)} type="button">
                     取消
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
-              <button
-                className="w-full text-left border border-dashed border-outline-variant rounded-lg p-3 bg-transparent text-on-surface-variant inline-flex items-center gap-2 cursor-pointer hover:border-primary/30 hover:text-primary hover:bg-surface-container-low transition-all font-mono text-xs"
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 border-dashed text-muted-foreground hover:text-primary hover:border-primary/30 font-mono text-xs"
                 onClick={() => setShowNewProject(true)}
                 type="button"
               >
                 <Plus size={14} />
                 New Project
-              </button>
+              </Button>
             )}
           </div>
-        </aside>
+        </Card>
 
         {/* 右侧主内容 */}
         <section className="grid gap-8">
           {/* Hero 卡片 */}
-          <div className="border border-outline-variant bg-surface-container rounded-xl p-6 grid grid-cols-[1.5fr_0.8fr] gap-6 max-lg:grid-cols-1">
+          <Card className="p-6 grid grid-cols-[1.5fr_0.8fr] gap-6 max-lg:grid-cols-1">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">{selectedProject.projectId}</p>
-              <h2 className="text-xl font-bold text-on-background font-headline">{selectedProject.title}</h2>
-              <p className="mt-2 text-sm text-on-surface-variant leading-relaxed">{selectedProject.researchGoal}</p>
+              <h2 className="text-xl font-bold text-foreground font-headline">{selectedProject.title}</h2>
+              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{selectedProject.researchGoal}</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div className="border border-outline-variant rounded-lg p-4 text-center bg-surface-container-low">
-                <span className="block text-2xl font-bold text-tertiary-container font-headline">{localFlows.length}</span>
-                <span className="block mt-1 text-xs text-on-surface-variant font-mono">Flows</span>
+              <div className="rounded-lg p-4 text-center bg-muted">
+                <span className="block text-2xl font-bold text-primary font-headline">{localFlows.length}</span>
+                <span className="block mt-1 text-xs text-muted-foreground font-mono">Flows</span>
               </div>
-              <div className="border border-outline-variant rounded-lg p-4 text-center bg-surface-container-low">
-                <span className="block text-2xl font-bold text-tertiary-container font-headline">{selectedProject.docs.length}</span>
-                <span className="block mt-1 text-xs text-on-surface-variant font-mono">Background</span>
+              <div className="rounded-lg p-4 text-center bg-muted">
+                <span className="block text-2xl font-bold text-primary font-headline">{selectedProject.docs.length}</span>
+                <span className="block mt-1 text-xs text-muted-foreground font-mono">Background</span>
               </div>
-              <div className="border border-outline-variant rounded-lg p-4 text-center bg-surface-container-low">
-                <span className="block text-2xl font-bold text-tertiary-container font-headline">{selectedProject.claims.length}</span>
-                <span className="block mt-1 text-xs text-on-surface-variant font-mono">Linked Claims</span>
+              <div className="rounded-lg p-4 text-center bg-muted">
+                <span className="block text-2xl font-bold text-primary font-headline">{selectedProject.claims.length}</span>
+                <span className="block mt-1 text-xs text-muted-foreground font-mono">Linked Claims</span>
               </div>
             </div>
-          </div>
+          </Card>
 
           {/* Flow 网络画布 */}
           <div>
             <div className="flex items-end justify-between gap-4 mb-4">
               <div>
                 <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Project Contour</p>
-                <h2 className="text-xl font-bold text-on-background font-headline">研究推进轮廓</h2>
+                <h2 className="text-xl font-bold text-foreground font-headline">研究推进轮廓</h2>
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all cursor-pointer ${
-                    contextSelectMode
-                      ? 'bg-primary-container/30 border-primary/30 text-primary'
-                      : 'bg-surface-container border-outline-variant text-on-surface-variant hover:border-primary/20'
-                  }`}
+                <Button
+                  variant={contextSelectMode ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="rounded-full text-xs"
                   onClick={toggleContextSelectMode}
                   title="开启后可多选 Flow 和文档，作为 AI 对话上下文"
                   type="button"
                 >
-                  <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-primary' : 'bg-outline-variant'}`} />
+                  <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-primary' : 'bg-muted-foreground'}`} />
                   {contextSelectMode ? '多选模式' : '单选模式'}
-                </button>
+                </Button>
                 {!contextSelectMode && (
-                  <div className="flex items-center gap-2 text-xs text-on-surface-variant font-mono">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
                     <Map size={14} />
                     <span>点击节点进入 Flow · 拖拽调整位置 · 节点旁 + 创建新 Flow</span>
                   </div>
@@ -451,7 +449,7 @@ export function DashboardPage({
           <div>
             <div className="mb-4">
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Background</p>
-              <h2 className="text-xl font-bold text-on-background font-headline">建议优先阅读的项目文档</h2>
+              <h2 className="text-xl font-bold text-foreground font-headline">建议优先阅读的项目文档</h2>
             </div>
 
             <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
@@ -460,13 +458,15 @@ export function DashboardPage({
                 const cardContent = (
                   <>
                     <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="inline-flex items-center gap-2 text-on-surface-variant">
+                      <div className="inline-flex items-center gap-2 text-muted-foreground">
                         <FolderOpen size={16} />
                         <span className="text-xs font-mono">{doc.type.replace('_', ' ')}</span>
                       </div>
                       {!contextSelectMode && (
-                        <button
-                          className="w-6 h-6 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -476,7 +476,7 @@ export function DashboardPage({
                           type="button"
                         >
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       )}
                       {contextSelectMode && isDocSelected && (
                         <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
@@ -486,44 +486,45 @@ export function DashboardPage({
                         </div>
                       )}
                     </div>
-                    <h3 className="text-base font-semibold text-on-surface font-headline mb-1">{doc.title}</h3>
-                    <p className="text-xs text-on-surface-variant line-clamp-2">{doc.summary}</p>
+                    <h3 className="text-base font-semibold text-foreground font-headline mb-1">{doc.title}</h3>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
                   </>
                 );
 
                 return contextSelectMode ? (
-                  <div
-                    className={`block border rounded-xl p-5 transition-all cursor-pointer ${
+                  <Card
+                    className={`p-5 transition-all cursor-pointer ${
                       isDocSelected
-                        ? 'border-primary/50 bg-primary-container/5'
-                        : 'border-outline-variant bg-surface-container hover:border-primary/25'
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'hover:border-primary/25 hover:shadow-md'
                     }`}
                     key={doc.id}
                     onClick={() => toggleDocSelection(doc.id)}
                   >
                     {cardContent}
-                  </div>
+                  </Card>
                 ) : (
-                  <Link
-                    className="block border border-outline-variant bg-surface-container rounded-xl p-5 transition-all hover:border-primary/25"
-                    key={doc.id}
-                    to={`/project/${selectedProject.projectId}/docs/${doc.id}`}
-                  >
-                    {cardContent}
-                  </Link>
+                  <Card className="transition-all hover:border-primary/25 hover:shadow-md" key={doc.id}>
+                    <Link
+                      className="block p-5"
+                      to={`/project/${selectedProject.projectId}/docs/${doc.id}`}
+                    >
+                      {cardContent}
+                    </Link>
+                  </Card>
                 );
               })}
 
               {showNewDoc ? (
-                <div className="border border-outline-variant bg-surface-container rounded-xl p-5 block">
+                <Card className="p-5">
                   <div className="flex items-center gap-2 mb-3">
                     <Plus size={16} className="text-primary" />
                     <span className="text-xs text-primary font-semibold font-mono">New</span>
                   </div>
                   <div className="grid gap-3">
-                    <input
+                    <Input
                       autoFocus
-                      className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+                      className="font-mono"
                       onChange={(e) => setNewDocTitle(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleAddDoc();
@@ -534,7 +535,7 @@ export function DashboardPage({
                       value={newDocTitle}
                     />
                     <select
-                      className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
                       onChange={(e) => setNewDocType(e.target.value)}
                       value={newDocType}
                     >
@@ -544,26 +545,19 @@ export function DashboardPage({
                       <option value="glossary">Glossary</option>
                     </select>
                     <div className="flex gap-2">
-                      <button
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
-                        onClick={handleAddDoc}
-                        type="button"
-                      >
+                      <Button size="sm" onClick={handleAddDoc} type="button">
                         创建
-                      </button>
-                      <button
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
-                        onClick={() => setShowNewDoc(false)}
-                        type="button"
-                      >
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setShowNewDoc(false)} type="button">
                         取消
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                </div>
+                </Card>
               ) : (
-                <button
-                  className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border border-dashed border-outline-variant bg-transparent cursor-pointer hover:border-primary/30 hover:bg-primary-container/5 rounded-xl p-5 transition-all text-on-surface-variant"
+                <Button
+                  variant="outline"
+                  className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-5 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5"
                   onClick={() => setShowNewDoc(true)}
                   type="button"
                 >
@@ -572,8 +566,8 @@ export function DashboardPage({
                     <span className="text-xs font-semibold font-mono">New</span>
                   </div>
                   <h3 className="text-base font-semibold text-primary font-headline">New Document</h3>
-                  <p className="text-xs text-on-surface-variant font-mono">添加新的背景文档</p>
-                </button>
+                  <p className="text-xs text-muted-foreground font-mono">添加新的背景文档</p>
+                </Button>
               )}
             </div>
           </div>

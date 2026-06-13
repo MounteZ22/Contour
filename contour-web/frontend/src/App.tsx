@@ -8,6 +8,7 @@ import { ProjectDocPage } from './pages/ProjectDocPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Button } from './components/ui/button';
 import type { ContourAppData } from './types';
 
 export default function App() {
@@ -42,7 +43,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center">
         <Loader2 size={40} className="text-primary animate-spin" />
-        <p className="mt-4 text-sm text-on-surface-variant font-mono">正在加载研究项目...</p>
+        <p className="mt-4 text-sm text-muted-foreground font-mono">正在加载研究项目...</p>
       </div>
     );
   }
@@ -51,21 +52,17 @@ export default function App() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
         <div className="flex flex-col items-center gap-4 max-w-md text-center">
-          <div className="w-12 h-12 rounded-full bg-error-container/30 flex items-center justify-center">
-            <AlertCircle size={24} className="text-error" />
+          <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertCircle size={24} className="text-destructive" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-on-background font-headline">数据加载失败</h2>
-            <p className="mt-1.5 text-sm text-on-surface-variant leading-relaxed">{error}</p>
+            <h2 className="text-lg font-semibold text-foreground font-headline">数据加载失败</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">{error}</p>
           </div>
-          <button
-            className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium cursor-pointer transition-colors bg-primary-container/15 border-primary/25 text-primary hover:bg-primary-container/30 font-mono"
-            onClick={refreshProjects}
-            type="button"
-          >
+          <Button variant="outline" size="sm" onClick={refreshProjects}>
             <RefreshCw size={14} />
             重试
-          </button>
+          </Button>
         </div>
       </div>
     );

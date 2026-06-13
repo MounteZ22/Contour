@@ -1,4 +1,5 @@
 import type { FlowStatus } from '../types';
+import { Badge } from './ui/badge';
 
 const statusLabels: Record<FlowStatus, string> = {
   in_progress: '进行',
@@ -7,33 +8,23 @@ const statusLabels: Record<FlowStatus, string> = {
   abandoned: '放弃',
 };
 
-const statusStyles: Record<FlowStatus, { wrapper: string; dot: string }> = {
-  completed: {
-    wrapper: 'text-tertiary-container bg-tertiary-container/10 border-tertiary-container/20',
-    dot: 'bg-tertiary-container',
-  },
-  in_progress: {
-    wrapper: 'text-primary bg-primary/10 border-primary/20',
-    dot: 'bg-primary',
-  },
-  archived: {
-    wrapper: 'text-secondary bg-secondary/10 border-secondary/20',
-    dot: 'bg-secondary',
-  },
-  abandoned: {
-    wrapper: 'text-error bg-error/10 border-error/20',
-    dot: 'bg-error',
-  },
+const statusStyles: Record<FlowStatus, string> = {
+  completed: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+  in_progress: 'bg-primary/10 text-primary border-primary/20',
+  archived: 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20',
+  abandoned: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
 export function StatusBadge({ status }: { status: FlowStatus }) {
-  const style = statusStyles[status];
   return (
-    <span
-      className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full text-xs font-semibold border ${style.wrapper}`}
-    >
-      <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+    <Badge className={`${statusStyles[status]} gap-1.5`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${
+        status === 'completed' ? 'bg-emerald-500' :
+        status === 'in_progress' ? 'bg-primary' :
+        status === 'archived' ? 'bg-violet-500' :
+        'bg-destructive'
+      }`} />
       {statusLabels[status]}
-    </span>
+    </Badge>
   );
 }

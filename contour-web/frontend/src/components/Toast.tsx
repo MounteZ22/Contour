@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -53,35 +54,26 @@ function ToastItemView({ toast, onClose }: { toast: ToastItem; onClose: () => vo
 
   const icon =
     toast.type === 'success' ? (
-      <CheckCircle2 size={16} className="text-tertiary" />
+      <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
     ) : toast.type === 'error' ? (
-      <AlertCircle size={16} className="text-error" />
+      <AlertCircle size={16} className="text-destructive" />
     ) : (
       <Info size={16} className="text-primary" />
     );
 
-  const borderColor =
-    toast.type === 'success'
-      ? 'border-tertiary/30'
-      : toast.type === 'error'
-        ? 'border-error/30'
-        : 'border-primary/30';
-
-  const bgColor =
-    toast.type === 'success'
-      ? 'bg-tertiary-container/10'
-      : toast.type === 'error'
-        ? 'bg-error-container/10'
-        : 'bg-primary-container/10';
-
   return (
     <div
-      className={`pointer-events-auto flex items-start gap-2.5 min-w-[280px] max-w-[420px] rounded-lg border p-3.5 shadow-lg backdrop-blur-md ${borderColor} ${bgColor} bg-surface-container-lowest/95 animate-in slide-in-from-right fade-in`}
+      className={cn(
+        "pointer-events-auto flex items-start gap-2.5 min-w-[280px] max-w-[420px] rounded-lg border p-3.5 shadow-lg backdrop-blur-md bg-card/95 animate-in slide-in-from-right fade-in",
+        toast.type === 'success' && "border-emerald-500/30",
+        toast.type === 'error' && "border-destructive/30",
+        toast.type === 'info' && "border-primary/30"
+      )}
     >
       {icon}
-      <p className="flex-1 text-sm text-on-surface leading-snug">{toast.message}</p>
+      <p className="flex-1 text-sm text-foreground leading-snug">{toast.message}</p>
       <button
-        className="text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+        className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         onClick={onClose}
         type="button"
       >
