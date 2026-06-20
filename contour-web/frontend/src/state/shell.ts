@@ -1,11 +1,6 @@
-import { atom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
-export type ShellView = 'contour' | 'agent' | 'settings';
-
 export const sidebarCollapsedAtom = atomWithStorage<boolean>('contour-sidebar-collapsed', false);
-
-export const activeViewAtom = atom<ShellView>('contour');
 
 export const rightPanelOpenAtom = atomWithStorage<boolean>('contour-right-panel-open', true);
 

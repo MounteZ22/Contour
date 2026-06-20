@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { ShellLayout } from './components/shell/ShellLayout';
-import { DashboardPage } from './pages/DashboardPage';
 import { AgentSessionView } from './pages/AgentSessionView';
 import { AgentView } from './pages/AgentView';
 import { ContourView } from './pages/ContourView';
@@ -86,10 +85,6 @@ export default function App() {
             <Route element={<ProjectDocPage />} path="project/:projectId/docs/:docId" />
             <Route element={<SettingsPage />} path="settings" />
           </Route>
-          <Route
-            element={<DashboardPage onRefresh={refreshProjects} projects={appData.projects} />}
-            path="/dashboard"
-          />
           <Route element={<Navigate replace to="/contour" />} path="*" />
         </Routes>
       </ErrorBoundary>
