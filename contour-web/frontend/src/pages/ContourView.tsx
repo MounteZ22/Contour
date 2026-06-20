@@ -11,7 +11,7 @@ import { Input } from '../components/ui/input';
 import { chatContextItemsAtom } from '../state/chat';
 import { useAgentSessions } from '../hooks/useAgentSessions';
 import type { ShellOutletContext } from '../components/shell/ShellLayout';
-import type { AIContextItem, Flow } from '../types';
+import type { AIContextItem } from '../types';
 
 export function ContourView() {
   const navigate = useNavigate();
@@ -19,7 +19,7 @@ export function ContourView() {
   const { createSession } = useAgentSessions();
   const setChatContextItems = useSetAtom(chatContextItemsAtom);
 
-  const [localFlows, setLocalFlows] = useState<Flow[]>(project?.flows ?? []);
+  const flows = project?.flows ?? [];
   const [showNewDoc, setShowNewDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocType, setNewDocType] = useState('background');
@@ -29,11 +29,10 @@ export function ContourView() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setLocalFlows(project?.flows ?? []);
     setContextSelectMode(false);
     setSelectedFlows(new Set());
     setSelectedDocs(new Set());
-  }, [project?.projectId, project?.flows]);
+  }, [project?.projectId]);
 
   if (!project) {
     return (
@@ -178,7 +177,7 @@ export function ContourView() {
 
   const contextItems: AIContextItem[] = [
     ...Array.from(selectedFlows).map((id) => {
-      const flow = localFlows.find((item) => item.flowId === id);
+      const flow = flows.find((item) => item.flowId === id);
       return { id, title: flow?.title ?? id, type: 'flow' as const };
     }),
     ...Array.from(selectedDocs).map((id) => {
@@ -231,7 +230,7 @@ export function ContourView() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg p-4 text-center bg-muted">
-              <span className="block text-2xl font-bold text-primary font-headline">{localFlows.length}</span>
+              <span className="block text-2xl font-bold text-primary font-headline">{flows.length}</span>
               <span className="block mt-1 text-xs text-muted-foreground font-mono">Flows</span>
             </div>
             <div className="rounded-lg p-4 text-center bg-muted">
@@ -261,7 +260,7 @@ export function ContourView() {
 
           <ContourMap
             contextSelectMode={contextSelectMode}
-            flows={localFlows}
+            flows={flows}
             onCreateFlow={handleCreateFlowFromNode}
             onDeleteFlow={handleDeleteFlow}
             onToggleFlowSelection={toggleFlowSelection}

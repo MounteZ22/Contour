@@ -34,7 +34,8 @@ export function ShellLayout({
     if (!currentProjectId || !currentProjectExists) {
       setCurrentProjectId(projects[0].projectId);
     }
-  }, [currentProjectId, projects, routeProjectId, setCurrentProjectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, routeProjectId]);
 
   const project =
     projects.find((item) => item.projectId === routeProjectId) ??

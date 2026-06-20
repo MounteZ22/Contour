@@ -97,7 +97,8 @@ export function LeftSidebar({
       return;
     }
     if (currentProjectId === project.projectId) {
-      setCurrentProjectId(null);
+      const remaining = projects.filter((p) => p.projectId !== project.projectId);
+      setCurrentProjectId(remaining.length > 0 ? remaining[0].projectId : null);
     }
     onRefresh();
   };
