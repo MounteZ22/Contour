@@ -241,7 +241,7 @@ export function ContourView() {
             )}
           </div>
 
-          <div className="min-h-[480px]">
+          <div className="min-h-[600px]">
           <ContourMap
             contextSelectMode={contextSelectMode}
             flows={flows}
