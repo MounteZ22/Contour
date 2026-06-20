@@ -55,6 +55,12 @@ export interface ContourAppData {
   projects: ProjectData[];
 }
 
+export interface AIContextItem {
+  id: string;
+  title: string;
+  type: 'flow' | 'doc';
+}
+
 // ===== 渠道配置类型 =====
 
 export type ProviderType =

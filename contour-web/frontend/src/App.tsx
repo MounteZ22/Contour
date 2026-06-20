@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { AppShell } from './components/AppShell';
+import { ShellLayout } from './components/shell/ShellLayout';
 import { DashboardPage } from './pages/DashboardPage';
+import { AgentSessionView } from './pages/AgentSessionView';
+import { AgentView } from './pages/AgentView';
+import { ContourView } from './pages/ContourView';
 import { FlowWorkspacePage } from './pages/FlowWorkspacePage';
 import { ProjectDocPage } from './pages/ProjectDocPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -73,19 +76,21 @@ export default function App() {
       <ErrorBoundary>
         <Routes>
           <Route
-            element={<DashboardPage onRefresh={refreshProjects} projects={appData.projects} />}
-            path="/"
-          />
-          <Route
-            element={<AppShell onRefresh={refreshProjects} projects={appData.projects} />}
-            path="/project/:projectId/*"
+            element={<ShellLayout onRefresh={refreshProjects} projects={appData.projects} />}
           >
-            <Route element={<Navigate replace to="/" />} index />
-            <Route element={<FlowWorkspacePage />} path="flows/:flowId" />
-            <Route element={<ProjectDocPage />} path="docs/:docId" />
+            <Route element={<Navigate replace to="/contour" />} index />
+            <Route element={<ContourView />} path="contour" />
+            <Route element={<AgentView />} path="agent" />
+            <Route element={<AgentSessionView />} path="agent/:sessionId" />
+            <Route element={<FlowWorkspacePage />} path="project/:projectId/flows/:flowId" />
+            <Route element={<ProjectDocPage />} path="project/:projectId/docs/:docId" />
+            <Route element={<SettingsPage />} path="settings" />
           </Route>
-          <Route element={<SettingsPage />} path="/settings" />
-          <Route element={<Navigate replace to="/" />} path="*" />
+          <Route
+            element={<DashboardPage onRefresh={refreshProjects} projects={appData.projects} />}
+            path="/dashboard"
+          />
+          <Route element={<Navigate replace to="/contour" />} path="*" />
         </Routes>
       </ErrorBoundary>
       <ToastContainer />

@@ -1,8 +1,7 @@
-import { ArrowLeft, Edit3, Eye, FileStack, Library } from 'lucide-react';
+import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library } from 'lucide-react';
 import { useState } from 'react';
 import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
-import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import type { ProjectData } from '../types';
 
@@ -59,9 +58,9 @@ export function ProjectDocPage() {
   return (
     <div className="grid gap-6">
       <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
+        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
           <ArrowLeft size={16} />
-          Back to Projects
+          Back to Contour
         </Link>
         <span className="text-outline-variant">/</span>
         <span className="text-on-surface font-medium">Background</span>
@@ -73,6 +72,13 @@ export function ProjectDocPage() {
           <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+            to="/agent"
+          >
+            <Bot size={14} />
+            去 Agent 讨论
+          </Link>
           <span className="text-xs text-on-surface-variant font-mono">{activeDoc.type.replace('_', ' ')}</span>
           {isEditing ? (
             <div className="flex gap-2">
@@ -92,7 +98,7 @@ export function ProjectDocPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-[260px_1fr_320px] gap-4 items-start max-xl:grid-cols-1">
+      <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
         <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
@@ -148,8 +154,6 @@ export function ProjectDocPage() {
             <MarkdownArticle content={activeDoc.content} />
           )}
         </section>
-
-        <AIWorkbenchPanel claim={project.claims[0]} />
       </div>
     </div>
   );

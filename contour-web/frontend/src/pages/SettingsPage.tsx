@@ -159,7 +159,7 @@ export function SettingsPage() {
       <header className="flex items-center justify-between gap-6 px-8 h-16 border-b border-border backdrop-blur-xl bg-background/60 sticky top-0 z-20">
         <div className="flex items-center gap-4">
           <Link
-            to="/"
+            to="/contour"
             className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
           >
             <ArrowLeft size={16} />

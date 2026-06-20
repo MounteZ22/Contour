@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendChatMessageStream } from '../state/aiApi';
 import type { ChatMessage, ToolActivity } from '../state/aiApi';
-import type { AIContextItem } from '../components/AIWorkbenchPanel';
+import type { AIContextItem } from '../types';
 
 export interface UseChatReturn {
   messages: ChatMessage[];
@@ -17,8 +17,30 @@ export interface UseChatReturn {
   clearMessages: () => void;
 }
 
-export function useChat(initialContext: AIContextItem[]): UseChatReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+interface UseChatOptions {
+  sessionId?: string;
+}
+
+function readStoredMessages(sessionId: string | undefined): ChatMessage[] {
+  if (!sessionId) return [];
+  try {
+    const raw = localStorage.getItem(`contour:chat:${sessionId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredMessages(sessionId: string | undefined, messages: ChatMessage[]) {
+  if (!sessionId) return;
+  localStorage.setItem(`contour:chat:${sessionId}`, JSON.stringify(messages));
+}
+
+export function useChat(initialContext: AIContextItem[] = [], options: UseChatOptions = {}): UseChatReturn {
+  const { sessionId } = options;
+  const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -31,6 +53,21 @@ export function useChat(initialContext: AIContextItem[]): UseChatReturn {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  useEffect(() => {
+    setMessages(readStoredMessages(sessionId));
+  }, [sessionId]);
+
+  const updateMessages = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      setMessages((prev) => {
+        const next = updater(prev);
+        writeStoredMessages(sessionId, next);
+        return next;
+      });
+    },
+    [sessionId],
+  );
+
   const handleSend = useCallback(async () => {
     const trimmed = inputValue.trim();
     if (!trimmed || isLoading) return;
@@ -41,7 +78,7 @@ export function useChat(initialContext: AIContextItem[]): UseChatReturn {
       content: trimmed,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    updateMessages((prev) => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
     setIsStreaming(true);
@@ -85,7 +122,7 @@ export function useChat(initialContext: AIContextItem[]): UseChatReturn {
             content: fullContent,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          updateMessages((prev) => [...prev, assistantMessage]);
           setStreamingContent('');
           setIsStreaming(false);
           setToolActivities([]);
@@ -107,7 +144,7 @@ export function useChat(initialContext: AIContextItem[]): UseChatReturn {
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [inputValue, isLoading, initialContext, scrollToBottom]);
+  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -120,12 +157,12 @@ export function useChat(initialContext: AIContextItem[]): UseChatReturn {
   );
 
   const clearMessages = useCallback(() => {
-    setMessages([]);
+    updateMessages(() => []);
     setStreamingContent('');
     setIsStreaming(false);
     setToolActivities([]);
     setError(null);
-  }, []);
+  }, [updateMessages]);
 
   return {
     messages,

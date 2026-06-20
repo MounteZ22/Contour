@@ -1,4 +1,4 @@
-import type { AIContextItem } from '../components/AIWorkbenchPanel';
+import type { AIContextItem } from '../types';
 
 export interface ChatMessage {
   id: string;

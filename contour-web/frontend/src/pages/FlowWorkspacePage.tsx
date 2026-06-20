@@ -1,8 +1,7 @@
-import { ArrowLeft, ChevronDown, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Bot, ChevronDown, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { showToast } from '../components/Toast';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
-import { AIWorkbenchPanel } from '../components/AIWorkbenchPanel';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import { StatusBadge } from '../components/StatusBadge';
 import type { FlowStatus, ProjectData } from '../types';
@@ -16,7 +15,6 @@ export function FlowWorkspacePage() {
   const fallbackSection = localSections[0];
   const [activeSectionId, setActiveSectionId] = useState(fallbackSection?.id ?? '');
   const activeSection = localSections.find((section) => section.id === activeSectionId) ?? fallbackSection;
-  const linkedClaim = project.claims.find((claim) => initialFlow.linkedClaims.includes(claim.claimId));
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState('');
@@ -75,9 +73,9 @@ export function FlowWorkspacePage() {
     return (
       <div className="grid gap-6">
         <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-          <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
+          <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
             <ArrowLeft size={16} />
-            Back to Projects
+            Back to Contour
           </Link>
         </div>
         <div className="border border-outline-variant rounded-xl p-10 bg-surface-container text-center">
@@ -187,9 +185,9 @@ export function FlowWorkspacePage() {
   return (
     <div className="grid gap-6">
       <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/">
+        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
           <ArrowLeft size={16} />
-          Back to Projects
+          Back to Contour
         </Link>
         <span className="text-outline-variant">/</span>
         <span className="text-on-surface font-medium">{initialFlow.flowId}</span>
@@ -201,6 +199,13 @@ export function FlowWorkspacePage() {
           <h2 className="text-xl font-bold text-on-background font-headline">{initialFlow.title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+            to="/agent"
+          >
+            <Bot size={14} />
+            去 Agent 讨论
+          </Link>
           <div className="relative" ref={statusMenuRef}>
             <button
               className="cursor-pointer"
@@ -252,7 +257,7 @@ export function FlowWorkspacePage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-[260px_1fr_320px] gap-4 items-start max-xl:grid-cols-1">
+      <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
         <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
@@ -366,8 +371,6 @@ export function FlowWorkspacePage() {
             <MarkdownArticle content={activeSection.content} />
           )}
         </section>
-
-        <AIWorkbenchPanel claim={linkedClaim} />
       </div>
     </div>
   );
