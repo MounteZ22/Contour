@@ -231,7 +231,7 @@ export function ContourView() {
           <div className="flex items-end justify-between gap-4 mb-3">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Project Contour</p>
-              <h2 className="text-xl font-bold text-foreground font-headline">研究推进轮廓</h2>
+              <h2 className="text-xl font-bold text-foreground font-headline">项目轮廓</h2>
             </div>
             {!contextSelectMode && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
@@ -241,7 +241,6 @@ export function ContourView() {
             )}
           </div>
 
-          <div className="min-h-[600px]">
           <ContourMap
             contextSelectMode={contextSelectMode}
             flows={flows}
@@ -251,14 +250,13 @@ export function ContourView() {
             projectId={project.projectId}
             selectedFlowIds={selectedFlows}
           />
-          </div>
         </div>
 
         <div>
           <div className="flex items-end justify-between gap-4 mb-4">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Background</p>
-              <h2 className="text-xl font-bold text-foreground font-headline">项目背景文档</h2>
+              <h2 className="text-xl font-bold text-foreground font-headline">背景文档</h2>
             </div>
           </div>
 

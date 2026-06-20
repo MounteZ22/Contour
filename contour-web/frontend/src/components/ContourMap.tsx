@@ -197,7 +197,7 @@ export function ContourMap({
   }, [draggingId]);
 
   const canvasWidth = 1200;
-  const canvasHeight = 400;
+  const canvasHeight = 600;
   const nodeWidth = 220;
   const nodeHeight = 100;
 
