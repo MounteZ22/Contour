@@ -264,17 +264,6 @@ export function LeftSidebar({
               </div>
             )}
 
-            {!collapsed && !showNewProject && (
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-2 border-dashed text-muted-foreground font-mono text-xs"
-                onClick={() => setShowNewProject(true)}
-                type="button"
-              >
-                <Plus size={14} />
-                New Project
-              </Button>
-            )}
           </div>
         </section>
 

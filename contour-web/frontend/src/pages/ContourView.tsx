@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useSetAtom } from 'jotai';
-import { FolderOpen, Map, MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { FolderOpen, Map, Plus, Trash2 } from 'lucide-react';
 import { showToast } from '../components/Toast';
 import { ContextActionBar } from '../components/ContextActionBar';
 import { ContourMap } from '../components/ContourMap';
@@ -147,6 +147,7 @@ export function ContourView() {
       } else {
         setSelectedFlows(new Set());
         setSelectedDocs(new Set());
+        setChatContextItems([]);
       }
       return next;
     });
@@ -198,18 +199,24 @@ export function ContourView() {
 
   return (
     <div className="h-full overflow-y-auto p-8 pb-28">
-      <header className="pb-4 border-b border-border flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">
-            {projects.length} Projects · 当前项目
-          </p>
-          <h1 className="mt-1 text-3xl font-bold text-foreground font-headline">{project.title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted-foreground leading-relaxed">{project.researchGoal}</p>
+      <header className="pb-5 flex items-start justify-between gap-6">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-2xl font-bold text-foreground font-headline truncate">{project.title}</h1>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-sm font-mono text-primary font-semibold">{flows.length} Flows</span>
+              <span className="text-border">·</span>
+              <span className="text-sm font-mono text-muted-foreground">{project.docs.length} Docs</span>
+              <span className="text-border">·</span>
+              <span className="text-sm font-mono text-muted-foreground">{project.claims.length} Claims</span>
+            </div>
+          </div>
+          <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed">{project.researchGoal}</p>
         </div>
         <Button
           variant={contextSelectMode ? 'secondary' : 'outline'}
           size="sm"
-          className="rounded-full text-xs"
+          className="rounded-full text-xs shrink-0"
           onClick={toggleContextSelectMode}
           title="开启后可多选 Flow 和文档，作为 Agent 会话上下文"
           type="button"
@@ -219,33 +226,9 @@ export function ContourView() {
         </Button>
       </header>
 
-      <section className="grid gap-8 mt-8">
-        <Card className="p-6 grid grid-cols-[1.4fr_0.9fr] gap-6 max-lg:grid-cols-1">
-          <div>
-            <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">{project.projectId}</p>
-            <h2 className="text-xl font-bold text-foreground font-headline">研究认知资产</h2>
-            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-              Contour 视图用于维护 Flow、背景文档和论断之间的结构关系；讨论和生成工作统一进入 Agent 会话。
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg p-4 text-center bg-muted">
-              <span className="block text-2xl font-bold text-primary font-headline">{flows.length}</span>
-              <span className="block mt-1 text-xs text-muted-foreground font-mono">Flows</span>
-            </div>
-            <div className="rounded-lg p-4 text-center bg-muted">
-              <span className="block text-2xl font-bold text-primary font-headline">{project.docs.length}</span>
-              <span className="block mt-1 text-xs text-muted-foreground font-mono">Background</span>
-            </div>
-            <div className="rounded-lg p-4 text-center bg-muted">
-              <span className="block text-2xl font-bold text-primary font-headline">{project.claims.length}</span>
-              <span className="block mt-1 text-xs text-muted-foreground font-mono">Claims</span>
-            </div>
-          </div>
-        </Card>
-
+      <section className="grid gap-8 mt-4">
         <div>
-          <div className="flex items-end justify-between gap-4 mb-4">
+          <div className="flex items-end justify-between gap-4 mb-3">
             <div>
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Project Contour</p>
               <h2 className="text-xl font-bold text-foreground font-headline">研究推进轮廓</h2>
@@ -258,6 +241,7 @@ export function ContourView() {
             )}
           </div>
 
+          <div className="min-h-[480px]">
           <ContourMap
             contextSelectMode={contextSelectMode}
             flows={flows}
@@ -267,6 +251,7 @@ export function ContourView() {
             projectId={project.projectId}
             selectedFlowIds={selectedFlows}
           />
+          </div>
         </div>
 
         <div>
@@ -275,12 +260,6 @@ export function ContourView() {
               <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Background</p>
               <h2 className="text-xl font-bold text-foreground font-headline">项目背景文档</h2>
             </div>
-            {contextSelectMode && (
-              <Button size="sm" onClick={handleDiscuss} type="button">
-                <MessageCircle size={14} />
-                与 Agent 讨论
-              </Button>
-            )}
           </div>
 
           <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
