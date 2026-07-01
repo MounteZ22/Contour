@@ -3,9 +3,9 @@ export type FlowStatus = 'in_progress' | 'completed' | 'archived' | 'abandoned';
 export interface ProjectDoc {
   id: string;
   title: string;
-  type: string;
   content: string;
   summary: string;
+  tags: string[];
 }
 
 export interface Claim {

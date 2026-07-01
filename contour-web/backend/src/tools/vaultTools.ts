@@ -83,7 +83,9 @@ function formatFlow(flow: Flow): string {
 
 function formatDoc(doc: ProjectDoc): string {
   let result = `# ${doc.title} (${doc.id})\n`;
-  result += `- 类型：${doc.type}\n`;
+  if (doc.tags && doc.tags.length > 0) {
+    result += `- 标签：${doc.tags.join(', ')}\n`;
+  }
   result += `- 摘要：${doc.summary}\n\n`;
   result += doc.content;
   return result;

@@ -48,7 +48,7 @@ router.post('/', async (req, res) => {
     const safeGoal = yamlSafeValue(researchGoal || '');
     const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
     await fs.mkdir(projectDir, { recursive: true });
-    await fs.mkdir(path.join(projectDir, 'project'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'background'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'flows'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'claims'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'data_library'), { recursive: true });
@@ -70,7 +70,7 @@ ${researchGoal || '待补充研究目标'}
 
 项目刚创建。
 `;
-    await atomicWriteFile(path.join(projectDir, 'project', 'project_brief.md'), briefContent);
+    await atomicWriteFile(path.join(projectDir, 'background', 'project_brief.md'), briefContent);
 
     invalidateCache();
     const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId } };

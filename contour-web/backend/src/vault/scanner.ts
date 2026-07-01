@@ -43,8 +43,8 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
   let currentStage = '';
   const docs: ProjectDoc[] = [];
 
-  // 扫描 project/ 目录
-  const projectDocsDir = path.join(projectDir, 'project');
+  // 扫描 background/ 目录
+  const projectDocsDir = path.join(projectDir, 'background');
   try {
     const files = await fs.readdir(projectDocsDir);
     for (const file of files) {
@@ -55,6 +55,7 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
 
       const docId = file.replace(/\.md$/, '');
       const docTitle = parsed.title || docId;
+      const fm = parsed.frontmatter;
 
       if (docId === 'project_brief') {
         // 从 project_brief.md 内容中提取项目信息
@@ -67,13 +68,13 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
       docs.push({
         id: docId,
         title: docTitle,
-        type: inferDocType(docId),
         content: parsed.content,
         summary: makeSummary(parsed.content),
+        tags: getStringArray(fm, 'tags'),
       });
     }
   } catch {
-    // project/ 目录不存在
+    // background/ 目录不存在
   }
 
   // 扫描 flows/ 目录
@@ -259,12 +260,6 @@ function extractProjectBrief(content: string): { extractedTitle: string; extract
   return { extractedTitle, extractedGoal, extractedStage };
 }
 
-function inferDocType(docId: string): string {
-  if (docId.includes('brief') || docId.includes('overview')) return 'project_overview';
-  if (docId.includes('question')) return 'question_set';
-  if (docId.includes('terminology') || docId.includes('glossary')) return 'glossary';
-  return 'background';
-}
 
 function makeSummary(content: string): string {
   // 取第一段非空文本，限制长度

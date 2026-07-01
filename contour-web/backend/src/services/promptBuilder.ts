@@ -46,7 +46,9 @@ export async function buildSystemPrompt(
         projects.flatMap((p) => p.docs).find((d) => d.id === item.id);
       if (doc) {
         prompt += `## 文档: ${doc.title} (${doc.id})\n`;
-        prompt += `- 类型：${doc.type}\n`;
+        if (doc.tags && doc.tags.length > 0) {
+          prompt += `- 标签：${doc.tags.join(', ')}\n`;
+        }
         prompt += `${doc.content}\n\n`;
       }
     }

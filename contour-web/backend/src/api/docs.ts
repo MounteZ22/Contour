@@ -7,18 +7,17 @@ import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
 import { findProjectDir, findProjectDirForDoc, extractFrontmatterText } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue } from '../vault/yaml-utils.js';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
 
 const router = Router();
 
 // POST /api/docs - 创建新背景文档
 router.post('/', async (req, res) => {
   try {
-    const { projectId, docId, title, type } = req.body as {
+    const { projectId, docId, title } = req.body as {
       projectId?: string;
       docId?: string;
       title?: string;
-      type?: string;
     };
 
     if (!projectId || !docId || !title) {
@@ -38,11 +37,11 @@ router.post('/', async (req, res) => {
     }
 
     const safeTitle = yamlSafeValue(title);
-    const targetFile = path.join(projectDir, 'project', `${docId}.md`);
+    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
     const content = `---
 id: ${docId}
 title: ${safeTitle}
-type: ${type || 'background'}
+tags: []
 ---
 
 # ${title}
@@ -64,11 +63,11 @@ type: ${type || 'background'}
   }
 });
 
-// PUT /api/docs/:docId
+// PUT /api/docs/:docId - 更新文档内容和 frontmatter 字段
 router.put('/:docId', async (req, res) => {
   try {
     const { docId } = req.params;
-    const { content } = req.body as { content?: string };
+    const { content, tags } = req.body as { content?: string; tags?: string[] };
 
     if (content === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'content is required' };
@@ -93,14 +92,20 @@ router.put('/:docId', async (req, res) => {
       return;
     }
 
-    const targetFile = path.join(projectDir, 'project', `${docId}.md`);
+    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
 
     let finalContent = content;
     try {
       const existing = await fs.readFile(targetFile, 'utf-8');
-      const fmText = extractFrontmatterText(existing);
-      if (fmText !== null) {
-        finalContent = `---\n${fmText}\n---\n${content}`;
+      const parsed = parseFrontmatter(existing);
+      if (parsed) {
+        if (tags !== undefined) parsed.fm['tags'] = tags;
+        finalContent = stringifyWithFrontmatter(parsed.fm, content);
+      } else {
+        const fmText = extractFrontmatterText(existing);
+        if (fmText !== null) {
+          finalContent = `---\n${fmText}\n---\n${content}`;
+        }
       }
     } catch {
       // 文件不存在或无 frontmatter
@@ -133,7 +138,7 @@ router.delete('/:docId', async (req, res) => {
       return;
     }
 
-    const targetFile = path.join(projectDir, 'project', `${docId}.md`);
+    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
     try {
       await fs.unlink(targetFile);
     } catch {

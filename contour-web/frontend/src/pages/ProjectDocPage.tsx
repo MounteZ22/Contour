@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library } from 'lucide-react';
+import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library, Tag, X } from 'lucide-react';
 import { useState } from 'react';
 import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
@@ -13,6 +13,8 @@ export function ProjectDocPage() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(activeDoc.content);
+  const [editedTags, setEditedTags] = useState<string[]>(activeDoc?.tags ?? []);
+  const [tagInput, setTagInput] = useState('');
 
   if (!activeDoc) {
     return null;
@@ -20,14 +22,28 @@ export function ProjectDocPage() {
 
   const handleEdit = () => {
     setEditedContent(activeDoc.content);
+    setEditedTags([...activeDoc.tags]);
+    setTagInput('');
     setIsEditing(true);
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !editedTags.includes(t)) {
+      setEditedTags([...editedTags, t]);
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    setEditedTags(editedTags.filter((t) => t !== tag));
   };
 
   const handleSave = async () => {
     const previousDocs = localDocs;
     setLocalDocs((prev) =>
       prev.map((doc) =>
-        doc.id === activeDoc.id ? { ...doc, content: editedContent } : doc
+        doc.id === activeDoc.id ? { ...doc, content: editedContent, tags: editedTags } : doc
       )
     );
     setIsEditing(false);
@@ -36,7 +52,7 @@ export function ProjectDocPage() {
       const res = await fetch(`/api/docs/${activeDoc.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editedContent }),
+        body: JSON.stringify({ content: editedContent, tags: editedTags }),
       });
       const result = await res.json();
       if (!result.success) {
@@ -67,11 +83,69 @@ export function ProjectDocPage() {
       </div>
 
       <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">Background</p>
           <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
+          {isEditing ? (
+            <div className="flex items-center gap-3 flex-wrap mt-3">
+              <div className="grid gap-1">
+                <span className="text-[10px] font-mono text-on-surface-variant">Tags</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    className="w-28 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40"
+                    placeholder="添加标签"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+                    }}
+                  />
+                  <button
+                    className="px-2 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-mono cursor-pointer hover:bg-primary/20 transition-colors"
+                    onClick={addTag}
+                    type="button"
+                  >
+                    添加
+                  </button>
+                </div>
+                {editedTags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                    {editedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                      >
+                        {tag}
+                        <button
+                          className="cursor-pointer hover:text-error transition-colors"
+                          onClick={() => removeTag(tag)}
+                          type="button"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            activeDoc.tags && activeDoc.tags.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {activeDoc.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                  >
+                    <Tag size={10} />
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )
+          )}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap shrink-0">
           <Link
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
             to="/agent"
@@ -79,7 +153,6 @@ export function ProjectDocPage() {
             <Bot size={14} />
             去 Agent 讨论
           </Link>
-          <span className="text-xs text-on-surface-variant font-mono">{activeDoc.type.replace('_', ' ')}</span>
           {isEditing ? (
             <div className="flex gap-2">
               <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleSave} type="button">

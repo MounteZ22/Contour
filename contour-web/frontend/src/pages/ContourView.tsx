@@ -22,7 +22,6 @@ export function ContourView() {
   const flows = project?.flows ?? [];
   const [showNewDoc, setShowNewDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
-  const [newDocType, setNewDocType] = useState('background');
 
   const [contextSelectMode, setContextSelectMode] = useState(false);
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
@@ -94,7 +93,6 @@ export function ContourView() {
           projectId: project.projectId,
           docId: newId,
           title: newDocTitle.trim(),
-          type: newDocType,
         }),
       });
       const result = await res.json();
@@ -108,7 +106,6 @@ export function ContourView() {
     }
 
     setNewDocTitle('');
-    setNewDocType('background');
     setShowNewDoc(false);
     onRefresh();
   };
@@ -333,7 +330,7 @@ export function ContourView() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="inline-flex items-center gap-2 text-muted-foreground">
                       <FolderOpen size={16} />
-                      <span className="text-xs font-mono">{doc.type.replace('_', ' ')}</span>
+                      <span className="text-xs font-mono">{doc.id}</span>
                     </div>
                     {!contextSelectMode && (
                       <Button
@@ -361,6 +358,15 @@ export function ContourView() {
                   </div>
                   <h3 className="text-base font-semibold text-foreground font-headline mb-1">{doc.title}</h3>
                   <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
+                  {doc.tags && doc.tags.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                      {doc.tags.map((tag) => (
+                        <span key={tag} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </>
               );
 
@@ -403,16 +409,6 @@ export function ContourView() {
                     placeholder="文档标题"
                     value={newDocTitle}
                   />
-                  <select
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
-                    onChange={(event) => setNewDocType(event.target.value)}
-                    value={newDocType}
-                  >
-                    <option value="background">Background</option>
-                    <option value="project_overview">Project Overview</option>
-                    <option value="question_set">Question Set</option>
-                    <option value="glossary">Glossary</option>
-                  </select>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleAddDoc} type="button">
                       创建

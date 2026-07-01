@@ -59,9 +59,9 @@ export async function findProjectDirForDoc(docId: string): Promise<string | null
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const projectDocsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'project');
+      const docsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'background');
       try {
-        const files = await fs.readdir(projectDocsDir);
+        const files = await fs.readdir(docsDir);
         if (files.includes(`${docId}.md`)) {
           return path.join(CONFIG.VAULTS_DIR, entry.name);
         }
