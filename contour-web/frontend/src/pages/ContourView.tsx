@@ -83,7 +83,8 @@ export function ContourView() {
 
   const handleAddDoc = async () => {
     if (!newDocTitle.trim()) return;
-    const newId = `doc_${crypto.randomUUID().slice(0, 8)}`;
+    // 直接用标题作为文件名，替换掉文件系统不安全的字符
+    const docId = newDocTitle.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
 
     try {
       const res = await fetch('/api/docs', {
@@ -91,7 +92,7 @@ export function ContourView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId: project.projectId,
-          docId: newId,
+          docId,
           title: newDocTitle.trim(),
         }),
       });
@@ -273,7 +274,9 @@ export function ContourView() {
               <span className="text-sm font-mono text-muted-foreground">{project.claims.length} Claims</span>
             </div>
           </div>
-          <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed">{project.researchGoal}</p>
+          {project.researchGoal && (
+            <p className="max-w-3xl text-sm text-muted-foreground leading-relaxed">{project.researchGoal}</p>
+          )}
         </div>
         <Button
           variant={contextSelectMode ? 'secondary' : 'outline'}

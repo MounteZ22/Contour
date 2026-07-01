@@ -27,7 +27,6 @@ router.post('/', async (req, res) => {
     }
 
     validateId(projectId, 'projectId');
-    validateId(docId, 'docId');
 
     const projectDir = await findProjectDir(projectId);
     if (!projectDir) {
@@ -75,7 +74,7 @@ router.put('/:docId', async (req, res) => {
       return;
     }
 
-    validateId(docId, 'docId');
+    // docId 允许中文等字符，不校验格式
 
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
@@ -130,7 +129,7 @@ router.put('/:docId', async (req, res) => {
 router.delete('/:docId', async (req, res) => {
   try {
     const { docId } = req.params;
-    validateId(docId, 'docId');
+    // docId 允许中文等字符，不校验格式
     const projectDir = await findProjectDirForDoc(docId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Doc not found' };

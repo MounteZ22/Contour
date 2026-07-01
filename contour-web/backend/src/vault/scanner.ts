@@ -38,9 +38,9 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
   const parts = basename.split('_');
   const projectId = (parts.length >= 2 ? `${parts[0]}_${parts[1]}` : parts[0]) || 'PRJ_001';
 
-  let title = 'Untitled Project';
-  let researchGoal = '';
-  let currentStage = '';
+  // 从目录名提取项目标题：PRJ_001_示例研究项目 → "示例研究项目"
+  const titleFromDir = parts.length > 2 ? parts.slice(2).join('_').replace(/_/g, ' ') : '';
+  const title = titleFromDir || 'Untitled Project';
   const docs: ProjectDoc[] = [];
 
   // 扫描 background/ 目录
@@ -56,14 +56,6 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
       const docId = file.replace(/\.md$/, '');
       const docTitle = parsed.title || docId;
       const fm = parsed.frontmatter;
-
-      if (docId === 'project_brief') {
-        // 从 project_brief.md 内容中提取项目信息
-        const { extractedTitle, extractedGoal, extractedStage } = extractProjectBrief(parsed.content);
-        title = extractedTitle || docTitle;
-        researchGoal = extractedGoal;
-        currentStage = extractedStage;
-      }
 
       docs.push({
         id: docId,
@@ -108,8 +100,8 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
   return {
     projectId,
     title,
-    researchGoal,
-    currentStage,
+    researchGoal: '',
+    currentStage: '',
     docs,
     flows,
     claims,
@@ -239,27 +231,6 @@ async function scanClaim(filePath: string): Promise<Claim | null> {
     tags: getStringArray(fm, 'tags'),
   };
 }
-
-function extractProjectBrief(content: string): { extractedTitle: string; extractedGoal: string; extractedStage: string } {
-  let extractedTitle = '';
-  let extractedGoal = '';
-  let extractedStage = '';
-
-  // 提取第一个 H1 作为标题
-  const h1Match = content.match(/^#\s+(.+)/m);
-  if (h1Match) extractedTitle = h1Match[1].trim();
-
-  // 提取 Research Goal 段落
-  const goalMatch = content.match(/##\s+Research Goal\s*\n+([\s\S]*?)(?=\n##|$)/i);
-  if (goalMatch) extractedGoal = goalMatch[1].trim();
-
-  // 提取 Current Stage 段落
-  const stageMatch = content.match(/##\s+Current Stage\s*\n+([\s\S]*?)(?=\n##|$)/i);
-  if (stageMatch) extractedStage = stageMatch[1].trim();
-
-  return { extractedTitle, extractedGoal, extractedStage };
-}
-
 
 function makeSummary(content: string): string {
   // 取第一段非空文本，限制长度
