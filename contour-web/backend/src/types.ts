@@ -177,14 +177,6 @@ export interface FetchModelsResult {
 }
 
 // 应用设置
-export interface LLMConfig {
-  provider: 'anthropic' | 'deepseek' | 'kimi' | 'custom';
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-}
-
 export interface AppSettings {
-  llm?: LLMConfig;
   agentChannelId?: string;
 }
