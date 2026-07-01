@@ -7,7 +7,7 @@ import { loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
 import { findProjectDir, findProjectDirForClaim, extractFrontmatterText } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue } from '../vault/yaml-utils.js';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
 
 const router = Router();
 
@@ -118,11 +118,16 @@ tags: []
   }
 });
 
-// PUT /api/claims/:claimId - 更新 claim 内容
+// PUT /api/claims/:claimId - 更新 claim 内容和 frontmatter 字段
 router.put('/:claimId', async (req, res) => {
   try {
     const { claimId } = req.params;
-    const { content } = req.body as { content?: string };
+    const { content, confidence, status, tags } = req.body as {
+      content?: string;
+      confidence?: 'low' | 'medium' | 'high';
+      status?: 'tentative' | 'active' | 'revised' | 'weakened' | 'superseded' | 'rejected';
+      tags?: string[];
+    };
 
     if (content === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'content is required' };
@@ -141,12 +146,22 @@ router.put('/:claimId', async (req, res) => {
 
     const targetFile = path.join(projectDir, 'claims', `${claimId}.md`);
 
+    // 读取现有文件，更新 frontmatter 字段
     let finalContent = content;
     try {
       const existing = await fs.readFile(targetFile, 'utf-8');
-      const fmText = extractFrontmatterText(existing);
-      if (fmText !== null) {
-        finalContent = `---\n${fmText}\n---\n${content}`;
+      const parsed = parseFrontmatter(existing);
+      if (parsed) {
+        // 只更新传入了的字段
+        if (confidence !== undefined) parsed.fm['confidence'] = confidence;
+        if (status !== undefined) parsed.fm['status'] = status;
+        if (tags !== undefined) parsed.fm['tags'] = tags;
+        finalContent = stringifyWithFrontmatter(parsed.fm, content);
+      } else {
+        const fmText = extractFrontmatterText(existing);
+        if (fmText !== null) {
+          finalContent = `---\n${fmText}\n---\n${content}`;
+        }
       }
     } catch {
       // 文件不存在或无 frontmatter

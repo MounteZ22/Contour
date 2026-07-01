@@ -1,9 +1,12 @@
-import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library, Shield, Tag } from 'lucide-react';
+import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library, Shield, Tag, X } from 'lucide-react';
 import { useState } from 'react';
 import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import type { Claim, ProjectData } from '../types';
+
+const CONFIDENCE_OPTIONS = ['low', 'medium', 'high'] as const;
+const STATUS_OPTIONS = ['tentative', 'active', 'revised', 'weakened', 'superseded', 'rejected'] as const;
 
 const CONFIDENCE_LABELS: Record<string, string> = {
   low: 'Low',
@@ -35,6 +38,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }
   rejected: { bg: '#fee2e2', text: '#991b1b', border: '#ef4444' },
 };
 
+const selectBase = `w-full rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40`;
+
 export function ProjectClaimPage() {
   const { project } = useOutletContext<{ project: ProjectData; projects: ProjectData[] }>();
   const { claimId } = useParams();
@@ -43,6 +48,10 @@ export function ProjectClaimPage() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(activeClaim?.content ?? '');
+  const [editedConfidence, setEditedConfidence] = useState<string>(activeClaim?.confidence ?? 'medium');
+  const [editedStatus, setEditedStatus] = useState<string>(activeClaim?.status ?? 'tentative');
+  const [editedTags, setEditedTags] = useState<string[]>(activeClaim?.tags ?? []);
+  const [tagInput, setTagInput] = useState('');
 
   if (!activeClaim) {
     return null;
@@ -50,14 +59,33 @@ export function ProjectClaimPage() {
 
   const handleEdit = () => {
     setEditedContent(activeClaim.content);
+    setEditedConfidence(activeClaim.confidence);
+    setEditedStatus(activeClaim.status);
+    setEditedTags([...activeClaim.tags]);
+    setTagInput('');
     setIsEditing(true);
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !editedTags.includes(t)) {
+      setEditedTags([...editedTags, t]);
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    setEditedTags(editedTags.filter((t) => t !== tag));
   };
 
   const handleSave = async () => {
     const previousClaims = localClaims;
+    // 乐观更新
     setLocalClaims((prev) =>
       prev.map((claim) =>
-        claim.claimId === activeClaim.claimId ? { ...claim, content: editedContent } : claim
+        claim.claimId === activeClaim.claimId
+          ? { ...claim, content: editedContent, confidence: editedConfidence as Claim['confidence'], status: editedStatus as Claim['status'], tags: editedTags }
+          : claim
       )
     );
     setIsEditing(false);
@@ -66,7 +94,12 @@ export function ProjectClaimPage() {
       const res = await fetch(`/api/claims/${activeClaim.claimId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editedContent }),
+        body: JSON.stringify({
+          content: editedContent,
+          confidence: editedConfidence,
+          status: editedStatus,
+          tags: editedTags,
+        }),
       });
       const result = await res.json();
       if (!result.success) {
@@ -108,45 +141,116 @@ export function ProjectClaimPage() {
             Research Claim
           </p>
           <h2 className="text-xl font-bold text-on-background font-headline">{activeClaim.title}</h2>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* 信心等级徽标 */}
-            <span
-              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono"
-              style={{
-                backgroundColor: cc.bg,
-                color: cc.text,
-                border: `1px solid ${cc.border}`,
-              }}
-            >
-              <Shield size={11} />
-              {CONFIDENCE_LABELS[activeClaim.confidence] ?? activeClaim.confidence}
-            </span>
-            {/* 状态徽标 */}
-            <span
-              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono"
-              style={{
-                backgroundColor: sc.bg,
-                color: sc.text,
-                border: `1px solid ${sc.border}`,
-              }}
-            >
-              {STATUS_LABELS[activeClaim.status] ?? activeClaim.status}
-            </span>
-            {/* 标签 */}
-            {activeClaim.tags && activeClaim.tags.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {activeClaim.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
-                  >
-                    <Tag size={10} />
-                    {tag}
-                  </span>
-                ))}
+          {isEditing ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* 编辑模式下选择器 */}
+              <div className="grid gap-1">
+                <span className="text-[10px] font-mono text-on-surface-variant">Confidence</span>
+                <select
+                  className={selectBase}
+                  value={editedConfidence}
+                  onChange={(e) => setEditedConfidence(e.target.value)}
+                >
+                  {CONFIDENCE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{CONFIDENCE_LABELS[opt]}</option>
+                  ))}
+                </select>
               </div>
-            )}
-          </div>
+              <div className="grid gap-1">
+                <span className="text-[10px] font-mono text-on-surface-variant">Status</span>
+                <select
+                  className={selectBase}
+                  value={editedStatus}
+                  onChange={(e) => setEditedStatus(e.target.value)}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{STATUS_LABELS[opt]}</option>
+                  ))}
+                </select>
+              </div>
+              {/* 标签编辑 */}
+              <div className="grid gap-1">
+                <span className="text-[10px] font-mono text-on-surface-variant">Tags</span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    className="w-28 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40"
+                    placeholder="添加标签"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+                    }}
+                  />
+                  <button
+                    className="px-2 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-mono cursor-pointer hover:bg-primary/20 transition-colors"
+                    onClick={addTag}
+                    type="button"
+                  >
+                    添加
+                  </button>
+                </div>
+                {editedTags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                    {editedTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                      >
+                        {tag}
+                        <button
+                          className="cursor-pointer hover:text-error transition-colors"
+                          onClick={() => removeTag(tag)}
+                          type="button"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* 信心等级徽标 */}
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono"
+                style={{
+                  backgroundColor: cc.bg,
+                  color: cc.text,
+                  border: `1px solid ${cc.border}`,
+                }}
+              >
+                <Shield size={11} />
+                {CONFIDENCE_LABELS[activeClaim.confidence] ?? activeClaim.confidence}
+              </span>
+              {/* 状态徽标 */}
+              <span
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono"
+                style={{
+                  backgroundColor: sc.bg,
+                  color: sc.text,
+                  border: `1px solid ${sc.border}`,
+                }}
+              >
+                {STATUS_LABELS[activeClaim.status] ?? activeClaim.status}
+              </span>
+              {/* 标签 */}
+              {activeClaim.tags && activeClaim.tags.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {activeClaim.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                    >
+                      <Tag size={10} />
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3 flex-wrap shrink-0">
           <Link
