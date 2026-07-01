@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
-import type { AppSettings, LLMConfig } from '../types.js';
+import type { AppSettings } from '../types.js';
 
 const SETTINGS_FILE = path.join(CONFIG.CONFIG_DIR, 'settings.json');
 
@@ -31,9 +31,4 @@ export function updateSettings(updates: Partial<AppSettings>): AppSettings {
   }
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8');
   return updated;
-}
-
-export function getLLMConfig(): LLMConfig | undefined {
-  const settings = getSettings();
-  return settings.llm;
 }
