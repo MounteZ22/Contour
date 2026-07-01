@@ -80,3 +80,30 @@ export async function findProjectDirForDoc(docId: string): Promise<string | null
   }
   return null;
 }
+
+export async function findProjectDirForClaim(claimId: string): Promise<string | null> {
+  try {
+    const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const claimsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'claims');
+      try {
+        const files = await fs.readdir(claimsDir);
+        if (files.includes(`${claimId}.md`)) {
+          return path.join(CONFIG.VAULTS_DIR, entry.name);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } catch {
+    // vaults/ 不存在
+  }
+  try {
+    const legacyStat = await fs.stat(CONFIG.LEGACY_VAULT);
+    if (legacyStat.isDirectory()) return CONFIG.LEGACY_VAULT;
+  } catch {
+    // ignore
+  }
+  return null;
+}

@@ -14,8 +14,7 @@ export interface Claim {
   content: string;
   confidence: 'low' | 'medium' | 'high';
   status: 'tentative' | 'active' | 'revised' | 'weakened' | 'superseded' | 'rejected';
-  uncertainty: string;
-  recommendedWording: string;
+  tags: string[];
 }
 
 export interface FlowSection {
@@ -58,7 +57,7 @@ export interface ContourAppData {
 export interface AIContextItem {
   id: string;
   title: string;
-  type: 'flow' | 'doc';
+  type: 'flow' | 'doc' | 'claim';
 }
 
 // ===== 渠道配置类型 =====

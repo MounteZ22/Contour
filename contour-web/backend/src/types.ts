@@ -14,8 +14,7 @@ export interface Claim {
   content: string;
   confidence: 'low' | 'medium' | 'high';
   status: 'tentative' | 'active' | 'revised' | 'weakened' | 'superseded' | 'rejected';
-  uncertainty: string;
-  recommendedWording: string;
+  tags: string[];
 }
 
 export interface FlowSection {

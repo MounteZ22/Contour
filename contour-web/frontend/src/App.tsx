@@ -6,6 +6,7 @@ import { AgentSessionView } from './pages/AgentSessionView';
 import { AgentView } from './pages/AgentView';
 import { ContourView } from './pages/ContourView';
 import { FlowWorkspacePage } from './pages/FlowWorkspacePage';
+import { ProjectClaimPage } from './pages/ProjectClaimPage';
 import { ProjectDocPage } from './pages/ProjectDocPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/Toast';
@@ -82,6 +83,7 @@ export default function App() {
             <Route element={<AgentView />} path="agent" />
             <Route element={<AgentSessionView />} path="agent/:sessionId" />
             <Route element={<FlowWorkspacePage />} path="project/:projectId/flows/:flowId" />
+            <Route element={<ProjectClaimPage />} path="project/:projectId/claims/:claimId" />
             <Route element={<ProjectDocPage />} path="project/:projectId/docs/:docId" />
             <Route element={<SettingsPage />} path="settings" />
           </Route>

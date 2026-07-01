@@ -3,6 +3,7 @@ import { MessageCircle, X } from 'lucide-react';
 interface ContextActionBarProps {
   selectedFlowCount: number;
   selectedDocCount: number;
+  selectedClaimCount: number;
   onClear: () => void;
   onDiscuss?: () => void;
 }
@@ -10,10 +11,11 @@ interface ContextActionBarProps {
 export function ContextActionBar({
   selectedFlowCount,
   selectedDocCount,
+  selectedClaimCount,
   onClear,
   onDiscuss,
 }: ContextActionBarProps) {
-  const hasSelection = selectedFlowCount > 0 || selectedDocCount > 0;
+  const hasSelection = selectedFlowCount > 0 || selectedDocCount > 0 || selectedClaimCount > 0;
 
   return (
     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
@@ -22,7 +24,10 @@ export function ContextActionBar({
           已选择{' '}
           <strong className="text-primary">{selectedFlowCount}</strong>{' '}
           个 Flow ·{' '}
-          <strong className="text-primary">{selectedDocCount}</strong> 个文档
+          <strong className="text-primary">{selectedDocCount}</strong>{' '}
+          个文档 ·{' '}
+          <strong className="text-primary">{selectedClaimCount}</strong>{' '}
+          个 Claims
         </span>
         <div className="w-px h-5 bg-outline-variant" />
         <button

@@ -235,8 +235,7 @@ async function scanClaim(filePath: string): Promise<Claim | null> {
     content,
     confidence: (getString(fm, 'confidence', 'medium') as Claim['confidence']),
     status: (getString(fm, 'status', 'tentative') as Claim['status']),
-    uncertainty: extractSection(content, 'Uncertainty') || '',
-    recommendedWording: extractSection(content, 'Recommended wording') || '',
+    tags: getStringArray(fm, 'tags'),
   };
 }
 
@@ -258,12 +257,6 @@ function extractProjectBrief(content: string): { extractedTitle: string; extract
   if (stageMatch) extractedStage = stageMatch[1].trim();
 
   return { extractedTitle, extractedGoal, extractedStage };
-}
-
-function extractSection(content: string, sectionName: string): string | null {
-  const regex = new RegExp(`##\\s+${sectionName}\\s*\\n+([\\s\\S]*?)(?=\\n##|$)`, 'i');
-  const match = content.match(regex);
-  return match ? match[1].trim() : null;
 }
 
 function inferDocType(docId: string): string {

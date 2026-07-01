@@ -6,7 +6,7 @@ import { Button } from '../ui/button';
 import { FileTree, type FileTreeNode } from '../agent/FileTree';
 import { rightPanelOpenAtom, rightPanelWidthAtom } from '../../state/shell';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
-import type { AIContextItem, Flow, ProjectData, ProjectDoc } from '../../types';
+import type { AIContextItem, Claim, Flow, ProjectData, ProjectDoc } from '../../types';
 
 type PanelTab = 'session' | 'project';
 
@@ -63,10 +63,19 @@ function buildProjectFiles(project: ProjectData): FileTreeNode[] {
         id: `project:claim:${claim.claimId}`,
         name: `${claim.claimId}.md`,
         path: `claims/${claim.claimId}.md`,
-        content: `# ${claim.title}\n\n${claim.content}\n\n- Confidence: ${claim.confidence}\n- Status: ${claim.status}\n\n## Uncertainty\n\n${claim.uncertainty}\n\n## Recommended wording\n\n${claim.recommendedWording}`,
+        content: `# ${claim.title}\n\n${claim.content}`,
       })),
     },
   ];
+}
+
+function claimToTree(claim: Claim, prefix: string): FileTreeNode {
+  return {
+    id: `${prefix}:claim:${claim.claimId}`,
+    name: `${claim.claimId}.md`,
+    path: `claims/${claim.claimId}.md`,
+    content: `# ${claim.title}\n\n${claim.content}`,
+  };
 }
 
 function buildSessionFiles(project: ProjectData, contextItems: AIContextItem[]): FileTreeNode[] {
@@ -76,6 +85,9 @@ function buildSessionFiles(project: ProjectData, contextItems: AIContextItem[]):
     if (item.type === 'flow') {
       const flow = project.flows.find((candidate) => candidate.flowId === item.id);
       if (flow) nodes.push(flowToTree(flow, 'session'));
+    } else if (item.type === 'claim') {
+      const claim = project.claims.find((candidate) => candidate.claimId === item.id);
+      if (claim) nodes.push(claimToTree(claim, 'session'));
     } else {
       const doc = project.docs.find((candidate) => candidate.id === item.id);
       if (doc) nodes.push(docToTree(doc, 'session'));

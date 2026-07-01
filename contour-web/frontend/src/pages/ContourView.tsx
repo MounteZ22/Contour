@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useSetAtom } from 'jotai';
-import { FolderOpen, Map, Plus, Trash2 } from 'lucide-react';
+import { FolderOpen, Map, Plus, Shield, Trash2 } from 'lucide-react';
 import { showToast } from '../components/Toast';
 import { ContextActionBar } from '../components/ContextActionBar';
 import { ContourMap } from '../components/ContourMap';
@@ -27,11 +27,17 @@ export function ContourView() {
   const [contextSelectMode, setContextSelectMode] = useState(false);
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [selectedClaims, setSelectedClaims] = useState<Set<string>>(new Set());
+  const [showNewClaim, setShowNewClaim] = useState(false);
+  const [newClaimTitle, setNewClaimTitle] = useState('');
 
   useEffect(() => {
     setContextSelectMode(false);
     setSelectedFlows(new Set());
     setSelectedDocs(new Set());
+    setSelectedClaims(new Set());
+    setShowNewClaim(false);
+    setNewClaimTitle('');
   }, [project?.projectId]);
 
   if (!project) {
@@ -107,6 +113,51 @@ export function ContourView() {
     onRefresh();
   };
 
+  const handleAddClaim = async () => {
+    if (!newClaimTitle.trim()) return;
+    const newId = `CLM_${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+
+    try {
+      const res = await fetch('/api/claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: project.projectId,
+          claimId: newId,
+          title: newClaimTitle.trim(),
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        showToast(`创建 Claim 失败：${result.error}`, 'error');
+        return;
+      }
+    } catch (err) {
+      showToast(`创建 Claim 请求失败：${(err as Error).message}`, 'error');
+      return;
+    }
+
+    setNewClaimTitle('');
+    setShowNewClaim(false);
+    onRefresh();
+  };
+
+  const handleDeleteClaim = async (claimId: string, title: string) => {
+    if (!confirm(`确定要删除 Claim "${title}" 吗？此操作不可撤销。`)) return;
+    try {
+      const res = await fetch(`/api/claims/${claimId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!result.success) {
+        showToast(`删除 Claim 失败：${result.error}`, 'error');
+        return;
+      }
+    } catch (err) {
+      showToast(`删除 Claim 请求失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    onRefresh();
+  };
+
   const handleDeleteFlow = async (flowId: string, title: string) => {
     if (!confirm(`确定要删除 Flow "${title}" 吗？此操作不可撤销。`)) return;
     try {
@@ -171,9 +222,19 @@ export function ContourView() {
     });
   };
 
+  const toggleClaimSelection = (claimId: string) => {
+    setSelectedClaims((prev) => {
+      const next = new Set(prev);
+      if (next.has(claimId)) next.delete(claimId);
+      else next.add(claimId);
+      return next;
+    });
+  };
+
   const clearAllSelections = () => {
     setSelectedFlows(new Set());
     setSelectedDocs(new Set(project.docs.map((doc) => doc.id)));
+    setSelectedClaims(new Set());
   };
 
   const contextItems: AIContextItem[] = [
@@ -184,6 +245,10 @@ export function ContourView() {
     ...Array.from(selectedDocs).map((id) => {
       const doc = project.docs.find((item) => item.id === id);
       return { id, title: doc?.title ?? id, type: 'doc' as const };
+    }),
+    ...Array.from(selectedClaims).map((id) => {
+      const claim = project.claims.find((item) => item.claimId === id);
+      return { id, title: claim?.title ?? id, type: 'claim' as const };
     }),
   ];
 
@@ -375,6 +440,124 @@ export function ContourView() {
             )}
           </div>
         </div>
+
+        <div>
+          <div className="flex items-end justify-between gap-4 mb-4">
+            <div>
+              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Claims</p>
+              <h2 className="text-xl font-bold text-foreground font-headline">研究判断</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
+            {project.claims.map((claim) => {
+              const isClaimSelected = selectedClaims.has(claim.claimId);
+              const confidenceColors: Record<string, string> = {
+                low: '#f59e0b',
+                medium: '#3b82f6',
+                high: '#10b981',
+              };
+              const confidenceBgs: Record<string, string> = {
+                low: '#fef3c7',
+                medium: '#dbeafe',
+                high: '#d1fae5',
+              };
+              const cc = confidenceColors[claim.confidence] ?? '#6b7280';
+              const cb = confidenceBgs[claim.confidence] ?? '#f3f4f6';
+
+              const cardContent = (
+                <>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="inline-flex items-center gap-2 text-muted-foreground">
+                      <Shield size={16} />
+                      <span className="text-xs font-mono">{claim.claimId}</span>
+                    </div>
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold font-mono"
+                      style={{ backgroundColor: cb, color: cc, border: `1px solid ${cc}` }}
+                    >
+                      {claim.confidence}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground font-headline mb-1">{claim.title}</h3>
+                  {claim.tags && claim.tags.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                      {claim.tags.map((tag) => (
+                        <span key={tag} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+
+              return contextSelectMode ? (
+                <Card
+                  className={`p-5 transition-all cursor-pointer ${
+                    isClaimSelected
+                      ? 'border-primary/50 bg-primary/5'
+                      : 'hover:border-primary/25 hover:shadow-md'
+                  }`}
+                  key={claim.claimId}
+                  onClick={() => toggleClaimSelection(claim.claimId)}
+                >
+                  {cardContent}
+                </Card>
+              ) : (
+                <Card className="transition-all hover:border-primary/25 hover:shadow-md" key={claim.claimId}>
+                  <Link className="block p-5" to={`/project/${project.projectId}/claims/${claim.claimId}`}>
+                    {cardContent}
+                  </Link>
+                </Card>
+              );
+            })}
+
+            {showNewClaim ? (
+              <Card className="p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Plus size={16} className="text-primary" />
+                  <span className="text-xs text-primary font-semibold font-mono">New</span>
+                </div>
+                <div className="grid gap-3">
+                  <input
+                    autoFocus
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                    onChange={(event) => setNewClaimTitle(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') handleAddClaim();
+                      if (event.key === 'Escape') setShowNewClaim(false);
+                    }}
+                    placeholder="Claim 标题"
+                    value={newClaimTitle}
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleAddClaim} type="button">
+                      创建
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setShowNewClaim(false)} type="button">
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              <Button
+                variant="outline"
+                className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-5 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5"
+                onClick={() => setShowNewClaim(true)}
+                type="button"
+              >
+                <div className="flex items-center gap-2 text-primary">
+                  <Plus size={16} />
+                  <span className="text-xs font-semibold font-mono">New</span>
+                </div>
+                <h3 className="text-base font-semibold text-primary font-headline">New Claim</h3>
+                <p className="text-xs text-muted-foreground font-mono">记录新的研究判断</p>
+              </Button>
+            )}
+          </div>
+        </div>
       </section>
 
       {contextSelectMode && (
@@ -383,6 +566,7 @@ export function ContourView() {
           onDiscuss={handleDiscuss}
           selectedDocCount={selectedDocs.size}
           selectedFlowCount={selectedFlows.size}
+          selectedClaimCount={selectedClaims.size}
         />
       )}
     </div>
