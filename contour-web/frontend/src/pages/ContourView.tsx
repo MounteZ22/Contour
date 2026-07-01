@@ -333,7 +333,7 @@ export function ContourView() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="inline-flex items-center gap-2 text-muted-foreground">
                       <FolderOpen size={16} />
-                      <span className="text-xs font-mono">{doc.id}</span>
+                      <span className="text-sm font-semibold text-foreground font-headline">{doc.id}</span>
                     </div>
                     {!contextSelectMode && (
                       <Button
@@ -359,8 +359,7 @@ export function ContourView() {
                       </div>
                     )}
                   </div>
-                  <h3 className="text-base font-semibold text-foreground font-headline mb-1">{doc.title}</h3>
-                  <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{doc.summary}</p>
                   {doc.tags && doc.tags.length > 0 && (
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
                       {doc.tags.map((tag) => (
