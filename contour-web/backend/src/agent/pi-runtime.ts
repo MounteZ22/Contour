@@ -28,6 +28,7 @@ import type {
   AgentStreamEvent,
   PromptOptions,
 } from "./agent-runtime.js";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,8 @@ export class PiRuntime implements AgentRuntime {
   private config: AgentRuntimeConfig | null = null;
   private session: AgentSession | null = null;
   private modelRegistry: ModelRegistry | null = null;
-  /** 当前模型（find() 返回的 Model 对象，因 pi-ai 嵌套依赖类型无法直接导入，用 any） */
-  private model: any = null;
+  /** 当前模型（通过 ModelRegistry.find() 查找得到） */
+  private model: Model<Api> | null = null;
   private activePrompt: ActivePrompt | null = null;
 
   /**
@@ -187,8 +188,11 @@ export class PiRuntime implements AgentRuntime {
       .prompt(text, {
         images: options?.images as any,
       })
-      .catch((err: Error) => {
-        pushEvent({ type: "error", message: err.message });
+      .catch((err: unknown) => {
+        pushEvent({
+          type: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
         signalDone();
       });
 
