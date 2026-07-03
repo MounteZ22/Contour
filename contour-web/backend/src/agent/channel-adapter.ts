@@ -9,26 +9,11 @@
  */
 
 import { AGENT_COMPATIBLE_PROVIDERS, PROVIDER_DEFAULT_URLS } from "../types.js";
-import type { Channel, ChannelModel, ProviderType } from "../types.js";
+import type { Channel, ChannelModel } from "../types.js";
 import {
-  normalizeAnthropicBaseUrl,
   normalizeBaseUrl,
 } from "../services/channelManager.js";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
-
-/**
- * 判断是否为非版本化路径的 provider
- *
- * 与 channelManager.ts 中 testAnthropicCompatible / fetchAnthropicCompatibleModels
- * 的判断逻辑保持一致：deepseek、kimi-api、kimi-coding 的 API 路径不需要 /v1 后缀。
- */
-function isNonVersionedProvider(provider: ProviderType): boolean {
-  return (
-    provider === "deepseek" ||
-    provider === "kimi-api" ||
-    provider === "kimi-coding"
-  );
-}
 
 /**
  * 获取渠道的默认模型 ID
@@ -80,14 +65,15 @@ export function channelToAgentRuntimeConfig(
   // ── 2. 确定 baseUrl（规范化） ───────────────────────────────────────────
   //
   // 优先使用渠道配置的 baseUrl，如果为空则回退到 PROVIDER_DEFAULT_URLS。
-  // 规范化逻辑与 channelManager 中的 testChannelDirect / fetchModels 保持一致：
-  // - anthropic → normalizeAnthropicBaseUrl（追加 /v1 版本路径）
-  // - deepseek / kimi-api / kimi-coding → normalizeBaseUrl（仅去尾部斜杠）
+  // 仅做基础规范化（去尾部斜杠 + 去 /v\d+ 和 /messages 后缀），
+  // 不追加版本路径。Pi SDK 内部通过 ModelRegistry.registerProvider()
+  // 自行处理版本路径拼接，如果这里预先追加 /v1 会导致双版本路径（如
+  // /v1/v1/messages）→ 404。
   const rawBaseUrl =
     channel.baseUrl || PROVIDER_DEFAULT_URLS[channel.provider] || "";
-  const baseUrl = isNonVersionedProvider(channel.provider)
-    ? normalizeBaseUrl(rawBaseUrl)
-    : normalizeAnthropicBaseUrl(rawBaseUrl);
+  const baseUrl = normalizeBaseUrl(rawBaseUrl)
+    .replace(/\/v\d+$/, "")
+    .replace(/\/messages$/, "");
 
   // ── 3. 确定模型 ─────────────────────────────────────────────────────────
   const model = overrides?.model ?? getDefaultModelId(channel.models);

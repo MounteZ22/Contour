@@ -9,7 +9,7 @@
  * 2. 非兼容 provider 抛出明确错误
  * 3. 无 enabled 模型时抛出明确错误
  * 4. overrides 正确覆盖默认值
- * 5. baseUrl 规范化逻辑正确（anthropic 追加 /v1，deepseek 仅去斜杠）
+ * 5. baseUrl 规范化逻辑正确（去尾部斜杠 + 去 /v\d+ 和 /messages 后缀，不追加 /v1）
  */
 
 import { channelToAgentRuntimeConfig } from "./channel-adapter.js";
@@ -90,7 +90,7 @@ function runTests() {
   console.log("");
 
   assert(config.apiKey === "sk-ant-test-key-12345", "apiKey 正确传递");
-  assert(config.baseUrl === "https://api.anthropic.com/v1", "anthropic baseUrl 追加 /v1");
+  assert(config.baseUrl === "https://api.anthropic.com", "anthropic baseUrl 不做版本路径追加（Pi SDK 自行处理）");
   assert(config.model === "claude-sonnet-5", "默认模型为第一个 enabled 模型");
   assert(typeof config.cwd === "string" && config.cwd.length > 0, "cwd 有默认值");
   assert(
@@ -181,8 +181,8 @@ function runTests() {
   const anthroConfig = channelToAgentRuntimeConfig(anthroChannel);
 
   assert(
-    anthroConfig.baseUrl === "https://api.anthropic.com/v1",
-    "anthropic baseUrl 去除 /messages 后缀",
+    anthroConfig.baseUrl === "https://api.anthropic.com",
+    "anthropic baseUrl 去除 /v1/messages 后缀（Pi SDK 自行处理版本路径）",
   );
 
   // ── 测试组 8: kimi-api provider ─────────────────────────────────────────

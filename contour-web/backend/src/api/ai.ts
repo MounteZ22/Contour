@@ -5,17 +5,7 @@ import { getToolDefinitions } from '../tools/toolRegistry.js';
 import type { ChatRequestBody } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
 import { channelToAgentRuntimeConfig } from '../agent/channel-adapter.js';
-import type { AgentStreamEvent } from '../agent/agent-runtime.js';
-import {
-  createAgentSession,
-  AuthStorage,
-  ModelRegistry,
-  SettingsManager,
-  DefaultResourceLoader,
-  SessionManager,
-  type AgentSession,
-  type AgentSessionEvent,
-} from '@earendil-works/pi-coding-agent';
+import { PiRuntime } from '../agent/pi-runtime.js';
 
 
 const router = Router();
@@ -114,15 +104,14 @@ router.post('/test', async (req, res) => {
 /**
  * POST /api/ai/pi-chat
  *
- * 实验性路由：通过 Pi Agent SDK 发送消息并流式返回结果。
- * 完整链路：渠道配置 → AgentRuntimeConfig → createAgentSession → SSE 事件流。
+ * 通过 PiRuntime（AgentRuntime 接口实现）发送消息并流式返回结果。
+ * 完整链路：渠道配置 → channelToAgentRuntimeConfig() → PiRuntime.init() → SSE 事件流。
  *
- * 注意：本路由直接使用 @earendil-works/pi-coding-agent 的 createAgentSession
- * API，而非通过 PiRuntime 封装。原因是 PiRuntime.init() 创建的 session
- * 在 subscribe 时无法收到 message_update 事件（已确认为 bug，根因待查）。
+ * 与之前绕过 PiRuntime 的 workaround 不同，此版本通过 AgentRuntime 接口交互，
+ * 符合架构设计：业务代码不直接依赖 Pi SDK 细节。
  */
 router.post('/pi-chat', async (req, res) => {
-  let session: AgentSession | null = null;
+  let runtime: PiRuntime | null = null;
 
   try {
     // 1. 解析请求参数
@@ -153,53 +142,9 @@ router.post('/pi-chat', async (req, res) => {
       return;
     }
 
-    // 4. 创建 Pi Agent Session（与 PiRuntime.init() 逻辑等价）
-    const authStorage = AuthStorage.create();
-    authStorage.setRuntimeApiKey('anthropic', agentConfig.apiKey);
-
-    const modelRegistry = ModelRegistry.create(authStorage);
-    // 注意：channelToAgentRuntimeConfig 返回的 baseUrl 已经过 normalizeAnthropicBaseUrl
-    // 处理（追加了 /v1 后缀），但 Pi SDK 的 registerProvider 内部也会自行追加版本路径。
-    // 如果这里直接传入带 /v1 的 URL，会导致双重版本路径（如 /v1/v1/messages），造成 404。
-    // 因此需要剥离 /v\d+ 后缀，让 Pi SDK 自行处理版本路径。
-    const piBaseUrl = agentConfig.baseUrl.replace(/\/v\d+$/, '');
-    modelRegistry.registerProvider('anthropic', { baseUrl: piBaseUrl });
-
-    const model = modelRegistry.find('anthropic', agentConfig.model);
-    if (!model) {
-      res.status(400).json({
-        success: false,
-        error: `未找到模型: anthropic/${agentConfig.model}`,
-      });
-      return;
-    }
-
-    const resourceLoader = new DefaultResourceLoader({
-      cwd: agentConfig.cwd,
-      agentDir: agentConfig.cwd,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
-    });
-    await resourceLoader.reload();
-
-    const createResult = await createAgentSession({
-      cwd: agentConfig.cwd,
-      agentDir: agentConfig.cwd,
-      model,
-      thinkingLevel: 'off',
-      authStorage,
-      modelRegistry,
-      tools: agentConfig.tools ?? ['read'],
-      resourceLoader,
-      sessionManager: SessionManager.inMemory(),
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
-    });
-    session = createResult.session;
+    // 4. 通过 PiRuntime 初始化并发送消息（不再绕过 PiRuntime 直接调用 SDK）
+    runtime = new PiRuntime();
+    await runtime.init(agentConfig);
 
     // 5. 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
@@ -207,42 +152,13 @@ router.post('/pi-chat', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    // 6. 构建 session → SSE 事件桥
-    await new Promise<void>((resolve, reject) => {
-      let streamEnded = false;
+    // 6. 消费 PiRuntime.prompt() 事件流 → SSE 输出
+    for await (const event of runtime.prompt(body.message)) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
 
-      const unsubscribe = session!.subscribe((event: AgentSessionEvent) => {
-        if (streamEnded) return;
-
-        try {
-          const mapped = mapSessionEvent(event);
-          if (mapped) {
-            res.write(`data: ${JSON.stringify(mapped)}\n\n`);
-          }
-
-          if (event.type === 'agent_end') {
-            streamEnded = true;
-            unsubscribe();
-            res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-            resolve();
-          }
-        } catch (err) {
-          streamEnded = true;
-          unsubscribe();
-          reject(err);
-        }
-      });
-
-      // 发送 prompt（不 await，事件通过 subscribe 回调接收）
-      session!.prompt(body.message).catch((err: unknown) => {
-        if (!streamEnded) {
-          const msg = err instanceof Error ? err.message : String(err);
-          res.write(`data: ${JSON.stringify({ type: 'error', error: msg })}\n\n`);
-        }
-      });
-    });
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
   } catch (error) {
-    // 7. 错误处理
     if (!res.headersSent) {
       const msg = error instanceof Error ? error.message : String(error);
       res.status(500).json({ success: false, error: msg });
@@ -255,58 +171,14 @@ router.post('/pi-chat', async (req, res) => {
       }
     }
   } finally {
-    // 8. 释放资源
-    if (session) {
-      session.dispose();
+    // 7. 释放 PiRuntime 资源
+    if (runtime) {
+      runtime.dispose();
     }
     if (res.headersSent && !res.writableEnded) {
       res.end();
     }
   }
 });
-
-/**
- * 将 Pi SDK 的 AgentSessionEvent 映射为 AgentStreamEvent
- *
- * 与 PiRuntime.mapEvent() 逻辑完全一致（复制于此是因为 pi-chat 路由
- * 绕过 PiRuntime 直接使用 AgentSession）。
- */
-function mapSessionEvent(event: AgentSessionEvent): AgentStreamEvent | null {
-  switch (event.type) {
-    case 'agent_start':
-      return { type: 'agent_start' };
-    case 'agent_end':
-      return { type: 'agent_end' };
-    case 'turn_start':
-      return { type: 'turn_start' };
-    case 'turn_end':
-      return { type: 'turn_end' };
-    case 'message_update': {
-      const sub = (event as any).assistantMessageEvent;
-      if (!sub) return null;
-      switch (sub.type) {
-        case 'text_delta':
-          return { type: 'text_delta', delta: sub.delta };
-        case 'thinking_delta':
-          return { type: 'thinking_delta', delta: sub.delta };
-        default:
-          return null;
-      }
-    }
-    case 'tool_execution_start':
-      return {
-        type: 'tool_call_start',
-        toolName: (event as any).toolName ?? 'unknown',
-      };
-    case 'tool_execution_end':
-      return {
-        type: 'tool_call_end',
-        toolName: (event as any).toolName ?? 'unknown',
-        isError: !!(event as any).isError,
-      };
-    default:
-      return null;
-  }
-}
 
 export default router;
