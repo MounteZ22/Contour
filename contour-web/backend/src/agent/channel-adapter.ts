@@ -16,6 +16,20 @@ import {
 } from "../services/channelManager.js";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
 
+/** readonly 模式下开放的内置工具（全部只读） */
+const READONLY_BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
+
+/** yolo/review 模式下开放的内置工具（含写入/执行类） */
+const FULL_BUILTIN_TOOLS = [
+  "read",
+  "write",
+  "edit",
+  "bash",
+  "grep",
+  "find",
+  "ls",
+];
+
 /**
  * 查找默认的 Agent 兼容渠道
  *
@@ -72,6 +86,8 @@ export function channelToAgentRuntimeConfig(
     systemPrompt?: string;
     /** 自定义工具定义数组（Pi ToolDefinition[]），透传给 PiRuntime */
     customTools?: unknown[];
+    /** 权限模式，决定内置工具白名单 + 是否挂权限钩子，缺省 readonly */
+    permissionMode?: "readonly" | "review" | "yolo";
   },
 ): AgentRuntimeConfig {
   // ── 1. 校验 provider 兼容性 ─────────────────────────────────────────────
@@ -105,9 +121,19 @@ export function channelToAgentRuntimeConfig(
   // 模型查找失败。
   const provider = channel.provider;
 
-  // ── 5. 确定 cwd 和 tools（与 pi-runtime.ts 默认值保持一致） ──────────────
+  // ── 5. 确定权限模式 + 内置工具白名单 ────────────────────────────────────
+  //
+  // readonly：只开只读工具（read/grep/find/ls），写工具根本不进白名单，
+  //   Agent 调不到，最安全。
+  // yolo/review：开全部内置工具（含 write/edit/bash）。review 模式下由
+  //   PiRuntime 挂 tool_call 钩子拦截写操作；yolo 全放行。
+  const permissionMode = overrides?.permissionMode ?? "readonly";
+  const builtinTools =
+    permissionMode === "readonly" ? READONLY_BUILTIN_TOOLS : FULL_BUILTIN_TOOLS;
+
+  // ── 6. 确定 cwd 和 tools ───────────────────────────────────────────────
   const cwd = overrides?.cwd ?? process.cwd();
-  const tools = overrides?.tools ?? ["read"];
+  const tools = overrides?.tools ?? builtinTools;
 
   return {
     apiKey: channel.apiKey,
@@ -116,6 +142,7 @@ export function channelToAgentRuntimeConfig(
     provider,
     systemPrompt: overrides?.systemPrompt,
     customTools: overrides?.customTools,
+    permissionMode,
     cwd,
     tools,
   };

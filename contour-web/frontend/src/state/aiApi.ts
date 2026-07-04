@@ -44,11 +44,17 @@ export async function sendChatMessageStream(
   message: string,
   contextItems: AIContextItem[],
   callbacks: StreamCallbacks,
+  permissionMode?: "readonly" | "review" | "yolo",
 ): Promise<void> {
+  // permissionMode 不传时后端缺省 readonly。前端 UI（模式选择器）后续再做，
+  // 当前调用方都不传，保持默认只读。
+  const body: Record<string, unknown> = { message, contextItems };
+  if (permissionMode) body.permissionMode = permissionMode;
+
   const res = await fetch('/api/ai/pi-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, contextItems }),
+    body: JSON.stringify(body),
   });
 
   console.log('[SSE Frontend] Response status:', res.status, 'content-type:', res.headers.get('content-type'));

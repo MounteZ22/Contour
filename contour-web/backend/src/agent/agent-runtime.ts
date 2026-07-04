@@ -47,6 +47,16 @@ export interface AgentRuntimeConfig {
    * 校验。调用方（如 api/ai.ts）负责组装工具数组并传入。
    */
   customTools?: unknown[];
+  /**
+   * 权限模式（可选，缺省 "readonly"）
+   *
+   * - "readonly"：只开放只读工具（read/grep/find/ls + 业务只读），写工具不进
+   *   白名单，Agent 调不到。最安全，默认值。
+   * - "yolo"：所有工具（含 write/edit/bash）开放，不拦截。
+   * - "review"：所有工具开放，但通过 extensionFactories 挂 tool_call 钩子拦截
+   *   写操作。当前骨架版直接 deny，未来补确认 UI 后改成 await 用户确认。
+   */
+  permissionMode?: "readonly" | "review" | "yolo";
   /** 工作目录（工具执行的基准路径） */
   cwd: string;
   /** 启用的工具名称列表，默认只开放 read */

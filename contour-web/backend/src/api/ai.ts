@@ -30,6 +30,14 @@ interface PiChatRequestBody {
    * system prompt，让 Agent 感知当前业务上下文。
    */
   contextItems?: AIContextItem[];
+  /**
+   * 权限模式（可选，缺省 "readonly"）
+   *
+   * - "readonly"：只开只读工具，写工具不可用（默认，最安全）
+   * - "yolo"：所有工具开放，不拦截
+   * - "review"：所有工具开放，写操作被 tool_call 钩子拦截（确认 UI 待实现）
+   */
+  permissionMode?: "readonly" | "review" | "yolo";
 }
 
 // ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -152,12 +160,13 @@ router.post('/pi-chat', async (req, res) => {
       "\n\n" +
       VAULT_TOOLS_PROMPT;
 
-    // 4. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具）
+    // 4. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
     let agentConfig;
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
         systemPrompt,
         customTools: contourCustomTools,
+        permissionMode: body.permissionMode,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

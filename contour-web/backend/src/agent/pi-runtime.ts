@@ -30,6 +30,7 @@ import type {
   PromptOptions,
 } from "./agent-runtime.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { createPermissionExtensionFactory } from "./permission-extension.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -371,10 +372,21 @@ export class PiRuntime implements AgentRuntime {
           `${base ?? ""}\n\n--- 业务上下文 ---\n${config.systemPrompt}`.trim()
       : undefined;
 
+    // extensionFactories 注入权限拦截钩子（仅 review 模式）。
+    // readonly 靠 tools 白名单限制（写工具不进白名单），yolo 全放行，都不需要钩子。
+    // 调研确认：extensionFactories 通过 DefaultResourceLoader 注入（不是
+    // createAgentSession 直接参数），且和 customTools 能共存。
+    const permissionMode = config.permissionMode ?? "readonly";
+    const extensionFactories =
+      permissionMode === "review"
+        ? [createPermissionExtensionFactory("review")]
+        : [];
+
     const loader = new DefaultResourceLoader({
       cwd: config.cwd,
       agentDir: config.cwd,
       systemPromptOverride,
+      extensionFactories,
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
         retry: { enabled: true, maxRetries: 1 },
