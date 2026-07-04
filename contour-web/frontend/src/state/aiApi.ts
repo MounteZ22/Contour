@@ -27,14 +27,25 @@ interface StreamCallbacks {
 
 /**
  * 流式发送聊天消息
- * 消费 SSE 后端，通过回调返回增量内容
+ *
+ * 走 PiRuntime 后端（POST /api/ai/pi-chat），消费 AgentStreamEvent 事件流。
+ * channelId 不传，后端回退到默认 agent 渠道。contextItems（Flow/Doc 引用）
+ * 透传给后端，由 buildSystemPrompt() 注入到 Agent 的 system prompt。
+ *
+ * 事件映射（Pi AgentStreamEvent → 前端回调）：
+ * - text_delta → onChunk(delta)
+ * - tool_call_start → onToolActivity(running)
+ * - tool_call_end → onToolActivity(done，出错时 result 标记)
+ * - done → onComplete
+ * - error → onError
+ * - agent_start / turn_start / turn_end / agent_end / thinking_delta → 忽略（最小集展示）
  */
 export async function sendChatMessageStream(
   message: string,
   contextItems: AIContextItem[],
   callbacks: StreamCallbacks,
 ): Promise<void> {
-  const res = await fetch('/api/ai/chat', {
+  const res = await fetch('/api/ai/pi-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, contextItems }),
@@ -73,8 +84,10 @@ export async function sendChatMessageStream(
         try {
           const event = JSON.parse(data) as {
             type: string;
-            content?: string;
-            error?: string;
+            delta?: string;
+            toolName?: string;
+            isError?: boolean;
+            message?: string;
           };
 
           eventCount++;
@@ -82,23 +95,46 @@ export async function sendChatMessageStream(
             console.log('[SSE Frontend] Event:', event);
           }
 
-          if (event.type === 'text' && event.content) {
-            fullContent += event.content;
-            callbacks.onChunk(event.content);
-          } else if (event.type === 'tool' && callbacks.onToolActivity) {
-            callbacks.onToolActivity({
-              toolName: (event as any).toolName || '',
-              status: (event as any).status || 'running',
-              input: (event as any).input,
-              result: (event as any).result,
-            });
-          } else if (event.type === 'done') {
-            console.log('[SSE Frontend] Done. Full content length:', fullContent.length);
-            callbacks.onComplete(fullContent);
-            return;
-          } else if (event.type === 'error') {
-            callbacks.onError(event.error || '流式响应异常');
-            return;
+          switch (event.type) {
+            case 'text_delta':
+              if (event.delta) {
+                fullContent += event.delta;
+                callbacks.onChunk(event.delta);
+              }
+              break;
+
+            case 'tool_call_start':
+              if (callbacks.onToolActivity && event.toolName) {
+                callbacks.onToolActivity({
+                  toolName: event.toolName,
+                  status: 'running',
+                });
+              }
+              break;
+
+            case 'tool_call_end':
+              if (callbacks.onToolActivity && event.toolName) {
+                callbacks.onToolActivity({
+                  toolName: event.toolName,
+                  status: 'done',
+                  result: event.isError ? '工具执行出错' : undefined,
+                });
+              }
+              break;
+
+            case 'done':
+              console.log('[SSE Frontend] Done. Full content length:', fullContent.length);
+              callbacks.onComplete(fullContent);
+              return;
+
+            case 'error':
+              callbacks.onError(event.message || '流式响应异常');
+              return;
+
+            default:
+              // agent_start / turn_start / turn_end / agent_end / thinking_delta
+              // 在最小集展示策略下忽略
+              break;
           }
         } catch {
           // ignore unparseable lines

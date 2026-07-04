@@ -6,9 +6,10 @@
  * - baseUrl 覆盖：通过 ModelRegistry.registerProvider() 设置自定义端点
  * - 订阅生命周期管理：每次 prompt() 清理旧订阅，dispose() 做最终释放
  *
- * 当前限制（刻意为之）：
- * - 仅支持 Anthropic provider（通过 Proma 代理）
- * - 仅开放 read 工具
+ * 当前能力：
+ * - 多 provider 支持（anthropic / kimi-coding / deepseek 等，通过 config.provider）
+ * - 内置工具默认仅开放 read，可通过 config.customTools 注入业务工具
+ * - 业务上下文通过 config.systemPrompt 注入（追加到 Pi 默认 system prompt）
  * - 所有配置通过 init() 参数传入，不读环境变量
  */
 
@@ -66,15 +67,19 @@ export class PiRuntime implements AgentRuntime {
   async init(config: AgentRuntimeConfig): Promise<void> {
     this.config = config;
 
+    // Pi SDK 的 provider 名（如 "anthropic" / "kimi-coding" / "deepseek"），
+    // 用于 AuthStorage / ModelRegistry / find 三处调用，保持一致。
+    // 缺省 "anthropic" 以保持向后兼容（旧调用方未传 provider 时）。
+    const provider = config.provider ?? "anthropic";
+
     // ── 凭据存储 ──────────────────────────────────────────────────────────
     const authStorage = AuthStorage.create();
-    authStorage.setRuntimeApiKey("anthropic", config.apiKey);
+    authStorage.setRuntimeApiKey(provider, config.apiKey);
 
     // ── 模型注册表 + baseUrl 覆盖 ─────────────────────────────────────────
     //
-    // Pi SDK 底层（@earendil-works/pi-ai）在构造 Anthropic client 时直接使用
-    // model.baseUrl，不读取 ANTHROPIC_BASE_URL 环境变量。规范做法是通过
-    // ModelRegistry.registerProvider() 为已有 provider 设置 baseUrl：
+    // Pi SDK 底层（@earendil-works/pi-ai）在构造 client 时直接使用 model.baseUrl。
+    // 规范做法是通过 ModelRegistry.registerProvider() 为已有 provider 设置 baseUrl：
     //   当只传 baseUrl（不传 models）时，Pi SDK 会保留该 provider 下的所有
     //   已有模型，仅将 baseUrl 替换为新值。
     // 参见 Pi SDK 文档: https://pi.dev/docs/latest/custom-provider
@@ -82,25 +87,42 @@ export class PiRuntime implements AgentRuntime {
     //      all existing models for that provider are preserved with the new endpoint."
     // 源码验证: model-registry.js applyProviderConfig() 737-744 行
     const modelRegistry = ModelRegistry.create(authStorage);
-    modelRegistry.registerProvider("anthropic", {
+    modelRegistry.registerProvider(provider, {
       baseUrl: config.baseUrl,
     });
     this.modelRegistry = modelRegistry;
 
     // ── 查找模型 ──────────────────────────────────────────────────────────
-    const model = modelRegistry.find("anthropic", config.model);
+    const model = modelRegistry.find(provider, config.model);
     if (!model) {
       throw new Error(
-        `[PiRuntime] 未找到模型: anthropic/${config.model}，请确认模型 ID 正确`,
+        `[PiRuntime] 未找到模型: ${provider}/${config.model}，请确认模型 ID 正确`,
       );
     }
     this.model = model;
 
     console.log(
-      `[PiRuntime] 模型已解析: ${model.id} | provider: ${model.provider ?? "anthropic"} | baseUrl: ${model.baseUrl}`,
+      `[PiRuntime] 模型已解析: ${model.id} | provider: ${model.provider ?? provider} | baseUrl: ${model.baseUrl}`,
     );
 
     // ── 创建 AgentSession ─────────────────────────────────────────────────
+    //
+    // customTools：业务自定义工具（如 getFlowDetail/searchFlows/getDoc），
+    //   由调用方通过 config.customTools 传入（实际类型是 Pi 的 ToolDefinition[]，
+    //   接口层用 unknown[] 避免依赖 Pi SDK 类型）。Pi SDK 中自定义工具和内置
+    //   工具（read 等）并存，同名时自定义覆盖内置。
+    //
+    // ⚠️ tools 白名单合并（关键）：Pi SDK 的 `tools` 参数是白名单，同时管内置
+    //   工具和 customTools——customTools 里的工具名如果不在 tools 集合里，会被
+    //   agent-session.js 的 isAllowedTool() 过滤掉，根本不注册进 Agent 工具集
+    //   （源码 agent-session.js:1864-1868）。所以这里把 customTools 的 name
+    //   自动合并进 tools，让业务工具 always-on，调用方不用同时维护两份名单。
+    const customToolNames = (config.customTools as Array<{ name: string }> | undefined)
+      ?.map((t) => t.name) ?? [];
+    const tools = Array.from(
+      new Set([...(config.tools ?? ["read"]), ...customToolNames]),
+    );
+
     const { session } = await createAgentSession({
       cwd: config.cwd,
       agentDir: config.cwd,
@@ -108,7 +130,8 @@ export class PiRuntime implements AgentRuntime {
       thinkingLevel: "off",
       authStorage,
       modelRegistry: this.modelRegistry,
-      tools: config.tools ?? ["read"],
+      tools,
+      customTools: config.customTools as any,
       resourceLoader: await this.createResourceLoader(config, authStorage),
       sessionManager: SessionManager.inMemory(),
       settingsManager: SettingsManager.inMemory({
@@ -229,18 +252,19 @@ export class PiRuntime implements AgentRuntime {
   }
 
   async setModel(modelId: string): Promise<void> {
-    if (!this.modelRegistry) {
+    if (!this.modelRegistry || !this.config) {
       throw new Error("[PiRuntime] 未初始化，请先调用 init()");
     }
-    const model = this.modelRegistry.find("anthropic", modelId);
+    const provider = this.config.provider ?? "anthropic";
+    const model = this.modelRegistry.find(provider, modelId);
     if (!model) {
-      throw new Error(`[PiRuntime] 未找到模型: anthropic/${modelId}`);
+      throw new Error(`[PiRuntime] 未找到模型: ${provider}/${modelId}`);
     }
     this.model = model;
     if (this.session) {
       await this.session.setModel(model);
     }
-    console.log(`[PiRuntime] 模型已切换: ${modelId}`);
+    console.log(`[PiRuntime] 模型已切换: ${provider}/${modelId}`);
   }
 
   dispose(): void {
@@ -335,9 +359,22 @@ export class PiRuntime implements AgentRuntime {
     config: AgentRuntimeConfig,
     _authStorage: AuthStorage,
   ): Promise<DefaultResourceLoader> {
+    // systemPromptOverride 注入业务上下文（如 Flow/Doc）到 Agent 的 system prompt。
+    // 文档第五节已记录：systemPromptOverride 实际是 DefaultResourceLoader 的构造
+    // 选项，不是 createAgentSession() 的直接参数。
+    //
+    // 类型上它是一个函数 (base) => string：接收 Pi 默认 system prompt（含工具使用
+    // 指导、安全说明等），返回覆盖后的。这里采用"追加"而非"替换"——把业务上下文
+    // 拼在 Pi 默认 prompt 之后，避免丢失 Pi 的 Agent 行为指导。
+    const systemPromptOverride = config.systemPrompt
+      ? (base: string | undefined) =>
+          `${base ?? ""}\n\n--- 业务上下文 ---\n${config.systemPrompt}`.trim()
+      : undefined;
+
     const loader = new DefaultResourceLoader({
       cwd: config.cwd,
       agentDir: config.cwd,
+      systemPromptOverride,
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
         retry: { enabled: true, maxRetries: 1 },

@@ -25,6 +25,28 @@ export interface AgentRuntimeConfig {
   baseUrl: string;
   /** 模型 ID，例如 "claude-sonnet-5" */
   model: string;
+  /**
+   * Provider 名称（例如 "anthropic" / "kimi-coding" / "deepseek"）
+   *
+   * 用于 Pi SDK 的 ModelRegistry.registerProvider() 和 AuthStorage.setRuntimeApiKey()。
+   * 缺省为 "anthropic" 以保持向后兼容。
+   */
+  provider?: string;
+  /**
+   * System prompt 覆盖（可选）
+   *
+   * 注入到 Pi SDK 的 DefaultResourceLoader.systemPromptOverride，让 Agent 感知
+   * 当前选中的 Flow/Doc 等业务上下文。不传时 Pi SDK 使用默认 system prompt。
+   */
+  systemPrompt?: string;
+  /**
+   * 自定义工具定义数组（可选，运行时特定）
+   *
+   * 元素是 Pi SDK 的 ToolDefinition（TypeBox schema + execute handler）。
+   * 接口层用 unknown[] 避免依赖 Pi SDK 类型，由具体实现（PiRuntime）做类型
+   * 校验。调用方（如 api/ai.ts）负责组装工具数组并传入。
+   */
+  customTools?: unknown[];
   /** 工作目录（工具执行的基准路径） */
   cwd: string;
   /** 启用的工具名称列表，默认只开放 read */

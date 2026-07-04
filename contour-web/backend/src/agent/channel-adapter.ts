@@ -11,9 +11,25 @@
 import { AGENT_COMPATIBLE_PROVIDERS, PROVIDER_DEFAULT_URLS } from "../types.js";
 import type { Channel, ChannelModel } from "../types.js";
 import {
+  listChannels,
   normalizeBaseUrl,
 } from "../services/channelManager.js";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
+
+/**
+ * 查找默认的 Agent 兼容渠道
+ *
+ * 规则：从所有渠道中取第一个 enabled 且 provider 在 AGENT_COMPATIBLE_PROVIDERS
+ * 白名单内的。用于 /pi-chat 路由在不显式传 channelId 时的回退，与旧 /chat
+ * 路由的 getDefaultChannel() 行为对齐（但额外过滤了 agent 不兼容的 provider）。
+ *
+ * @returns 第一个可用的 agent 兼容渠道，没有则返回 undefined
+ */
+export function findDefaultAgentChannel(): Channel | undefined {
+  return listChannels().find(
+    (c) => c.enabled && AGENT_COMPATIBLE_PROVIDERS.has(c.provider),
+  );
+}
 
 /**
  * 获取渠道的默认模型 ID
@@ -52,6 +68,10 @@ export function channelToAgentRuntimeConfig(
     model?: string;
     cwd?: string;
     tools?: string[];
+    /** 业务上下文 system prompt（如 Flow/Doc 注入），透传给 PiRuntime */
+    systemPrompt?: string;
+    /** 自定义工具定义数组（Pi ToolDefinition[]），透传给 PiRuntime */
+    customTools?: unknown[];
   },
 ): AgentRuntimeConfig {
   // ── 1. 校验 provider 兼容性 ─────────────────────────────────────────────
@@ -78,7 +98,14 @@ export function channelToAgentRuntimeConfig(
   // ── 3. 确定模型 ─────────────────────────────────────────────────────────
   const model = overrides?.model ?? getDefaultModelId(channel.models);
 
-  // ── 4. 确定 cwd 和 tools（与 pi-runtime.ts 默认值保持一致） ──────────────
+  // ── 4. 确定 provider ───────────────────────────────────────────────────
+  // channel.provider 已在步骤 1 校验过属于 AGENT_COMPATIBLE_PROVIDERS。
+  // 透传给 AgentRuntimeConfig，PiRuntime 据此调用 Pi SDK 的 registerProvider /
+  // setRuntimeApiKey / find，避免硬编码 "anthropic" 导致非 anthropic 渠道
+  // 模型查找失败。
+  const provider = channel.provider;
+
+  // ── 5. 确定 cwd 和 tools（与 pi-runtime.ts 默认值保持一致） ──────────────
   const cwd = overrides?.cwd ?? process.cwd();
   const tools = overrides?.tools ?? ["read"];
 
@@ -86,6 +113,9 @@ export function channelToAgentRuntimeConfig(
     apiKey: channel.apiKey,
     baseUrl,
     model,
+    provider,
+    systemPrompt: overrides?.systemPrompt,
+    customTools: overrides?.customTools,
     cwd,
     tools,
   };

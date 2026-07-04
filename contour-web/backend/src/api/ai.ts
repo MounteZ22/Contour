@@ -2,21 +2,34 @@ import { Router } from 'express';
 import { sendChatMessage, sendChatMessageWithTools, testLLMConnection } from '../services/aiService.js';
 import { buildSystemPrompt } from '../services/promptBuilder.js';
 import { getToolDefinitions } from '../tools/toolRegistry.js';
-import type { ChatRequestBody } from '../types.js';
+import type { ChatRequestBody, AIContextItem } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
-import { channelToAgentRuntimeConfig } from '../agent/channel-adapter.js';
+import { channelToAgentRuntimeConfig, findDefaultAgentChannel } from '../agent/channel-adapter.js';
 import { PiRuntime } from '../agent/pi-runtime.js';
+import { contourCustomTools, VAULT_TOOLS_PROMPT } from '../tools/pi-vault-tools.js';
 
 
 const router = Router();
 
-// ── Pi Agent 实验性路由请求体（本地类型，不放入 types.ts） ──────────────────
+// ── Pi Agent 路由请求体（本地类型，不放入 types.ts） ──────────────────────────
 
 interface PiChatRequestBody {
   /** 用户消息文本 */
   message: string;
-  /** 渠道 ID */
-  channelId: string;
+  /**
+   * 渠道 ID（可选）
+   *
+   * 不传时回退到第一个 enabled 且 agent 兼容的渠道，与旧 /chat 的默认渠道
+   * 行为对齐。前端目前没有渠道选择 UI，依赖这个回退。
+   */
+  channelId?: string;
+  /**
+   * 业务上下文项（可选）
+   *
+   * 前端选中的 Flow/Doc 引用，通过 buildSystemPrompt() 注入到 Agent 的
+   * system prompt，让 Agent 感知当前业务上下文。
+   */
+  contextItems?: AIContextItem[];
 }
 
 // ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -120,29 +133,39 @@ router.post('/pi-chat', async (req, res) => {
       res.status(400).json({ success: false, error: '消息不能为空' });
       return;
     }
-    if (!body.channelId || typeof body.channelId !== 'string') {
-      res.status(400).json({ success: false, error: '缺少 channelId 参数' });
-      return;
-    }
 
-    // 2. 获取渠道配置
-    const channel = getChannelById(body.channelId);
+    // 2. 获取渠道配置：优先用显式传入的 channelId，否则回退到默认 agent 渠道
+    const channel = body.channelId
+      ? getChannelById(body.channelId)
+      : findDefaultAgentChannel();
     if (!channel) {
-      res.status(400).json({ success: false, error: `渠道不存在: ${body.channelId}` });
+      const hint = body.channelId
+        ? `渠道不存在: ${body.channelId}`
+        : '没有已启用的 Agent 兼容渠道，请先在渠道设置中配置一个 Anthropic 兼容渠道';
+      res.status(400).json({ success: false, error: hint });
       return;
     }
 
-    // 3. 转换为 AgentRuntimeConfig
+    // 3. 构建业务上下文 system prompt（Flow/Doc 注入）+ 业务工具使用引导
+    const systemPrompt =
+      (await buildSystemPrompt(body.contextItems || [])) +
+      "\n\n" +
+      VAULT_TOOLS_PROMPT;
+
+    // 4. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具）
     let agentConfig;
     try {
-      agentConfig = channelToAgentRuntimeConfig(channel);
+      agentConfig = channelToAgentRuntimeConfig(channel, {
+        systemPrompt,
+        customTools: contourCustomTools,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(400).json({ success: false, error: `渠道配置转换失败: ${msg}` });
       return;
     }
 
-    // 4. 通过 PiRuntime 初始化并发送消息（不再绕过 PiRuntime 直接调用 SDK）
+    // 5. 通过 PiRuntime 初始化并发送消息
     runtime = new PiRuntime();
     await runtime.init(agentConfig);
 
