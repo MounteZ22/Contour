@@ -1,49 +1,294 @@
 /**
- * permission-extension — 权限拦截 extensionFactory
+ * permission-extension — 权限拦截 extensionFactory（完整确认 UI 链路）
  *
  * 通过 Pi SDK 的 extensionFactories 机制挂 tool_call 钩子，在工具真正执行前
- * 拦截。用于 review 权限模式。
+ * 拦截写操作，等待用户确认后放行或拒绝。
  *
- * 设计要点：
- * - 只依赖 Pi SDK 类型（ExtensionAPI 的 on/registerTool），不依赖 backend
- *   内部 service，符合 agent/ 模块隔离原则
- * - 钩子 handler 可以是 async（调研确认 agent-loop.js:386 await handler），
- *   未来确认 UI 实现后，这里改成 await 用户确认结果再决定 block
- * - 当前骨架版：review 模式下写工具直接 deny，返回 block + reason
- *
- * 调研依据：
- * - extensionFactories 通过 DefaultResourceLoader 注入（resource-loader.d.ts:70）
- * - pi.on("tool_call") 返回 {block:true, reason} 即阻止（agent-loop.js:386-392）
- * - extensionFactories 和 customTools 能共存（agent-session.js:1861-1867）
+ * 架构要点：
+ * - 规则持久化：放行的工具可"记住"（persist 规则到 dataDir/projects/{name}/permission-rules.json）
+ * - 规则优先：匹配规则的请求直接放行/拒绝，不弹确认框
+ * - 模块级状态：pendingRequests Map 在 SSE 流与 POST /api/ai/permission-response
+ *   之间桥接，PiRuntime 在 prompt() 中负责注入 requester
+ * - 状态清理：prompt 结束或出错时通过 cleanup 回调清理 requester
  */
 
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
 
-/** 写入/执行类工具，review 模式下需拦截 */
+// ── 类型 ───────────────────────────────────────────────────────────────────
+
+/** 前端显示的权限请求信息 */
+export interface PermissionRequestInfo {
+  requestId: string;
+  toolName: string;
+  input: unknown;
+  reason: string;
+}
+
+/** 用户返回的决策 */
+export interface PermissionResponse {
+  action: "allow" | "deny";
+  remember: boolean;
+}
+
+/** 持久化到本地的规则 */
+export interface PermissionRule {
+  toolName: string;
+  /** 输入匹配模式（简单字符串前缀匹配） */
+  pattern: string;
+  action: "allow" | "deny";
+}
+
+// ── 写入/执行类工具 ────────────────────────────────────────────────────────
+
 const WRITE_TOOLS = new Set(["write", "edit", "bash"]);
+
+// ── 模块级 pending 请求 Map ─────────────────────────────────────────────────
+//
+// 桥接 SSE 流（permission-extension 写、SSE 消费侧读）和 POST response 路由
+// （前端回传结果后 resolve Promise）。
+// 设计上同时只有一个 pending request（Agent 单线程），
+// 但 Map 结构支持并发场景，便于未来扩展。
+
+interface PendingRequest {
+  resolve: (resp: PermissionResponse) => void;
+  reject: (err: Error) => void;
+  toolName: string;
+  input: unknown;
+  createdAt: number;
+}
+
+const pendingRequests = new Map<string, PendingRequest>();
+
+// ── 规则持久化 ─────────────────────────────────────────────────────────────
+
+/**
+ * 规则文件的绝对路径：dataDir/projects/{projectName}/permission-rules.json
+ */
+function rulesFilePath(dataDir: string, projectDir: string): string {
+  const projectName = path.basename(projectDir);
+  return path.join(dataDir, "projects", projectName, "permission-rules.json");
+}
+
+/**
+ * 加载规则文件
+ */
+function loadRules(dataDir: string, projectDir: string): PermissionRule[] {
+  try {
+    const filePath = rulesFilePath(dataDir, projectDir);
+    if (!existsSync(filePath)) return [];
+    const raw = readFileSync(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 追加一条规则
+ */
+function persistRule(dataDir: string, projectDir: string, rule: PermissionRule): void {
+  try {
+    const filePath = rulesFilePath(dataDir, projectDir);
+    const dir = path.dirname(filePath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    const rules = loadRules(dataDir, projectDir);
+    rules.push(rule);
+    writeFileSync(filePath, JSON.stringify(rules, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[PermissionExtension] 持久化规则失败:", err);
+  }
+}
+
+/**
+ * 简单模式匹配：在规则列表中查找第一条匹配的结果
+ * - toolName 精确匹配
+ * - pattern 为输入字符串的前缀匹配
+ */
+function matchRule(
+  rules: PermissionRule[],
+  toolName: string,
+  input: unknown,
+): PermissionRule | undefined {
+  const inputStr = typeof input === "string" ? input : JSON.stringify(input ?? "");
+  return rules.find(
+    (r) => r.toolName === toolName && inputStr.startsWith(r.pattern),
+  );
+}
+
+// ── 公共 API ───────────────────────────────────────────────────────────────
+
+/**
+ * 创建一个 pending 权限请求，返回 requestId 和 Promise
+ *
+ * 调用方（tool_call 钩子）await promise 直到用户决策。
+ */
+export function createPermissionRequest(
+  toolName: string,
+  input: unknown,
+  reason: string,
+): { requestId: string; promise: Promise<PermissionResponse> } {
+  const requestId = crypto.randomUUID();
+  const promise = new Promise<PermissionResponse>((resolve, reject) => {
+    pendingRequests.set(requestId, {
+      resolve,
+      reject,
+      toolName,
+      input,
+      createdAt: Date.now(),
+    });
+  });
+
+  return { requestId, promise };
+}
+
+/**
+ * 完成一个 pending 权限请求（被 POST /api/ai/permission-response 调用）
+ *
+ * @returns 找到并 resolve 返回 true；requestId 不存在或已超时返回 false
+ */
+export function resolvePermissionRequest(
+  requestId: string,
+  action: "allow" | "deny",
+  remember: boolean,
+): boolean {
+  const pending = pendingRequests.get(requestId);
+  if (!pending) return false;
+  pending.resolve({ action, remember });
+  pendingRequests.delete(requestId);
+  return true;
+}
+
+/**
+ * 拒绝所有 pending 请求（dispose/abort 时清理）
+ */
+export function rejectAllPendingRequests(reason: string = "会话已终止"): void {
+  for (const [id, pending] of pendingRequests) {
+    pending.reject(new Error(reason));
+    pendingRequests.delete(id);
+  }
+}
+
+// ── 模块级 requester 注入 ─────────────────────────────────────────────────
+
+/**
+ * tool_call 钩子在拦截写操作后，调用此函数请求用户确认。
+ *
+ * PiRuntime.prompt() 在调用 session.prompt() 前设置此函数，
+ * 在 prompt 结束后清除。函数内部通过 pushEvent 发出
+ * permission_request 事件到事件流，并返回一个 Promise。
+ */
+type PermissionRequesterFn = (
+  info: PermissionRequestInfo,
+) => Promise<PermissionResponse>;
+
+let activeRequester: PermissionRequesterFn | null = null;
+
+/**
+ * 设置当前 prompt 会话的 requester（由 PiRuntime.prompt() 调用）
+ */
+export function setActiveRequester(fn: PermissionRequesterFn | null): void {
+  activeRequester = fn;
+}
+
+// ── ExtensionFactory ──────────────────────────────────────────────────────
 
 /**
  * 创建权限拦截 extensionFactory
  *
- * @param permissionMode 权限模式。仅 "review" 时挂钩子；"readonly"/"yolo" 返回空工厂
- * （readonly 靠 tools 白名单限制，yolo 全放行，都不需要钩子）
+ * @param permissionMode 权限模式。仅 "review" 时挂钩子
+ * @param dataDir 应用数据目录（~/.contour 或 ~/.contour-dev）
+ * @param projectDir 项目内容目录，取其 basename 作为项目名
  * @returns Pi SDK 的 ExtensionFactory 函数
  */
 export function createPermissionExtensionFactory(
   permissionMode: NonNullable<AgentRuntimeConfig["permissionMode"]>,
+  dataDir: string,
+  projectDir: string,
 ): (pi: any) => void {
   return (pi: any) => {
-    // readonly / yolo 不挂钩子（readonly 靠白名单，yolo 全放行）
+    // readonly / yolo 不挂钩子
     if (permissionMode !== "review") return;
 
     pi.on("tool_call", (event: any, _ctx: any) => {
-      if (WRITE_TOOLS.has(event.toolName)) {
+      // 只放行非写工具
+      if (!WRITE_TOOLS.has(event.toolName)) return;
+
+      // ── 1. 规则匹配 ─────────────────────────────────────────────────────
+      const rules = loadRules(dataDir, projectDir);
+      const matched = matchRule(rules, event.toolName, event.input);
+      if (matched) {
+        if (matched.action === "allow") {
+          return; // 放行（undefined = 不 block）
+        }
         return {
           block: true,
-          reason: `审查模式下 ${event.toolName} 工具需用户确认（确认 UI 待实现，当前默认拒绝）`,
+          reason: `审查模式规则已拒绝 ${event.toolName} 的类似操作`,
         };
       }
-      // 只读工具放行
+
+      // ── 2. 无命中规则 → 请求用户确认 ──────────────────────────────────
+      const requester = activeRequester;
+      if (!requester) {
+        // 安全回退：无 requester 时直接拒绝
+        return {
+          block: true,
+          reason: `审查模式需用户确认 ${event.toolName} 操作，但确认链路未就绪`,
+        };
+      }
+
+      // hook 可以是 async，Pi SDK await 此返回值（agent-loop.js:386）
+      //
+      // 调用 activeRequester（由 PiRuntime.prompt() 注入）：requester 内部
+      // 通过 createPermissionRequest 生成 requestId + Promise，push SSE
+      // permission_request 事件到事件流，返回 Promise。这里 await 用户决策。
+      return (async () => {
+        try {
+          const result = await Promise.race([
+            requester({
+              requestId: "", // requester 内部生成真实 requestId
+              toolName: event.toolName,
+              input: event.input,
+              reason: `Agent 请求执行 ${event.toolName}`,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("权限请求超时")),
+                5 * 60 * 1000, // 5 分钟超时
+              ),
+            ),
+          ]);
+
+          // 保存规则（如果用户要求记住）
+          if (result.remember) {
+            const inputStr =
+              typeof event.input === "string"
+                ? event.input
+                : JSON.stringify(event.input ?? "");
+            persistRule(dataDir, projectDir, {
+              toolName: event.toolName,
+              pattern: inputStr.slice(0, 200),
+              action: result.action,
+            });
+          }
+
+          if (result.action === "deny") {
+            return {
+              block: true,
+              reason: `用户拒绝了 ${event.toolName} 操作`,
+            };
+          }
+          // allow → 放行
+          return;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "权限请求异常";
+          return { block: true, reason: msg };
+        }
+      })();
     });
   };
 }

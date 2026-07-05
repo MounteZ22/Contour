@@ -54,13 +54,40 @@ export interface AgentRuntimeConfig {
    *   白名单，Agent 调不到。最安全，默认值。
    * - "yolo"：所有工具（含 write/edit/bash）开放，不拦截。
    * - "review"：所有工具开放，但通过 extensionFactories 挂 tool_call 钩子拦截
-   *   写操作。当前骨架版直接 deny，未来补确认 UI 后改成 await 用户确认。
+   *   写操作，等待用户通过 PermissionDialog 确认后放行或拒绝。
    */
   permissionMode?: "readonly" | "review" | "yolo";
-  /** 工作目录（工具执行的基准路径） */
+  /**
+   * 应用数据目录
+   *
+   * 应用配置、项目配置、会话持久化等数据存放的根目录。
+   * 例如 ~/.contour（prod）或 ~/.contour-dev（dev）。
+   */
+  dataDir: string;
+  /**
+   * 项目内容目录
+   *
+   * Agent 的工作目录和工具执行基准路径。例如 D:/Contour 或 D:/Contour-dev。
+   * 同时也决定了项目名称（取其 basename）。
+   * 新代码应使用此字段替代 cwd。
+   */
+  projectDir: string;
+  /**
+   * 工作目录（工具执行的基准路径）
+   *
+   * @deprecated 请使用 projectDir 替代。保留此字段是为了向后兼容，
+   * 当 projectDir 未传入时作为回退。后续所有调用方迁移后删除。
+   */
   cwd: string;
   /** 启用的工具名称列表，默认只开放 read */
   tools?: string[];
+  /**
+   * 会话 ID（可选）
+   *
+   * 传此值可恢复已有会话的对话历史，Agent 会加载之前的消息作为上下文。
+   * 不传或传空则创建新会话。持久化文件存储在 dataDir/projects/{projectName}/sessions/ 目录下。
+   */
+  sessionId?: string;
 }
 
 // ── 事件类型 ─────────────────────────────────────────────────────────────────
@@ -83,7 +110,15 @@ export type AgentStreamEvent =
   | { type: "thinking_delta"; delta: string }
   | { type: "tool_call_start"; toolName: string }
   | { type: "tool_call_end"; toolName: string; isError: boolean }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** 权限确认请求：通知前端弹出确认框，等待用户决策后放行/拒绝 */
+  | {
+      type: "permission_request";
+      requestId: string;
+      toolName: string;
+      input: unknown;
+      reason: string;
+    };
 
 // ── Prompt 选项 ──────────────────────────────────────────────────────────────
 

@@ -1,12 +1,13 @@
 import { Router } from 'express';
-import { sendChatMessage, sendChatMessageWithTools, testLLMConnection } from '../services/aiService.js';
+import { testLLMConnection } from '../services/aiService.js';
 import { buildSystemPrompt } from '../services/promptBuilder.js';
-import { getToolDefinitions } from '../tools/toolRegistry.js';
-import type { ChatRequestBody, AIContextItem } from '../types.js';
+import type { AIContextItem } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
 import { channelToAgentRuntimeConfig, findDefaultAgentChannel } from '../agent/channel-adapter.js';
 import { PiRuntime } from '../agent/pi-runtime.js';
+import { CONFIG } from '../config.js';
 import { contourCustomTools, VAULT_TOOLS_PROMPT } from '../tools/pi-vault-tools.js';
+import { resolvePermissionRequest } from '../agent/permission-extension.js';
 
 
 const router = Router();
@@ -38,76 +39,16 @@ interface PiChatRequestBody {
    * - "review"：所有工具开放，写操作被 tool_call 钩子拦截（确认 UI 待实现）
    */
   permissionMode?: "readonly" | "review" | "yolo";
+  /**
+   * 会话 ID（可选）
+   *
+   * 传此值可恢复已有会话的对话历史。服务端在 dataDir/projects/{projectName}/sessions/
+   * 目录下查找对应的持久化文件，加载历史消息作为上下文。
+   */
+  sessionId?: string;
 }
 
 // ── 路由 ──────────────────────────────────────────────────────────────────────
-
-router.post('/chat', async (req, res) => {
-  try {
-    const body = req.body as ChatRequestBody;
-
-    if (!body.message || typeof body.message !== 'string') {
-      res.status(400).json({ success: false, error: '消息不能为空' });
-      return;
-    }
-
-    const systemPrompt = await buildSystemPrompt(body.contextItems || []);
-
-    // SSE 响应头
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    const tools = getToolDefinitions();
-    const stream = sendChatMessageWithTools({
-      systemPrompt,
-      userMessage: body.message,
-      tools,
-    });
-
-    let hasContent = false;
-    try {
-      for await (const event of stream) {
-        hasContent = true;
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-        if (typeof (res as any).flush === 'function') {
-          (res as any).flush();
-        }
-      }
-
-      // Fallback: 如果流式没有产出任何内容，回退到非流式
-      if (!hasContent) {
-        console.warn('[SSE] No streaming content received, falling back to non-stream');
-        const fallbackMessage = await sendChatMessage({
-          systemPrompt,
-          userMessage: body.message,
-        });
-        if (fallbackMessage) {
-          res.write(`data: ${JSON.stringify({ type: 'text', content: fallbackMessage })}\n\n`);
-        }
-      }
-
-      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-    } catch (streamError) {
-      const msg = streamError instanceof Error ? streamError.message : '流式响应异常';
-      res.write(`data: ${JSON.stringify({ type: 'error', error: msg })}\n\n`);
-    } finally {
-      res.end();
-    }
-  } catch (error) {
-    if (!res.headersSent) {
-      console.error('AI chat error:', error);
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'AI 服务异常',
-      });
-    } else {
-      console.error('AI stream error:', error);
-      res.end();
-    }
-  }
-});
 
 router.post('/test', async (req, res) => {
   try {
@@ -167,6 +108,9 @@ router.post('/pi-chat', async (req, res) => {
         systemPrompt,
         customTools: contourCustomTools,
         permissionMode: body.permissionMode,
+        sessionId: body.sessionId,
+        dataDir: CONFIG.DATA_DIR,
+        projectDir: CONFIG.VAULTS_DIR,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -210,6 +154,42 @@ router.post('/pi-chat', async (req, res) => {
     if (res.headersSent && !res.writableEnded) {
       res.end();
     }
+  }
+});
+
+/**
+ * POST /api/ai/permission-response
+ *
+ * 接收用户对工具权限请求的决策，传递给 permission-extension 中等待的 Promise。
+ * 由前端的 PermissionDialog 在用户点击"允许"/"拒绝"后调用。
+ */
+router.post('/permission-response', (req, res) => {
+  try {
+    const { requestId, action, remember } = req.body as {
+      requestId: string;
+      action: "allow" | "deny";
+      remember?: boolean;
+    };
+
+    if (!requestId || !action) {
+      res.status(400).json({ success: false, error: '缺少必要参数 requestId 或 action' });
+      return;
+    }
+    if (action !== "allow" && action !== "deny") {
+      res.status(400).json({ success: false, error: 'action 必须是 "allow" 或 "deny"' });
+      return;
+    }
+
+    const resolved = resolvePermissionRequest(requestId, action, remember ?? false);
+    if (!resolved) {
+      res.status(404).json({ success: false, error: '权限请求不存在或已过期' });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '处理权限响应失败';
+    res.status(500).json({ success: false, error: msg });
   }
 });
 

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { sendChatMessageStream } from '../state/aiApi';
-import type { ChatMessage, ToolActivity } from '../state/aiApi';
+import { sendChatMessageStream, respondToPermission } from '../state/aiApi';
+import type { ChatMessage, PermissionRequest, ToolActivity } from '../state/aiApi';
 import type { AIContextItem } from '../types';
+
+export type PermissionMode = "readonly" | "review" | "yolo";
 
 export interface UseChatReturn {
   messages: ChatMessage[];
@@ -15,6 +17,12 @@ export interface UseChatReturn {
   handleSend: () => Promise<void>;
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   clearMessages: () => void;
+  permissionMode: PermissionMode;
+  setPermissionMode: (mode: PermissionMode) => void;
+  /** 当前的权限确认请求（review 模式下弹出对话框用） */
+  permissionRequest: PermissionRequest | null;
+  /** 响应当前权限请求 */
+  handlePermissionResponse: (action: "allow" | "deny", remember: boolean) => Promise<void>;
 }
 
 interface UseChatOptions {
@@ -47,6 +55,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const [streamingContent, setStreamingContent] = useState('');
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -115,6 +125,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
             return [...prev, activity];
           });
         },
+        onPermissionRequest: (request) => {
+          setPermissionRequest(request);
+        },
         onComplete: (fullContent) => {
           const assistantMessage: ChatMessage = {
             id: `msg_${Date.now()}`,
@@ -133,7 +146,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setStreamingContent('');
           setToolActivities([]);
         },
-      });
+      }, permissionMode);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '发送失败，请重试';
       setError(msg);
@@ -144,7 +157,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages]);
+  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -155,6 +168,22 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     },
     [handleSend],
   );
+
+  const handlePermissionResponse = useCallback(async (
+    action: "allow" | "deny",
+    remember: boolean,
+  ) => {
+    const req = permissionRequest;
+    if (!req) return;
+
+    try {
+      await respondToPermission(req.requestId, action, remember);
+    } catch (err) {
+      console.error('[Permission] 响应失败:', err);
+    } finally {
+      setPermissionRequest(null);
+    }
+  }, [permissionRequest]);
 
   const clearMessages = useCallback(() => {
     updateMessages(() => []);
@@ -176,5 +205,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     handleSend,
     handleKeyDown,
     clearMessages,
+    permissionMode,
+    setPermissionMode,
+    permissionRequest,
+    handlePermissionResponse,
   };
 }

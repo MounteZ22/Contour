@@ -46,6 +46,8 @@ async function main() {
       apiKey: API_KEY!,
       baseUrl: BASE_URL!,
       model: "claude-sonnet-5",
+      dataDir: "", // 手动测试不需要持久化
+      projectDir: process.cwd(),
       cwd: process.cwd(),
       tools: ["read"],
     });

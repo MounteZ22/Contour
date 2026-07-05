@@ -70,7 +70,7 @@ function getDefaultModelId(models: ChannelModel[]): string {
  * 将 Channel 转换为 AgentRuntimeConfig
  *
  * @param channel  — 渠道配置对象（来自 channelManager）
- * @param overrides — 可选覆盖项，model / cwd / tools 如果提供则优先使用
+ * @param overrides — 可选覆盖项，model / cwd / projectDir / dataDir / tools 如果提供则优先使用
  * @returns AgentRuntimeConfig — 可直接传给 AgentRuntime.init() 的配置对象
  *
  * @throws 如果渠道的 provider 不在 AGENT_COMPATIBLE_PROVIDERS 白名单中
@@ -81,6 +81,10 @@ export function channelToAgentRuntimeConfig(
   overrides?: {
     model?: string;
     cwd?: string;
+    /** 应用数据目录，透传给 AgentRuntimeConfig.dataDir */
+    dataDir?: string;
+    /** 项目内容目录，透传给 AgentRuntimeConfig.projectDir。不传时回退到 cwd */
+    projectDir?: string;
     tools?: string[];
     /** 业务上下文 system prompt（如 Flow/Doc 注入），透传给 PiRuntime */
     systemPrompt?: string;
@@ -88,6 +92,8 @@ export function channelToAgentRuntimeConfig(
     customTools?: unknown[];
     /** 权限模式，决定内置工具白名单 + 是否挂权限钩子，缺省 readonly */
     permissionMode?: "readonly" | "review" | "yolo";
+    /** 会话 ID（可选），传此值可恢复已有会话的对话历史 */
+    sessionId?: string;
   },
 ): AgentRuntimeConfig {
   // ── 1. 校验 provider 兼容性 ─────────────────────────────────────────────
@@ -131,8 +137,10 @@ export function channelToAgentRuntimeConfig(
   const builtinTools =
     permissionMode === "readonly" ? READONLY_BUILTIN_TOOLS : FULL_BUILTIN_TOOLS;
 
-  // ── 6. 确定 cwd 和 tools ───────────────────────────────────────────────
+  // ── 6. 确定 cwd、projectDir、dataDir 和 tools ───────────────────────────
   const cwd = overrides?.cwd ?? process.cwd();
+  const projectDir = overrides?.projectDir ?? cwd;
+  const dataDir = overrides?.dataDir ?? "";
   const tools = overrides?.tools ?? builtinTools;
 
   return {
@@ -143,7 +151,10 @@ export function channelToAgentRuntimeConfig(
     systemPrompt: overrides?.systemPrompt,
     customTools: overrides?.customTools,
     permissionMode,
-    cwd,
+    dataDir,
+    projectDir,
+    cwd: projectDir,
     tools,
+    sessionId: overrides?.sessionId,
   };
 }

@@ -13,6 +13,8 @@
  * - 所有配置通过 init() 参数传入，不读环境变量
  */
 
+import { readdirSync, mkdirSync } from "fs";
+import path from "path";
 import {
   createAgentSession,
   AuthStorage,
@@ -30,7 +32,7 @@ import type {
   PromptOptions,
 } from "./agent-runtime.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { createPermissionExtensionFactory } from "./permission-extension.js";
+import { createPermissionExtensionFactory, setActiveRequester, createPermissionRequest, rejectAllPendingRequests } from "./permission-extension.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -124,9 +126,37 @@ export class PiRuntime implements AgentRuntime {
       new Set([...(config.tools ?? ["read"]), ...customToolNames]),
     );
 
+    // ══ SessionManager: 持久化会话 ══════════════════════════════════════════════
+    //
+    // 会话数据存储在 dataDir/projects/{projectName}/sessions/ 目录下。
+    // - 新会话：通过 SessionManager.create() 自动创建文件
+    // - 恢复会话：通过 sessionId 在 sessions/ 中查找已有文件并打开
+    // Pi SDK 的 createAgentSession() 在收到已存有数据的 SessionManager 时，
+    // 会自动从会话中恢复消息列表、模型和 thinkingLevel。
+    const projectName = path.basename(config.projectDir ?? config.cwd);
+    const sessionDir = path.join(config.dataDir, "projects", projectName, "sessions");
+    mkdirSync(sessionDir, { recursive: true });
+    const effectiveCwd = config.projectDir ?? config.cwd;
+
+    let sessionManager: SessionManager;
+    if (config.sessionId) {
+      const sessionFile = findSessionFileById(sessionDir, config.sessionId);
+      if (sessionFile) {
+        sessionManager = SessionManager.open(sessionFile, sessionDir, effectiveCwd);
+        console.log(`[PiRuntime] 恢复会话: ${config.sessionId}`);
+      } else {
+        console.warn(
+          `[PiRuntime] 会话 ${config.sessionId} 未找到，创建新会话`,
+        );
+        sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+      }
+    } else {
+      sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+    }
+
     const { session } = await createAgentSession({
-      cwd: config.cwd,
-      agentDir: config.cwd,
+      cwd: effectiveCwd,
+      agentDir: effectiveCwd,
       model: this.model,
       thinkingLevel: "off",
       authStorage,
@@ -134,7 +164,7 @@ export class PiRuntime implements AgentRuntime {
       tools,
       customTools: config.customTools as any,
       resourceLoader: await this.createResourceLoader(config, authStorage),
-      sessionManager: SessionManager.inMemory(),
+      sessionManager,
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
         retry: { enabled: true, maxRetries: 1 },
@@ -208,7 +238,7 @@ export class PiRuntime implements AgentRuntime {
     );
 
     // ── 异步发送 prompt（不阻塞 AsyncIterable 的返回） ───────────────────
-    this.session
+    const promptPromise = this.session
       .prompt(text, {
         images: options?.images as any,
       })
@@ -219,6 +249,40 @@ export class PiRuntime implements AgentRuntime {
         });
         signalDone();
       });
+
+    // ── 设置权限确认 requester ──────────────────────────────────────────
+    //
+    // 当 permission-extension 的 tool_call 钩子需要用户确认时，调用此函数。
+    // 函数将 permission_request 事件注入事件流供前端消费，并返回一个
+    // Promise 等待用户决策结果（通过 POST /api/ai/permission-response 传入）。
+    //
+    // cleanup：prompt 结束后清除 requester，避免泄漏到下一次 prompt。
+    const cleanup = (): void => {
+      setActiveRequester(null);
+      rejectAllPendingRequests("prompt 已结束");
+    };
+
+    setActiveRequester(async (info) => {
+      const { requestId, promise } = createPermissionRequest(
+        info.toolName,
+        info.input,
+        info.reason,
+      );
+
+      // 注入 permission_request 事件供前端消费
+      pushEvent({
+        type: "permission_request",
+        requestId,
+        toolName: info.toolName,
+        input: info.input,
+        reason: info.reason,
+      });
+
+      return promise;
+    });
+
+    // promptPromise 完成后清理 requester
+    promptPromise.then(cleanup, cleanup);
 
     // ── 返回 AsyncIterable ───────────────────────────────────────────────
     return {
@@ -377,14 +441,15 @@ export class PiRuntime implements AgentRuntime {
     // 调研确认：extensionFactories 通过 DefaultResourceLoader 注入（不是
     // createAgentSession 直接参数），且和 customTools 能共存。
     const permissionMode = config.permissionMode ?? "readonly";
+    const effectiveCwd = config.projectDir ?? config.cwd;
     const extensionFactories =
       permissionMode === "review"
-        ? [createPermissionExtensionFactory("review")]
+        ? [createPermissionExtensionFactory("review", config.dataDir, effectiveCwd)]
         : [];
 
     const loader = new DefaultResourceLoader({
-      cwd: config.cwd,
-      agentDir: config.cwd,
+      cwd: effectiveCwd,
+      agentDir: effectiveCwd,
       systemPromptOverride,
       extensionFactories,
       settingsManager: SettingsManager.inMemory({
@@ -394,5 +459,31 @@ export class PiRuntime implements AgentRuntime {
     });
     await loader.reload();
     return loader;
+  }
+}
+
+// ── 辅助函数 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 在 sessionDir 中查找指定 sessionId 对应的会话文件
+ *
+ * 会话文件命名格式：{timestamp}_{sessionId}.jsonl（由 SessionManager 生成）。
+ * 通过文件名后缀匹配，避免读取文件内容。
+ *
+ * @param sessionDir - sessions/ 目录路径
+ * @param sessionId  - 要查找的会话 ID
+ * @returns 完整的文件路径，未找到则返回 null
+ */
+function findSessionFileById(
+  sessionDir: string,
+  sessionId: string,
+): string | null {
+  try {
+    const files = readdirSync(sessionDir);
+    const match = files.find((f) => f.endsWith(`_${sessionId}.jsonl`));
+    return match ? path.join(sessionDir, match) : null;
+  } catch {
+    // 目录不存在或无权读取 → session 不存在
+    return null;
   }
 }
