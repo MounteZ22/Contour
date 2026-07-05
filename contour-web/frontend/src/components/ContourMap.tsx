@@ -180,7 +180,7 @@ export function ContourMap({
             fetch(`/api/flows/${currentDraggingId}/position`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
+              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y), projectId }),
             }).catch((err) => console.error('保存位置失败:', err));
           }
         }

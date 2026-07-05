@@ -128,9 +128,10 @@ router.post('/pi-chat', async (req, res) => {
     }
 
     // 确保 C 盘项目数据目录已初始化，config.json 记录 D 盘项目路径
-    if (projectName !== "default") {
-      ensureProjectDir(projectName, projectDir);
-    }
+    // 注意：不再用 projectName !== "default" 守卫，因为即使没有传 projectId，
+    // pi-runtime 的 mkdirSync 会递归创建 projects/default/sessions/，
+    // 必须确保 config.json 被写入。
+    ensureProjectDir(projectName, projectDir);
 
     // 4. 构建业务上下文 system prompt（Flow/Doc 注入）+ 业务工具使用引导
     const systemPrompt =

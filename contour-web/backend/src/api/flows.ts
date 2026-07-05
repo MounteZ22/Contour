@@ -11,6 +11,26 @@ import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../va
 
 const router = Router();
 
+/**
+ * 解析 flow 所在的项目目录。
+ *
+ * 优先使用显式的 projectId 通过 findProjectDir 精确定位，避免跨项目 flowId
+ * 碰撞（多个项目各有同名 F001-F005 等 flow 时，findProjectDirForFlow 只
+ * 返回第一个匹配，导致位置/状态/删除等操作误操作其他项目的 flow）。
+ *
+ * projectId 来源：
+ *   - GET/DELETE: req.query.projectId
+ *   - PUT/POST:   req.body.projectId
+ */
+async function resolveProjectDir(flowId: string, projectId?: string): Promise<string | null> {
+  if (projectId) {
+    const dir = await findProjectDir(projectId);
+    if (dir) return dir;
+    // 如果 projectId 传了但目录不存在，fallthrough 到扫描逻辑
+  }
+  return findProjectDirForFlow(flowId);
+}
+
 // GET /api/flows - 所有 flow 列表（不含 sections 全文）
 router.get('/', async (req, res) => {
   try {
@@ -187,7 +207,7 @@ tags: []
 router.put('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { status } = req.body as { status?: string };
+    const { status, projectId } = req.body as { status?: string; projectId?: string };
 
     if (status === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'status is required' };
@@ -197,7 +217,7 @@ router.put('/:flowId', async (req, res) => {
 
     validateId(flowId, 'flowId');
 
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
@@ -249,8 +269,9 @@ router.put('/:flowId', async (req, res) => {
 router.delete('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
+    const queryProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
     validateId(flowId, 'flowId');
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, queryProjectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
@@ -284,9 +305,10 @@ router.delete('/:flowId', async (req, res) => {
 router.delete('/:flowId/sections/:sectionId', async (req, res) => {
   try {
     const { flowId, sectionId } = req.params;
+    const queryProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, queryProjectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
@@ -339,7 +361,7 @@ router.delete('/:flowId/sections/:sectionId', async (req, res) => {
 router.post('/:flowId/sections', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { sectionId, title } = req.body as { sectionId?: string; title?: string };
+    const { sectionId, title, projectId } = req.body as { sectionId?: string; title?: string; projectId?: string };
 
     if (!sectionId || !title) {
       const response: ApiResponse<never> = { success: false, error: 'sectionId and title are required' };
@@ -350,7 +372,7 @@ router.post('/:flowId/sections', async (req, res) => {
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
 
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
@@ -401,7 +423,7 @@ title: ${safeTitle}
 router.put('/:flowId/sections/:sectionId', async (req, res) => {
   try {
     const { flowId, sectionId } = req.params;
-    const { content } = req.body as { content?: string };
+    const { content, projectId } = req.body as { content?: string; projectId?: string };
 
     if (content === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'content is required' };
@@ -412,7 +434,7 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
 
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
       res.status(500).json(response);
@@ -472,7 +494,7 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
 router.put('/:flowId/position', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { x, y } = req.body as { x?: number; y?: number };
+    const { x, y, projectId } = req.body as { x?: number; y?: number; projectId?: string };
 
     if (typeof x !== 'number' || typeof y !== 'number') {
       const response: ApiResponse<never> = { success: false, error: 'x and y coordinates are required' };
@@ -482,7 +504,7 @@ router.put('/:flowId/position', async (req, res) => {
 
     validateId(flowId, 'flowId');
 
-    const projectDir = await findProjectDirForFlow(flowId);
+    const projectDir = await resolveProjectDir(flowId, projectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
