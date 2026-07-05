@@ -73,7 +73,9 @@ ${researchGoal || '待补充研究目标'}
     await atomicWriteFile(path.join(projectDir, 'background', 'project_brief.md'), briefContent);
 
     invalidateCache();
-    const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId } };
+    // 返回目录名作为实际 projectId，与扫描器一致
+    const actualProjectId = path.basename(projectDir);
+    const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId: actualProjectId } };
     res.status(201).json(response);
   } catch (err) {
     if (err instanceof ValidationError) {

@@ -27,6 +27,7 @@ export interface UseChatReturn {
 
 interface UseChatOptions {
   sessionId?: string;
+  projectId?: string;
 }
 
 function readStoredMessages(sessionId: string | undefined): ChatMessage[] {
@@ -47,7 +48,7 @@ function writeStoredMessages(sessionId: string | undefined, messages: ChatMessag
 }
 
 export function useChat(initialContext: AIContextItem[] = [], options: UseChatOptions = {}): UseChatReturn {
-  const { sessionId } = options;
+  const { sessionId, projectId } = options;
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -146,7 +147,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setStreamingContent('');
           setToolActivities([]);
         },
-      }, permissionMode);
+      }, permissionMode, projectId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '发送失败，请重试';
       setError(msg);
@@ -157,7 +158,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode]);
+  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

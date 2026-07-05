@@ -30,7 +30,7 @@ export function SessionChat({ session }: { session: AgentSession }) {
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
-  } = useChat(session.contextItems, { sessionId: session.id });
+  } = useChat(session.contextItems, { sessionId: session.id, projectId: session.projectId });
 
   const { displayedContent: rawSmoothContent } = useSmoothStream({
     content: streamingContent,

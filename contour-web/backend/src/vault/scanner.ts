@@ -32,6 +32,14 @@ export async function scanAllProjects(vaultsDir: string, legacyVault: string): P
 }
 
 async function scanProject(projectDir: string): Promise<ProjectData | null> {
+  // 目录不存在时直接跳过（避免遗留的 legacy_vault 路径产生幽灵项目）
+  try {
+    const stat = await fs.stat(projectDir);
+    if (!stat.isDirectory()) return null;
+  } catch {
+    return null;
+  }
+
   const basename = path.basename(projectDir);
   const projectId = basename;
   const title = basename.replace(/_/g, ' ');

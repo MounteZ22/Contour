@@ -314,6 +314,7 @@ export function ContourView() {
             onToggleFlowSelection={toggleFlowSelection}
             projectId={project.projectId}
             selectedFlowIds={selectedFlows}
+            onPositionSaved={onRefresh}
           />
         </div>
 

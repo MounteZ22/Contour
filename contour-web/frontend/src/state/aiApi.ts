@@ -51,9 +51,11 @@ export async function sendChatMessageStream(
   contextItems: AIContextItem[],
   callbacks: StreamCallbacks,
   permissionMode?: "readonly" | "review" | "yolo",
+  projectId?: string,
 ): Promise<void> {
   const body: Record<string, unknown> = { message, contextItems };
   if (permissionMode) body.permissionMode = permissionMode;
+  if (projectId) body.projectId = projectId;
 
   const res = await fetch('/api/ai/pi-chat', {
     method: 'POST',
