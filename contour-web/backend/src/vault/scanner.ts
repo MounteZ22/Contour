@@ -10,7 +10,7 @@ export async function scanAllProjects(vaultsDir: string, legacyVault: string): P
   try {
     const entries = await fs.readdir(vaultsDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith('PRJ_')) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
         const project = await scanProject(path.join(vaultsDir, entry.name));
         if (project) projects.push(project);
       }
