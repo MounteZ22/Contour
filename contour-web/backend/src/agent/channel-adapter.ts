@@ -92,6 +92,8 @@ export function channelToAgentRuntimeConfig(
     customTools?: unknown[];
     /** 权限模式，决定内置工具白名单 + 是否挂权限钩子，缺省 readonly */
     permissionMode?: "readonly" | "review" | "yolo";
+    /** 项目 ID（可选），用于数据隔离。不传时回退到 projectDir 的 basename */
+    projectId?: string;
     /** 会话 ID（可选），传此值可恢复已有会话的对话历史 */
     sessionId?: string;
   },
@@ -156,5 +158,6 @@ export function channelToAgentRuntimeConfig(
     cwd: projectDir,
     tools,
     sessionId: overrides?.sessionId,
+    projectId: overrides?.projectId,
   };
 }

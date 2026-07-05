@@ -8,6 +8,9 @@ import { PiRuntime } from '../agent/pi-runtime.js';
 import { CONFIG } from '../config.js';
 import { contourCustomTools, VAULT_TOOLS_PROMPT } from '../tools/pi-vault-tools.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
+import { findProjectDir } from '../vault/locate.js';
+import { ensureProjectDir } from '../services/projectManager.js';
+import path from 'node:path';
 
 
 const router = Router();
@@ -40,9 +43,16 @@ interface PiChatRequestBody {
    */
   permissionMode?: "readonly" | "review" | "yolo";
   /**
+   * 项目 ID（可选）
+   *
+   * 对应 VAULTS_DIR 下项目子目录的 projectId（如 "PRJ_001"）。
+   * 用于确定 Agent cwd 和数据隔离目录。不传时 cwd 回退到 VAULTS_DIR。
+   */
+  projectId?: string;
+  /**
    * 会话 ID（可选）
    *
-   * 传此值可恢复已有会话的对话历史。服务端在 dataDir/projects/{projectName}/sessions/
+   * 传此值可恢复已有会话的对话历史。服务端在 dataDir/projects/{projectId}/sessions/
    * 目录下查找对应的持久化文件，加载历史消息作为上下文。
    */
   sessionId?: string;
@@ -95,13 +105,40 @@ router.post('/pi-chat', async (req, res) => {
       return;
     }
 
-    // 3. 构建业务上下文 system prompt（Flow/Doc 注入）+ 业务工具使用引导
+    // 3. 确定项目目录和存储名称
+    //    - 如果前端传了 projectId，用 findProjectDir 解析实际项目子目录
+    //    - 不传则回退到 VAULTS_DIR 根（单项目兼容模式）
+    //    - 存储名用目录的 basename（如 "PRJ_001_示例研究项目"），和文件系统一致
+    let projectDir = CONFIG.VAULTS_DIR;
+    let projectName = "default";
+    if (body.projectId) {
+      const found = await findProjectDir(body.projectId);
+      if (found) {
+        projectDir = found;
+        projectName = path.basename(projectDir);
+        console.log(`[Pi-chat] 项目目录: ${projectDir}`);
+        // 编码验证：输出每个字符的 Unicode 码点，用于排查 UTF-8 路径在
+        // Node.js 文件系统链路中是否被破坏（如遇到乱码目录名可与之对比）。
+        console.log(`[Pi-chat] 项目名编码验证:`,
+          Array.from(projectName).map(c => `U+${c.codePointAt(0)!.toString(16).toUpperCase()}`).join(' '));
+      } else {
+        console.warn(`[Pi-chat] 项目 ${body.projectId} 未找到，回退到 VAULTS_DIR`);
+        projectName = body.projectId; // 前端传了但目录没了，仍用原名隔离
+      }
+    }
+
+    // 确保 C 盘项目数据目录已初始化，config.json 记录 D 盘项目路径
+    if (projectName !== "default") {
+      ensureProjectDir(projectName, projectDir);
+    }
+
+    // 4. 构建业务上下文 system prompt（Flow/Doc 注入）+ 业务工具使用引导
     const systemPrompt =
       (await buildSystemPrompt(body.contextItems || [])) +
       "\n\n" +
       VAULT_TOOLS_PROMPT;
 
-    // 4. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
+    // 5. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
     let agentConfig;
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
@@ -110,7 +147,8 @@ router.post('/pi-chat', async (req, res) => {
         permissionMode: body.permissionMode,
         sessionId: body.sessionId,
         dataDir: CONFIG.DATA_DIR,
-        projectDir: CONFIG.VAULTS_DIR,
+        projectDir,
+        projectId: projectName,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

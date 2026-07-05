@@ -82,10 +82,18 @@ export interface AgentRuntimeConfig {
   /** 启用的工具名称列表，默认只开放 read */
   tools?: string[];
   /**
+   * 项目 ID（可选）
+   *
+   * 对应 VAULTS_DIR 下项目子目录的 projectId（如 "PRJ_001"）。
+   * 用于在 dataDir/projects/ 下隔离存储会话、权限规则等数据。
+   * 不传时回退到 projectDir 的 basename。
+   */
+  projectId?: string;
+  /**
    * 会话 ID（可选）
    *
    * 传此值可恢复已有会话的对话历史，Agent 会加载之前的消息作为上下文。
-   * 不传或传空则创建新会话。持久化文件存储在 dataDir/projects/{projectName}/sessions/ 目录下。
+   * 不传或传空则创建新会话。持久化文件存储在 dataDir/projects/{projectId}/sessions/ 目录下。
    */
   sessionId?: string;
 }

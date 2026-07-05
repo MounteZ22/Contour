@@ -11,7 +11,7 @@ export async function findProjectDir(projectId: string): Promise<string | null> 
   try {
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith(projectId)) {
+      if (entry.isDirectory() && entry.name === projectId) {
         return path.join(CONFIG.VAULTS_DIR, entry.name);
       }
     }

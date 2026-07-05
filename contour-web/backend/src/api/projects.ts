@@ -9,7 +9,6 @@ import { Router } from "express";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
-  getProjectName,
   getAttachedDirectories,
   attachDirectory,
   detachDirectory,

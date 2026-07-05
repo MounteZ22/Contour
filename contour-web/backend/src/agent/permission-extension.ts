@@ -65,19 +65,18 @@ const pendingRequests = new Map<string, PendingRequest>();
 // ── 规则持久化 ─────────────────────────────────────────────────────────────
 
 /**
- * 规则文件的绝对路径：dataDir/projects/{projectName}/permission-rules.json
+ * 规则文件的绝对路径：dataDir/projects/{projectId}/permission-rules.json
  */
-function rulesFilePath(dataDir: string, projectDir: string): string {
-  const projectName = path.basename(projectDir);
-  return path.join(dataDir, "projects", projectName, "permission-rules.json");
+function rulesFilePath(dataDir: string, projectId: string): string {
+  return path.join(dataDir, "projects", projectId, "permission-rules.json");
 }
 
 /**
  * 加载规则文件
  */
-function loadRules(dataDir: string, projectDir: string): PermissionRule[] {
+function loadRules(dataDir: string, projectId: string): PermissionRule[] {
   try {
-    const filePath = rulesFilePath(dataDir, projectDir);
+    const filePath = rulesFilePath(dataDir, projectId);
     if (!existsSync(filePath)) return [];
     const raw = readFileSync(filePath, "utf-8");
     return JSON.parse(raw);
@@ -89,14 +88,14 @@ function loadRules(dataDir: string, projectDir: string): PermissionRule[] {
 /**
  * 追加一条规则
  */
-function persistRule(dataDir: string, projectDir: string, rule: PermissionRule): void {
+function persistRule(dataDir: string, projectId: string, rule: PermissionRule): void {
   try {
-    const filePath = rulesFilePath(dataDir, projectDir);
+    const filePath = rulesFilePath(dataDir, projectId);
     const dir = path.dirname(filePath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    const rules = loadRules(dataDir, projectDir);
+    const rules = loadRules(dataDir, projectId);
     rules.push(rule);
     writeFileSync(filePath, JSON.stringify(rules, null, 2), "utf-8");
   } catch (err) {
@@ -202,13 +201,13 @@ export function setActiveRequester(fn: PermissionRequesterFn | null): void {
  *
  * @param permissionMode 权限模式。仅 "review" 时挂钩子
  * @param dataDir 应用数据目录（~/.contour 或 ~/.contour-dev）
- * @param projectDir 项目内容目录，取其 basename 作为项目名
+ * @param projectId 项目 ID（如 "PRJ_001"），用于隔离规则文件路径
  * @returns Pi SDK 的 ExtensionFactory 函数
  */
 export function createPermissionExtensionFactory(
   permissionMode: NonNullable<AgentRuntimeConfig["permissionMode"]>,
   dataDir: string,
-  projectDir: string,
+  projectId: string,
 ): (pi: any) => void {
   return (pi: any) => {
     // readonly / yolo 不挂钩子
@@ -219,7 +218,7 @@ export function createPermissionExtensionFactory(
       if (!WRITE_TOOLS.has(event.toolName)) return;
 
       // ── 1. 规则匹配 ─────────────────────────────────────────────────────
-      const rules = loadRules(dataDir, projectDir);
+      const rules = loadRules(dataDir, projectId);
       const matched = matchRule(rules, event.toolName, event.input);
       if (matched) {
         if (matched.action === "allow") {
@@ -269,7 +268,7 @@ export function createPermissionExtensionFactory(
               typeof event.input === "string"
                 ? event.input
                 : JSON.stringify(event.input ?? "");
-            persistRule(dataDir, projectDir, {
+            persistRule(dataDir, projectId, {
               toolName: event.toolName,
               pattern: inputStr.slice(0, 200),
               action: result.action,

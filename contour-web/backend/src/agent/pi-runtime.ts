@@ -133,8 +133,8 @@ export class PiRuntime implements AgentRuntime {
     // - 恢复会话：通过 sessionId 在 sessions/ 中查找已有文件并打开
     // Pi SDK 的 createAgentSession() 在收到已存有数据的 SessionManager 时，
     // 会自动从会话中恢复消息列表、模型和 thinkingLevel。
-    const projectName = path.basename(config.projectDir ?? config.cwd);
-    const sessionDir = path.join(config.dataDir, "projects", projectName, "sessions");
+    const projectId = config.projectId ?? path.basename(config.projectDir ?? config.cwd);
+    const sessionDir = path.join(config.dataDir, "projects", projectId, "sessions");
     mkdirSync(sessionDir, { recursive: true });
     const effectiveCwd = config.projectDir ?? config.cwd;
 
@@ -442,9 +442,10 @@ export class PiRuntime implements AgentRuntime {
     // createAgentSession 直接参数），且和 customTools 能共存。
     const permissionMode = config.permissionMode ?? "readonly";
     const effectiveCwd = config.projectDir ?? config.cwd;
+    const projectId = config.projectId ?? path.basename(effectiveCwd);
     const extensionFactories =
       permissionMode === "review"
-        ? [createPermissionExtensionFactory("review", config.dataDir, effectiveCwd)]
+        ? [createPermissionExtensionFactory("review", config.dataDir, projectId)]
         : [];
 
     const loader = new DefaultResourceLoader({
