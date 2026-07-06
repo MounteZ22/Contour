@@ -59,9 +59,9 @@ export function ensureProjectDir(projectId: string, projectDir?: string): string
 
 // ── 项目配置 ───────────────────────────────────────────────────────────────
 
-/** config.json 的绝对路径 */
+/** config.json 的绝对路径（纯路径计算，无副作用） */
 function configFilePath(projectId: string): string {
-  return path.join(ensureProjectDir(projectId), "config.json");
+  return path.join(PROJECTS_DIR, projectId, "config.json");
 }
 
 /**

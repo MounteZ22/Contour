@@ -127,6 +127,9 @@ router.post('/pi-chat', async (req, res) => {
       }
     }
 
+    // 过滤文件系统非法字符，防止 mkdirSync 抛异常
+    projectName = projectName.replace(/[<>:"/\\|?*]/g, '_').replace(/\.\./g, '_');
+
     // 确保 C 盘项目数据目录已初始化，config.json 记录 D 盘项目路径
     // 注意：不再用 projectName !== "default" 守卫，因为即使没有传 projectId，
     // pi-runtime 的 mkdirSync 会递归创建 projects/default/sessions/，
@@ -157,22 +160,35 @@ router.post('/pi-chat', async (req, res) => {
       return;
     }
 
-    // 5. 通过 PiRuntime 初始化并发送消息
+    // 6. 通过 PiRuntime 初始化并发送消息
     runtime = new PiRuntime();
     await runtime.init(agentConfig);
 
-    // 5. 设置 SSE 响应头
+    // 7. 设置 SSE 响应头
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
-    // 6. 消费 PiRuntime.prompt() 事件流 → SSE 输出
-    for await (const event of runtime.prompt(body.message)) {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
+    // 8. 客户端断开或超时时中止 Agent，避免浪费 API 配额
+    let aborted = false;
+    const onClose = () => { aborted = true; runtime?.abort(); };
+    req.on('close', onClose);
+    const timeout = setTimeout(() => { aborted = true; runtime?.abort(); }, 10 * 60 * 1000);
 
-    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    try {
+      // 9. 消费 PiRuntime.prompt() 事件流 → SSE 输出
+      for await (const event of runtime.prompt(body.message)) {
+        if (aborted) break;
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+      if (!aborted) {
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      }
+    } finally {
+      clearTimeout(timeout);
+      req.off('close', onClose);
+    }
   } catch (error) {
     if (!res.headersSent) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -186,7 +202,7 @@ router.post('/pi-chat', async (req, res) => {
       }
     }
   } finally {
-    // 7. 释放 PiRuntime 资源
+    // 10. 释放 PiRuntime 资源
     if (runtime) {
       runtime.dispose();
     }

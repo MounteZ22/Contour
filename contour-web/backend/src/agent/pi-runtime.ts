@@ -32,7 +32,8 @@ import type {
   PromptOptions,
 } from "./agent-runtime.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { createPermissionExtensionFactory, setActiveRequester, createPermissionRequest, rejectAllPendingRequests } from "./permission-extension.js";
+import { createPermissionExtensionFactory, createPermissionRequest, rejectAllPendingRequests } from "./permission-extension.js";
+import type { PermissionRequesterFn } from "./permission-extension.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,8 @@ export class PiRuntime implements AgentRuntime {
   /** 当前模型（通过 ModelRegistry.find() 查找得到） */
   private model: Model<Api> | null = null;
   private activePrompt: ActivePrompt | null = null;
+  /** 当前 prompt 会话的权限确认 requester（实例级，避免多实例并发覆盖） */
+  private activeRequester: PermissionRequesterFn | null = null;
 
   /**
    * 初始化 Pi 运行时
@@ -237,6 +240,45 @@ export class PiRuntime implements AgentRuntime {
       },
     );
 
+    // ── 设置权限确认 requester（必须在 session.prompt() 之前）─────────────
+    //
+    // 当 permission-extension 的 tool_call 钩子需要用户确认时，调用此函数。
+    // 函数将 permission_request 事件注入事件流供前端消费，并返回一个
+    // Promise 等待用户决策结果（通过 POST /api/ai/permission-response 传入）。
+    //
+    // ⚠️ 时序关键：必须在 session.prompt() 之前设置 activeRequester，否则
+    // prompt 启动后 tool_call 钩子可能先于 requester 赋值触发，
+    // 导致"确认链路未就绪"拒绝。
+    //
+    // cleanup：prompt 结束后清除 requester，避免泄漏到下一次 prompt。
+    let currentAbort: (() => void) | null = null;
+
+    const cleanup = (): void => {
+      this.activeRequester = null;
+      currentAbort?.();
+      rejectAllPendingRequests("prompt 已结束");
+    };
+
+    this.activeRequester = async (info) => {
+      const { requestId, promise, abort } = createPermissionRequest(
+        info.toolName,
+        info.input,
+        info.reason,
+      );
+      currentAbort = abort;
+
+      // 注入 permission_request 事件供前端消费
+      pushEvent({
+        type: "permission_request",
+        requestId,
+        toolName: info.toolName,
+        input: info.input,
+        reason: info.reason,
+      });
+
+      return promise;
+    };
+
     // ── 异步发送 prompt（不阻塞 AsyncIterable 的返回） ───────────────────
     const promptPromise = this.session
       .prompt(text, {
@@ -249,37 +291,6 @@ export class PiRuntime implements AgentRuntime {
         });
         signalDone();
       });
-
-    // ── 设置权限确认 requester ──────────────────────────────────────────
-    //
-    // 当 permission-extension 的 tool_call 钩子需要用户确认时，调用此函数。
-    // 函数将 permission_request 事件注入事件流供前端消费，并返回一个
-    // Promise 等待用户决策结果（通过 POST /api/ai/permission-response 传入）。
-    //
-    // cleanup：prompt 结束后清除 requester，避免泄漏到下一次 prompt。
-    const cleanup = (): void => {
-      setActiveRequester(null);
-      rejectAllPendingRequests("prompt 已结束");
-    };
-
-    setActiveRequester(async (info) => {
-      const { requestId, promise } = createPermissionRequest(
-        info.toolName,
-        info.input,
-        info.reason,
-      );
-
-      // 注入 permission_request 事件供前端消费
-      pushEvent({
-        type: "permission_request",
-        requestId,
-        toolName: info.toolName,
-        input: info.input,
-        reason: info.reason,
-      });
-
-      return promise;
-    });
 
     // promptPromise 完成后清理 requester
     promptPromise.then(cleanup, cleanup);
@@ -445,7 +456,7 @@ export class PiRuntime implements AgentRuntime {
     const projectId = config.projectId ?? path.basename(effectiveCwd);
     const extensionFactories =
       permissionMode === "review"
-        ? [createPermissionExtensionFactory("review", config.dataDir, projectId)]
+        ? [createPermissionExtensionFactory("review", config.dataDir, projectId, () => this.activeRequester)]
         : [];
 
     const loader = new DefaultResourceLoader({
@@ -481,7 +492,10 @@ function findSessionFileById(
 ): string | null {
   try {
     const files = readdirSync(sessionDir);
-    const match = files.find((f) => f.endsWith(`_${sessionId}.jsonl`));
+    const match = files.find((f) => {
+      const parsed = f.match(/^\d+_(.+)\.jsonl$/);
+      return parsed?.[1] === sessionId;
+    });
     return match ? path.join(sessionDir, match) : null;
   } catch {
     // 目录不存在或无权读取 → session 不存在

@@ -7,7 +7,7 @@
  * 架构要点：
  * - 规则持久化：放行的工具可"记住"（persist 规则到 dataDir/projects/{name}/permission-rules.json）
  * - 规则优先：匹配规则的请求直接放行/拒绝，不弹确认框
- * - 模块级状态：pendingRequests Map 在 SSE 流与 POST /api/ai/permission-response
+ * - 实例级状态：pendingRequests Map 在 SSE 流与 POST /api/ai/permission-response
  *   之间桥接，PiRuntime 在 prompt() 中负责注入 requester
  * - 状态清理：prompt 结束或出错时通过 cleanup 回调清理 requester
  */
@@ -130,19 +130,43 @@ export function createPermissionRequest(
   toolName: string,
   input: unknown,
   reason: string,
-): { requestId: string; promise: Promise<PermissionResponse> } {
+): { requestId: string; promise: Promise<PermissionResponse>; abort: () => void } {
   const requestId = crypto.randomUUID();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  /** 清理 Map 条目和超时定时器（幂等） */
+  const cleanup = (): void => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    pendingRequests.delete(requestId);
+  };
+
   const promise = new Promise<PermissionResponse>((resolve, reject) => {
     pendingRequests.set(requestId, {
-      resolve,
-      reject,
+      resolve: (resp: PermissionResponse) => {
+        cleanup();
+        resolve(resp);
+      },
+      reject: (err: Error) => {
+        cleanup();
+        reject(err);
+      },
       toolName,
       input,
       createdAt: Date.now(),
     });
+
+    // 自清理超时：5 分钟后自动拒绝并清理 Map 条目
+    timeoutId = setTimeout(() => {
+      pendingRequests.delete(requestId);
+      timeoutId = null;
+      reject(new Error("权限请求超时"));
+    }, 5 * 60 * 1000);
   });
 
-  return { requestId, promise };
+  return { requestId, promise, abort: cleanup };
 }
 
 /**
@@ -172,27 +196,18 @@ export function rejectAllPendingRequests(reason: string = "会话已终止"): vo
   }
 }
 
-// ── 模块级 requester 注入 ─────────────────────────────────────────────────
+// ── 实例级 requester 类型 ─────────────────────────────────────────────────
 
 /**
  * tool_call 钩子在拦截写操作后，调用此函数请求用户确认。
  *
- * PiRuntime.prompt() 在调用 session.prompt() 前设置此函数，
+ * PiRuntime 在调用 session.prompt() 前设置实例属性 activeRequester，
  * 在 prompt 结束后清除。函数内部通过 pushEvent 发出
  * permission_request 事件到事件流，并返回一个 Promise。
  */
-type PermissionRequesterFn = (
+export type PermissionRequesterFn = (
   info: PermissionRequestInfo,
 ) => Promise<PermissionResponse>;
-
-let activeRequester: PermissionRequesterFn | null = null;
-
-/**
- * 设置当前 prompt 会话的 requester（由 PiRuntime.prompt() 调用）
- */
-export function setActiveRequester(fn: PermissionRequesterFn | null): void {
-  activeRequester = fn;
-}
 
 // ── ExtensionFactory ──────────────────────────────────────────────────────
 
@@ -208,6 +223,7 @@ export function createPermissionExtensionFactory(
   permissionMode: NonNullable<AgentRuntimeConfig["permissionMode"]>,
   dataDir: string,
   projectId: string,
+  getRequester: () => PermissionRequesterFn | null,
 ): (pi: any) => void {
   return (pi: any) => {
     // readonly / yolo 不挂钩子
@@ -231,7 +247,7 @@ export function createPermissionExtensionFactory(
       }
 
       // ── 2. 无命中规则 → 请求用户确认 ──────────────────────────────────
-      const requester = activeRequester;
+      const requester = getRequester();
       if (!requester) {
         // 安全回退：无 requester 时直接拒绝
         return {
@@ -242,25 +258,19 @@ export function createPermissionExtensionFactory(
 
       // hook 可以是 async，Pi SDK await 此返回值（agent-loop.js:386）
       //
-      // 调用 activeRequester（由 PiRuntime.prompt() 注入）：requester 内部
+      // 调用 getRequester()（由 PiRuntime.prompt() 注入）：requester 内部
       // 通过 createPermissionRequest 生成 requestId + Promise，push SSE
       // permission_request 事件到事件流，返回 Promise。这里 await 用户决策。
+      // 超时保护由 createPermissionRequest 内部的 5 分钟 setTimeout 提供，
+      // 无需在此处重复 Promise.race，避免孤儿定时器。
       return (async () => {
         try {
-          const result = await Promise.race([
-            requester({
-              requestId: "", // requester 内部生成真实 requestId
-              toolName: event.toolName,
-              input: event.input,
-              reason: `Agent 请求执行 ${event.toolName}`,
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error("权限请求超时")),
-                5 * 60 * 1000, // 5 分钟超时
-              ),
-            ),
-          ]);
+          const result = await requester({
+            requestId: "", // requester 内部生成真实 requestId
+            toolName: event.toolName,
+            input: event.input,
+            reason: `Agent 请求执行 ${event.toolName}`,
+          });
 
           // 保存规则（如果用户要求记住）
           if (result.remember) {
