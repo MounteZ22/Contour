@@ -47,7 +47,7 @@ export function FlowWorkspacePage() {
       const res = await fetch(`/api/flows/${initialFlow.flowId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, projectId: project.projectId }),
       });
       const result = await res.json();
       if (result.success) {
@@ -106,7 +106,7 @@ export function FlowWorkspacePage() {
       const res = await fetch(`/api/flows/${initialFlow.flowId}/sections/${activeSection.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editedContent }),
+        body: JSON.stringify({ content: editedContent, projectId: project.projectId }),
       });
       const result = await res.json();
       if (!result.success) {
@@ -134,7 +134,7 @@ export function FlowWorkspacePage() {
       const res = await fetch(`/api/flows/${initialFlow.flowId}/sections`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionId: newId, title }),
+        body: JSON.stringify({ sectionId: newId, title, projectId: project.projectId }),
       });
       const result = await res.json();
       if (!result.success) {

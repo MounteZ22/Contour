@@ -42,6 +42,7 @@ export function ContourMap({
   contextSelectMode,
   selectedFlowIds,
   onToggleFlowSelection,
+  onPositionSaved,
 }: {
   flows: Flow[];
   projectId: string;
@@ -50,6 +51,8 @@ export function ContourMap({
   contextSelectMode?: boolean;
   selectedFlowIds?: Set<string>;
   onToggleFlowSelection?: (flowId: string) => void;
+  /** 位置保存成功后回调，通知父组件同步数据 */
+  onPositionSaved?: (flowId: string, x: number, y: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
@@ -68,6 +71,8 @@ export function ContourMap({
 
   // 用 ref 追踪已初始化的 flowId，避免每次 prop 变化都重置位置
   const initializedRef = useRef<Set<string>>(new Set());
+  // 按项目保存位置快照，防止不同项目的同名 flow 位置串绑，同时支持切回时恢复
+  const positionsByProjectRef = useRef<Map<string, Map<string, NodePos>>>(new Map());
   // 追踪拖拽起点，用于区分拖拽和点击
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   // 标记是否发生了有效拖拽（移动超过阈值）
@@ -75,18 +80,38 @@ export function ContourMap({
   // 阻止下一次 click 导航（拖拽结束后 Link 会收到 click 事件）
   const preventClickRef = useRef(false);
 
-  // 只给新出现的 flow 初始化位置，已有本地位置的保留
+  // 项目切换时：保存当前项目位置，恢复/清空目标项目位置
+  const prevProjectRef = useRef(projectId);
+  if (prevProjectRef.current !== projectId) {
+    // 保存旧项目的位置快照
+    positionsByProjectRef.current.set(prevProjectRef.current, new Map(positions));
+    prevProjectRef.current = projectId;
+    // 恢复已知项目的位置，或清空（新项目）
+    const saved = positionsByProjectRef.current.get(projectId);
+    initializedRef.current = saved ? new Set(saved.keys()) : new Set();
+    setPositions(saved ?? new Map());
+  }
+
+  // 同步 flow 位置：新 flow 初始化，后端位置变化时更新（拖拽中的除外）
   useEffect(() => {
     setPositions((prev) => {
       const next = new Map(prev);
+      const currentIds = new Set(flows.map((f) => f.flowId));
       flows.forEach((flow, i) => {
+        const backendPos = flow.position;
         if (!initializedRef.current.has(flow.flowId)) {
-          next.set(flow.flowId, getNodePos(flow, i, flows.length));
+          // 新 flow：用后端位置或默认布局
+          next.set(flow.flowId, backendPos ?? getNodePos(flow, i, flows.length));
           initializedRef.current.add(flow.flowId);
+        } else if (backendPos && draggingIdRef.current !== flow.flowId) {
+          // 已初始化且非拖拽中：如果后端位置和本地不同，以后端为准（保存成功后同步）
+          const local = next.get(flow.flowId);
+          if (local && (local.x !== backendPos.x || local.y !== backendPos.y)) {
+            next.set(flow.flowId, backendPos);
+          }
         }
       });
       // 清理已不存在的 flow
-      const currentIds = new Set(flows.map((f) => f.flowId));
       for (const id of next.keys()) {
         if (!currentIds.has(id)) {
           next.delete(id);
@@ -180,8 +205,13 @@ export function ContourMap({
             fetch(`/api/flows/${currentDraggingId}/position`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y) }),
-            }).catch((err) => console.error('保存位置失败:', err));
+              body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y), projectId }),
+              keepalive: true, // 组件卸载后仍能完成请求
+            })
+              .then((res) => {
+                if (res.ok) onPositionSaved?.(currentDraggingId, Math.round(pos.x), Math.round(pos.y));
+              })
+              .catch((err) => console.error('保存位置失败:', err));
           }
         }
       }

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { Bot, Loader2, Send, X } from 'lucide-react';
+import { Bot, Eye, Loader2, Send, ShieldCheck, X, Zap } from 'lucide-react';
 import { ChatMessageItem } from '../ChatMessage';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useChat } from '../../hooks/useChat';
 import { useSmoothStream } from '../../hooks/useSmoothStream';
 import { useAgentSessions, type AgentSession } from '../../hooks/useAgentSessions';
+import { PermissionDialog } from './PermissionDialog';
 import type { ChatMessage } from '../../state/aiApi';
 
 export function SessionChat({ session }: { session: AgentSession }) {
@@ -25,7 +26,11 @@ export function SessionChat({ session }: { session: AgentSession }) {
     handleSend,
     handleKeyDown,
     clearMessages,
-  } = useChat(session.contextItems, { sessionId: session.id });
+    permissionMode,
+    setPermissionMode,
+    permissionRequest,
+    handlePermissionResponse,
+  } = useChat(session.contextItems, { sessionId: session.id, projectId: session.projectId });
 
   const { displayedContent: rawSmoothContent } = useSmoothStream({
     content: streamingContent,
@@ -50,6 +55,13 @@ export function SessionChat({ session }: { session: AgentSession }) {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-background">
+      {/* 权限确认弹窗 */}
+      {permissionRequest && (
+        <PermissionDialog
+          request={permissionRequest}
+          onResponse={handlePermissionResponse}
+        />
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
         <div className="max-w-3xl mx-auto flex flex-col gap-4">
           {messages.length === 0 && !isStreaming ? (
@@ -127,6 +139,32 @@ export function SessionChat({ session }: { session: AgentSession }) {
               ))}
             </div>
           )}
+
+          {/* 权限模式选择 */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[10px] font-mono text-muted-foreground/60">权限:</span>
+            {([
+              { value: 'readonly' as const, label: '只读', icon: Eye, title: '仅允许读取文件' },
+              { value: 'review' as const, label: '审查', icon: ShieldCheck, title: '写操作需弹窗确认' },
+              { value: 'yolo' as const, label: '自动', icon: Zap, title: '允许所有操作' },
+            ]).map(({ value, label, icon: Icon, title }) => (
+              <Button
+                key={value}
+                variant={permissionMode === value ? 'default' : 'ghost'}
+                size="sm"
+                className="h-7 gap-1 text-xs px-2.5"
+                onClick={() => setPermissionMode(value)}
+                title={title}
+                type="button"
+              >
+                <Icon size={12} />
+                {label}
+                {value === 'review' && permissionMode !== value && (
+                  <span className="text-amber-500 leading-none">●</span>
+                )}
+              </Button>
+            ))}
+          </div>
 
           <div className="flex items-center gap-2">
             <Input

@@ -14,11 +14,27 @@ export interface ToolActivity {
   result?: string;
 }
 
+/** 权限确认请求（来自后端 permission-extension） */
+export interface PermissionRequest {
+  requestId: string;
+  toolName: string;
+  input: unknown;
+  reason: string;
+}
+
+/** 用户对权限请求的决策 */
+export interface PermissionResponse {
+  action: "allow" | "deny";
+  remember: boolean;
+}
+
 interface StreamCallbacks {
   /** 收到文本增量 */
   onChunk: (delta: string) => void;
   /** 收到工具活动 */
   onToolActivity?: (activity: ToolActivity) => void;
+  /** 收到权限确认请求 */
+  onPermissionRequest?: (request: PermissionRequest) => void;
   /** 流式完成 */
   onComplete: (fullContent: string) => void;
   /** 流式出错 */
@@ -27,20 +43,25 @@ interface StreamCallbacks {
 
 /**
  * 流式发送聊天消息
- * 消费 SSE 后端，通过回调返回增量内容
+ *
+ * 走 PiRuntime 后端（POST /api/ai/pi-chat），消费 AgentStreamEvent 事件流。
  */
 export async function sendChatMessageStream(
   message: string,
   contextItems: AIContextItem[],
   callbacks: StreamCallbacks,
+  permissionMode?: "readonly" | "review" | "yolo",
+  projectId?: string,
 ): Promise<void> {
-  const res = await fetch('/api/ai/chat', {
+  const body: Record<string, unknown> = { message, contextItems };
+  if (permissionMode) body.permissionMode = permissionMode;
+  if (projectId) body.projectId = projectId;
+
+  const res = await fetch('/api/ai/pi-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, contextItems }),
+    body: JSON.stringify(body),
   });
-
-  console.log('[SSE Frontend] Response status:', res.status, 'content-type:', res.headers.get('content-type'));
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -51,15 +72,11 @@ export async function sendChatMessageStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullContent = '';
-  let eventCount = 0;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        console.log('[SSE Frontend] Stream done. Events:', eventCount, 'Content length:', fullContent.length);
-        break;
-      }
+      if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -71,41 +88,64 @@ export async function sendChatMessageStream(
         if (!data) continue;
 
         try {
-          const event = JSON.parse(data) as {
-            type: string;
-            content?: string;
-            error?: string;
-          };
+          const raw = JSON.parse(data) as Record<string, unknown>;
 
-          eventCount++;
-          if (eventCount <= 3) {
-            console.log('[SSE Frontend] Event:', event);
-          }
+          switch (raw.type) {
+            case 'text_delta':
+              if (raw.delta) {
+                fullContent += raw.delta;
+                callbacks.onChunk(raw.delta as string);
+              }
+              break;
 
-          if (event.type === 'text' && event.content) {
-            fullContent += event.content;
-            callbacks.onChunk(event.content);
-          } else if (event.type === 'tool' && callbacks.onToolActivity) {
-            callbacks.onToolActivity({
-              toolName: (event as any).toolName || '',
-              status: (event as any).status || 'running',
-              input: (event as any).input,
-              result: (event as any).result,
-            });
-          } else if (event.type === 'done') {
-            console.log('[SSE Frontend] Done. Full content length:', fullContent.length);
-            callbacks.onComplete(fullContent);
-            return;
-          } else if (event.type === 'error') {
-            callbacks.onError(event.error || '流式响应异常');
-            return;
+            case 'tool_call_start':
+              if (callbacks.onToolActivity && raw.toolName) {
+                callbacks.onToolActivity({
+                  toolName: raw.toolName as string,
+                  status: 'running',
+                });
+              }
+              break;
+
+            case 'tool_call_end':
+              if (callbacks.onToolActivity && raw.toolName) {
+                callbacks.onToolActivity({
+                  toolName: raw.toolName as string,
+                  status: 'done',
+                  result: raw.isError ? '工具执行出错' : undefined,
+                });
+              }
+              break;
+
+            case 'permission_request':
+              if (callbacks.onPermissionRequest && raw.requestId) {
+                callbacks.onPermissionRequest({
+                  requestId: raw.requestId as string,
+                  toolName: raw.toolName as string,
+                  input: raw.input,
+                  reason: (raw.reason as string) || `需要确认 ${raw.toolName} 操作`,
+                });
+              }
+              break;
+
+            case 'done':
+              callbacks.onComplete(fullContent);
+              return;
+
+            case 'error':
+              callbacks.onError((raw.message as string) || '流式响应异常');
+              return;
+
+            default:
+              // agent_start / turn_start / turn_end / agent_end / thinking_delta
+              // 在最小集展示策略下忽略
+              break;
           }
         } catch {
           // ignore unparseable lines
         }
       }
     }
-    // Stream ended without explicit done event
     callbacks.onComplete(fullContent);
   } catch (err) {
     callbacks.onError(err instanceof Error ? err.message : '连接中断');
@@ -115,28 +155,26 @@ export async function sendChatMessageStream(
 }
 
 /**
- * 非流式发送聊天消息（保留向后兼容）
+ * 发送用户对工具权限请求的决策
+ *
+ * 由 PermissionDialog 在用户点击后调用，告知后端放行或拒绝。
  */
-export async function sendChatMessage(
-  message: string,
-  contextItems: AIContextItem[],
-): Promise<ChatMessage> {
-  return new Promise((resolve, reject) => {
-    let content = '';
-    sendChatMessageStream(message, contextItems, {
-      onChunk: (delta) => {
-        content += delta;
-      },
-      onComplete: () => {
-        resolve({
-          id: `msg_${Date.now()}`,
-          role: 'assistant',
-          content,
-        });
-      },
-      onError: (error) => {
-        reject(new Error(error));
-      },
-    }).catch(reject);
+export async function respondToPermission(
+  requestId: string,
+  action: "allow" | "deny",
+  remember: boolean = false,
+): Promise<boolean> {
+  const res = await fetch('/api/ai/permission-response', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, action, remember }),
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`权限响应失败 (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json() as { success: boolean };
+  return data.success;
 }

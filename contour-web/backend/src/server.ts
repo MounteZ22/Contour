@@ -4,6 +4,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from './config.js';
 import routes from './routes.js';
+import projectsRouter from './api/projects.js';
 
 const app = express();
 
@@ -19,6 +20,7 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 app.use('/api', routes);
+app.use('/api/projects', projectsRouter);
 
 const server = app.listen(CONFIG.PORT, () => {
   console.log(`Contour backend running on http://localhost:${CONFIG.PORT}`);

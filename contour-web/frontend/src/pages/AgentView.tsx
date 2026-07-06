@@ -17,7 +17,7 @@ export function AgentView() {
     createdRef.current = true;
 
     const items = contextItems.length > 0 ? contextItems : [];
-    const session = createSession(items);
+    const session = createSession(items, project?.projectId);
     setChatContextItems([]);
     navigate(`/agent/${session.id}`, { replace: true });
   }, [contextItems, createSession, navigate, setChatContextItems]);

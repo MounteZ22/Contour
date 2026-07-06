@@ -9,6 +9,8 @@ export interface AgentSession {
   contextItems: AIContextItem[];
   lastMessage?: string;
   pinned?: boolean;
+  /** 创建会话时的项目 ID，用于后端定位项目目录 */
+  projectId?: string;
 }
 
 const SESSIONS_STORAGE_KEY = 'contour:agent-sessions';
@@ -53,7 +55,7 @@ export function useAgentSessions() {
     };
   }, [refresh]);
 
-  const createSession = useCallback((contextItems: AIContextItem[] = []) => {
+  const createSession = useCallback((contextItems: AIContextItem[] = [], projectId?: string) => {
     const now = Date.now();
     const session: AgentSession = {
       id: `session_${crypto.randomUUID().slice(0, 8)}`,
@@ -61,6 +63,7 @@ export function useAgentSessions() {
       createdAt: now,
       updatedAt: now,
       contextItems,
+      projectId,
     };
     const next = [session, ...readSessions()];
     writeSessions(next);

@@ -10,7 +10,7 @@ export async function scanAllProjects(vaultsDir: string, legacyVault: string): P
   try {
     const entries = await fs.readdir(vaultsDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.isDirectory() && entry.name.startsWith('PRJ_')) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
         const project = await scanProject(path.join(vaultsDir, entry.name));
         if (project) projects.push(project);
       }
@@ -22,8 +22,6 @@ export async function scanAllProjects(vaultsDir: string, legacyVault: string): P
   // 2. 始终同时读取 legacy example_vault 作为演示/示例项目
   const legacy = await scanProject(legacyVault);
   if (legacy) {
-    legacy.projectId = 'PRJ_001';
-    // 避免 ID 冲突：如果 vaults 里已有 PRJ_001，跳过 legacy
     const exists = projects.some((p) => p.projectId === legacy.projectId);
     if (!exists) {
       projects.push(legacy);
@@ -34,13 +32,17 @@ export async function scanAllProjects(vaultsDir: string, legacyVault: string): P
 }
 
 async function scanProject(projectDir: string): Promise<ProjectData | null> {
-  const basename = path.basename(projectDir);
-  const parts = basename.split('_');
-  const projectId = (parts.length >= 2 ? `${parts[0]}_${parts[1]}` : parts[0]) || 'PRJ_001';
+  // 目录不存在时直接跳过（避免遗留的 legacy_vault 路径产生幽灵项目）
+  try {
+    const stat = await fs.stat(projectDir);
+    if (!stat.isDirectory()) return null;
+  } catch {
+    return null;
+  }
 
-  // 从目录名提取项目标题：PRJ_001_示例研究项目 → "示例研究项目"
-  const titleFromDir = parts.length > 2 ? parts.slice(2).join('_').replace(/_/g, ' ') : '';
-  const title = titleFromDir || 'Untitled Project';
+  const basename = path.basename(projectDir);
+  const projectId = basename;
+  const title = basename.replace(/_/g, ' ');
   const docs: ProjectDoc[] = [];
 
   // 扫描 background/ 目录

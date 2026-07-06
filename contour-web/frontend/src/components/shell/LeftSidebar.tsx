@@ -70,12 +70,14 @@ export function LeftSidebar({
         showToast(`创建项目失败：${result.error}`, 'error');
         return;
       }
+      // 使用后端返回的实际 projectId（目录名），而非本地生成的 ID
+      if (result.data?.projectId) {
+        setCurrentProjectId(result.data.projectId);
+      }
     } catch (err) {
       showToast(`创建项目请求失败：${(err as Error).message}`, 'error');
       return;
     }
-
-    setCurrentProjectId(newId);
     setNewProjectTitle('');
     setNewProjectGoal('');
     setShowNewProject(false);

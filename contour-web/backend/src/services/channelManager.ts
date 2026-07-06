@@ -49,7 +49,7 @@ function writeConfig(config: ChannelsConfig): void {
 }
 
 /** 规范化 Anthropic Base URL */
-function normalizeAnthropicBaseUrl(baseUrl: string): string {
+export function normalizeAnthropicBaseUrl(baseUrl: string): string {
   let url = baseUrl.trim().replace(/\/+$/, '');
   url = url.replace(/\/messages$/, '');
   if (!url.match(/\/v\d+$/)) {
@@ -66,7 +66,7 @@ function normalizeAnthropicBaseUrl(baseUrl: string): string {
 }
 
 /** 规范化通用 Base URL */
-function normalizeBaseUrl(baseUrl: string): string {
+export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 

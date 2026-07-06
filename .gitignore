@@ -32,3 +32,6 @@ dist/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# Ad-hoc feasibility spikes (not part of any shipped package)
+spikes/

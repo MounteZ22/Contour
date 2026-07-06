@@ -5,8 +5,8 @@ import path from 'node:path';
 const isDev = process.env.NODE_ENV !== 'production'; // 默认开发模式，设置 NODE_ENV=production 切换
 const userHome = os.homedir(); // e.g. C:\Users\Z
 
-// 固定配置目录
-const configDir = path.join(userHome, '.contour');
+// 固定配置目录（dev 模式使用 ~/.contour-dev 以隔离）
+const configDir = path.join(userHome, isDev ? '.contour-dev' : '.contour');
 const configFile = path.join(configDir, 'settings.json');
 
 // 读取用户配置
@@ -42,6 +42,9 @@ if (!fs.existsSync(configFile)) {
 
 const contourRoot = path.resolve(import.meta.dirname, '..', '..', '..');
 
+export const DATA_DIR = configDir;
+export const PROJECTS_DIR = path.join(configDir, 'projects');
+
 export const CONFIG = {
   PORT: Number(process.env.PORT || 3001),
   VAULTS_DIR: vaultsDir,
@@ -49,6 +52,10 @@ export const CONFIG = {
   CONFIG_DIR: configDir,
   CONFIG_FILE: configFile,
   IS_DEV: isDev,
+  /** 应用数据目录（同 configDir） */
+  DATA_DIR,
+  /** 项目配置存放目录 */
+  PROJECTS_DIR,
 };
 
 console.log(`[Contour] Vault path: ${CONFIG.VAULTS_DIR}`);
