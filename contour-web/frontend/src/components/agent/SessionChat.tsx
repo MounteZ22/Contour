@@ -64,7 +64,7 @@ export function SessionChat({ session }: { session: AgentSession }) {
         <div className="max-w-[720px] mx-auto flex flex-col gap-5">
           {messages.length === 0 && !isStreaming ? (
             <div className="min-h-[45vh] rounded-2xl border border-dashed border-border bg-surface/70 p-8 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-2xl bg-accent-subtle-bg text-accent flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-accent-subtle-bg text-accent-strong flex items-center justify-center">
                 <Bot size={24} />
               </div>
               <h2 className="mt-4 text-xl font-semibold font-headline">开始一次 Agent 会话</h2>

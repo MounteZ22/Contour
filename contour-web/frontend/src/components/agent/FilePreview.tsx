@@ -20,11 +20,11 @@ export function FilePreview() {
   };
 
   return (
-    <section className="h-full min-w-0 border-l border-border bg-card flex flex-col">
-      <header className="h-14 shrink-0 border-b border-border px-4 flex items-center justify-between gap-3">
+    <section className="h-full min-w-0 border-l border-border bg-surface flex flex-col">
+      <header className="h-12 shrink-0 border-b border-border px-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold truncate">{previewFile.name}</h2>
-          <p className="text-[11px] text-muted-foreground font-mono truncate">{previewFile.path}</p>
+          <h2 className="font-headline text-[14px] font-semibold truncate text-text-primary">{previewFile.name}</h2>
+          <p className="text-[11px] text-text-secondary font-mono truncate">{previewFile.path}</p>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCopy} title="复制内容" type="button">
@@ -35,7 +35,7 @@ export function FilePreview() {
           </Button>
         </div>
       </header>
-      <div className="flex-1 min-h-0 overflow-y-auto p-5">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6">
         <MarkdownArticle content={previewFile.content} />
       </div>
     </section>

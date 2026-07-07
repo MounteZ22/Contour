@@ -27,7 +27,7 @@ function ToolActivityRow({ activity, animate = false, index = 0 }: { activity: T
         ) : isError ? (
           <XCircle size={14} className="text-danger/70 flex-shrink-0" />
         ) : (
-          <Check size={14} className="text-accent/70 flex-shrink-0" />
+          <Check size={14} className="text-accent-strong/70 flex-shrink-0" />
         )}
         <Wrench size={13} className="text-text-tertiary flex-shrink-0" />
         <span className="text-caption font-mono text-text-secondary truncate">{phrase}</span>

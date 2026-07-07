@@ -33,8 +33,8 @@ function TreeNode({ node, level }: { node: FileTreeNode; level: number }) {
     <div>
       <button
         className={cn(
-          'w-full h-8 rounded-md px-2 inline-flex items-center gap-2 text-left text-xs transition-colors hover:bg-accent hover:text-foreground',
-          hasChildren ? 'text-foreground' : 'text-muted-foreground',
+          'w-full h-8 rounded-[4px] px-2 inline-flex items-center gap-2 text-left text-xs transition-colors hover:bg-surface-sunken hover:text-text-primary',
+          hasChildren ? 'text-text-primary' : 'text-text-secondary',
         )}
         onClick={handleClick}
         style={{ paddingLeft: `${8 + level * 14}px` }}
@@ -46,7 +46,7 @@ function TreeNode({ node, level }: { node: FileTreeNode; level: number }) {
         ) : (
           <span className="w-[13px] shrink-0" />
         )}
-        {hasChildren ? <Folder size={14} className="shrink-0 text-primary" /> : <FileText size={14} className="shrink-0" />}
+        {hasChildren ? <Folder size={14} className="shrink-0 text-text-tertiary" /> : <FileText size={14} className="shrink-0" />}
         <span className="truncate">{node.name}</span>
       </button>
       {hasChildren && expanded && (
@@ -63,7 +63,7 @@ function TreeNode({ node, level }: { node: FileTreeNode; level: number }) {
 export function FileTree({ nodes, emptyText }: { nodes: FileTreeNode[]; emptyText: string }) {
   if (nodes.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground leading-relaxed">
+      <div className="rounded-lg border border-dashed border-border p-4 text-xs text-text-secondary leading-relaxed">
         {emptyText}
       </div>
     );

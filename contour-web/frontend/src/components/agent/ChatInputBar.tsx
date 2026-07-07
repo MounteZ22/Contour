@@ -140,7 +140,7 @@ export function ChatInputBar({
                       <opt.icon size={14} className="text-text-secondary" />
                       <span className="flex-1">{opt.label}</span>
                       <span className="text-xs text-text-tertiary">{opt.description}</span>
-                      {permissionMode === opt.value && <Check size={14} className="text-accent" />}
+                      {permissionMode === opt.value && <Check size={14} className="text-accent-strong" />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -166,7 +166,7 @@ export function ChatInputBar({
                 onClick={onSend}
                 disabled={isLoading || !inputValue.trim()}
                 title="发送 (Enter)"
-                className="w-[30px] h-[30px] rounded-full bg-accent text-accent-on
+                className="w-[30px] h-[30px] rounded-full bg-accent-strong text-accent-on
                   hover:bg-accent-hover active:scale-[0.92] transition-all duration-150
                   flex items-center justify-center shrink-0
                   disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"

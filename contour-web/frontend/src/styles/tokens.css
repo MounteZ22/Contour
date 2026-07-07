@@ -17,6 +17,7 @@
   --color-border-subtle:        var(--border-subtle);
 
   --color-accent:               var(--accent);
+  --color-accent-strong:        var(--accent);
   --color-accent-hover:         var(--accent-hover);
   --color-accent-subtle-bg:     var(--accent-subtle-bg);
   --color-accent-subtle-text:   var(--accent-subtle-text);

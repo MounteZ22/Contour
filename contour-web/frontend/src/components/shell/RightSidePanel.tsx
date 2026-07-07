@@ -113,13 +113,13 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
 
   return (
     <aside
-      className="h-screen shrink-0 border-l border-border bg-card/95 backdrop-blur-xl flex flex-col"
+      className="h-screen shrink-0 border-l border-border bg-surface flex flex-col transition-[width] duration-200"
       style={{ width: rightPanelWidth }}
     >
-      <header className="h-14 shrink-0 border-b border-border px-4 flex items-center justify-between gap-3">
+      <header className="h-12 shrink-0 border-b border-border px-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-mono uppercase tracking-wider text-primary">Files</p>
-          <h2 className="text-sm font-semibold font-headline">文件面板</h2>
+          <p className="text-[11px] font-mono uppercase tracking-wider text-accent-strong">Files</p>
+          <h2 className="font-headline text-[14px] font-semibold text-text-primary">文件面板</h2>
         </div>
         <Button
           variant="ghost"
@@ -134,10 +134,10 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
       </header>
 
       <div className="p-3 border-b border-border">
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        <div className="grid grid-cols-2 gap-1 rounded-[6px] bg-surface-sunken p-1">
           <button
-            className={`h-8 rounded-md text-xs font-medium transition-colors ${
-              tab === 'session' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            className={`h-8 rounded-[4px] text-xs font-medium transition-colors ${
+              tab === 'session' ? 'bg-surface-raised text-text-primary' : 'text-text-secondary hover:text-text-primary'
             }`}
             onClick={() => setTab('session')}
             type="button"
@@ -145,8 +145,8 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
             会话文件
           </button>
           <button
-            className={`h-8 rounded-md text-xs font-medium transition-colors ${
-              tab === 'project' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            className={`h-8 rounded-[4px] text-xs font-medium transition-colors ${
+              tab === 'project' ? 'bg-surface-raised text-text-primary' : 'text-text-secondary hover:text-text-primary'
             }`}
             onClick={() => setTab('project')}
             type="button"
