@@ -23,15 +23,3 @@ export function applyThemeClass(theme: ThemeId) {
   html.classList.add(`theme-${theme}`);
 }
 
-/** Get initial theme from localStorage (runs before React hydrates) */
-export function getInitialTheme(): ThemeId {
-  try {
-    const stored = localStorage.getItem('contour-theme');
-    if (stored === 'light-scientific' || stored === 'dark-scientific') {
-      return stored;
-    }
-  } catch {
-    // localStorage unavailable (e.g. private mode)
-  }
-  return DEFAULT_THEME;
-}
