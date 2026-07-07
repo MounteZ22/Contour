@@ -87,7 +87,7 @@ export function ChannelSettings() {
         title="模型配置"
         action={
           <button
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-primary text-on-primary hover:bg-primary/90"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-accent-strong text-accent-on hover:bg-accent-hover"
             onClick={() => setViewMode('create')}
             type="button"
           >
@@ -97,10 +97,10 @@ export function ChannelSettings() {
         }
       >
         {loading ? (
-          <div className="text-sm text-on-surface-variant py-8 text-center">加载中...</div>
+          <div className="text-sm text-text-secondary py-8 text-center">加载中...</div>
         ) : channels.length === 0 ? (
           <SettingsCard divided={false}>
-            <div className="px-4 py-12 text-center text-sm text-on-surface-variant">
+            <div className="px-4 py-12 text-center text-sm text-text-secondary">
               还没有配置任何模型，点击上方「添加配置」开始
             </div>
           </SettingsCard>
@@ -122,7 +122,7 @@ export function ChannelSettings() {
                 >
                   <div className="flex items-center gap-2">
                     <button
-                      className="p-1.5 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                      className="p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                       onClick={() => {
                         setEditingChannel(channel);
                         setViewMode('edit');
@@ -133,7 +133,7 @@ export function ChannelSettings() {
                       <Pencil size={14} />
                     </button>
                     <button
-                      className="p-1.5 rounded-md text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                      className="p-1.5 rounded-md text-text-secondary hover:text-danger hover:bg-danger/10 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                       onClick={() => handleDelete(channel)}
                       title="删除"
                       type="button"
@@ -142,13 +142,13 @@ export function ChannelSettings() {
                     </button>
                     <button
                       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
-                        channel.enabled ? 'bg-primary' : 'bg-outline-variant'
+                        channel.enabled ? 'bg-accent-strong' : 'bg-border'
                       }`}
                       onClick={() => handleToggle(channel)}
                       type="button"
                     >
                       <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-on-primary transition-transform ${
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-accent-on transition-transform ${
                           channel.enabled ? 'translate-x-4.5' : 'translate-x-1'
                         }`}
                       />

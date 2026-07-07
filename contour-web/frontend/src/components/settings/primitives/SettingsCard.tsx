@@ -6,9 +6,9 @@ interface SettingsCardProps {
 
 export function SettingsCard({ children, divided = true, className }: SettingsCardProps) {
   return (
-    <div className={`rounded-xl border border-outline-variant bg-surface-container overflow-hidden ${className ?? ''}`}>
+    <div className={`rounded-xl border border-border bg-surface-sunken overflow-hidden ${className ?? ''}`}>
       {divided ? (
-        <div className="divide-y divide-outline-variant/40">
+        <div className="divide-y divide-border/40">
           {children}
         </div>
       ) : (

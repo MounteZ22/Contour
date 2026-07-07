@@ -76,7 +76,7 @@ export function SessionChat({ session }: { session: AgentSession }) {
                   {session.contextItems.map((item) => (
                     <span
                       key={`${item.type}-${item.id}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent/20 bg-accent-subtle-bg text-accent-subtle-text text-xs font-mono"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-strong/20 bg-accent-subtle-bg text-accent-subtle-text text-xs font-mono"
                     >
                       {item.type === 'flow' ? 'F' : 'D'}
                       {item.id}

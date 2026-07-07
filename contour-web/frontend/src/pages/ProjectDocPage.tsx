@@ -76,7 +76,7 @@ export function ProjectDocPage() {
       <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
         <div style={{ minWidth: 0, flex: 1 }}>
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">Background</p>
-          <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
+          <h2 className="text-xl font-bold text-text-primary font-headline">{activeDoc.title}</h2>
           {isEditing ? (
             <div className="flex items-center gap-3 flex-wrap mt-3">
               <TagEditor

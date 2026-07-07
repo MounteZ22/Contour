@@ -25,9 +25,9 @@ export function SettingsSecretInput({
   return (
     <div className="px-4 py-3 space-y-2">
       <div>
-        <div className="text-sm font-medium text-on-surface">{label}</div>
+        <div className="text-sm font-medium text-text-primary">{label}</div>
         {description && (
-          <div className="mt-0.5 text-sm text-on-surface-variant">{description}</div>
+          <div className="mt-0.5 text-sm text-text-secondary">{description}</div>
         )}
       </div>
       <div className="relative">
@@ -38,12 +38,12 @@ export function SettingsSecretInput({
           placeholder={placeholder}
           required={required}
           disabled={disabled}
-          className="w-full px-3 py-2 pr-10 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono disabled:opacity-50"
+          className="w-full px-3 py-2 pr-10 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono disabled:opacity-50"
         />
         <button
           type="button"
           onClick={() => setVisible(!visible)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition-colors"
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
           tabIndex={-1}
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}

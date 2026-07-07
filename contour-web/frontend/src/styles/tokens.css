@@ -92,35 +92,6 @@
   --color-sidebar-ring:                var(--accent);
 
   /* ==========================================
-     M3 兼容别名 — P3 后删除
-     （仍在用 M3 类名的组件：ChatMessage / ContourMap /
-      MarkdownArticle / LeftSidebar / ContourView /
-      ProjectClaimPage / ProjectDocPage / FlowWorkspacePage /
-      ContextActionBar / ErrorBoundary / TagEditor 等）
-     ========================================== */
-  --color-primary-container:    var(--accent-subtle-bg);
-  --color-on-primary-container: var(--text-primary);
-  --color-secondary-container:  var(--surface-sunken);
-  --color-on-secondary-container: var(--text-primary);
-  --color-surface-container-high:    var(--surface);
-  --color-surface-container-low:     var(--surface-sunken);
-  --color-surface-container:         var(--surface-sunken);
-  --color-surface-container-lowest:  var(--surface-raised);
-  --color-on-surface:          var(--text-primary);
-  --color-on-surface-variant:  var(--text-secondary);
-  --color-outline-variant:     var(--border);
-  /* M3 error 别名（text-error / bg-error/xx 等） */
-  --color-error:               var(--danger);
-  --color-on-error:            oklch(0.99 0 0);
-  --color-error-container:     var(--danger-subtle-bg);
-  --color-on-error-container:  var(--danger-subtle-text);
-  /* M3 primary-fixed-dim（hover 色用） */
-  --color-primary-fixed-dim:   var(--accent);
-  /* M3 tertiary（ContourMap 标签按钮等，P3 后删除） */
-  --color-tertiary-container:  var(--accent-subtle-bg);
-  --color-tertiary:            var(--accent);
-
-  /* ==========================================
      Spacing（保留现有）
      ========================================== */
   --spacing-sidebar: 320px;
@@ -188,10 +159,6 @@
   --sidebar-accent-foreground:   var(--accent-subtle-text);
   --sidebar-border:              var(--border);
   --sidebar-ring:                var(--accent);
-
-  /* M3 --token-* 变量别名（ContourMap.tsx 内联样式引用） */
-  --token-primary:         var(--accent);
-  --token-outline-variant: var(--border);
 }
 
 /* ==========================================
@@ -252,10 +219,6 @@
   --sidebar-accent-foreground:   var(--accent-subtle-text);
   --sidebar-border:              var(--border);
   --sidebar-ring:                var(--accent);
-
-  /* M3 --token-* 变量别名 */
-  --token-primary:         var(--accent);
-  --token-outline-variant: var(--border);
 }
 
 /* ==========================================
@@ -363,4 +326,51 @@
 
 .animate-fade-slide-in {
   animation: fade-slide-in 250ms ease-out both;
+}
+
+/* === dropdown / shadcn 动画补齐 === */
+@keyframes fade-in-0 { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fade-out-0 { from { opacity: 1 } to { opacity: 0 } }
+@keyframes zoom-in-95 {
+  from { opacity: 0; transform: scale(0.95) }
+  to   { opacity: 1; transform: scale(1) }
+}
+@keyframes zoom-out-95 {
+  from { opacity: 1; transform: scale(1) }
+  to   { opacity: 0; transform: scale(0.95) }
+}
+@keyframes slide-in-from-top-2 {
+  from { transform: translateY(-8px) }
+  to   { transform: translateY(0) }
+}
+@keyframes slide-in-from-bottom-2 {
+  from { transform: translateY(8px) }
+  to   { transform: translateY(0) }
+}
+@keyframes slide-in-from-left-2 {
+  from { transform: translateX(-8px) }
+  to   { transform: translateX(0) }
+}
+@keyframes slide-in-from-right-2 {
+  from { transform: translateX(8px) }
+  to   { transform: translateX(0) }
+}
+
+.animate-out { animation-fill-mode: both; }
+.fade-in-0   { animation-name: fade-in-0; }
+.fade-out-0  { animation-name: fade-out-0; }
+.zoom-in-95  { animation-name: zoom-in-95; }
+.zoom-out-95 { animation-name: zoom-out-95; }
+.slide-in-from-top-2    { animation-name: slide-in-from-top-2; }
+.slide-in-from-bottom-2 { animation-name: slide-in-from-bottom-2; }
+.slide-in-from-left-2   { animation-name: slide-in-from-left-2; }
+.slide-in-from-right-2  { animation-name: slide-in-from-right-2; }
+
+/* 给 shadcn 的 data-[state] 动画类一个默认 duration（150ms），
+   避免 animation-duration 未设置导致动画不跑 */
+[data-state="open"].animate-in,
+[data-state="open"] .animate-in,
+[data-state="closed"].animate-out,
+[data-state="closed"] .animate-out {
+  animation-duration: 150ms;
 }

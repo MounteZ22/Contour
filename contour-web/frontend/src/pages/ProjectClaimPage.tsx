@@ -118,7 +118,7 @@ export function ProjectClaimPage() {
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">
             Research Claim
           </p>
-          <h2 className="text-xl font-bold text-on-background font-headline">{activeClaim.title}</h2>
+          <h2 className="text-xl font-bold text-text-primary font-headline">{activeClaim.title}</h2>
           {isEditing ? (
             <div className="flex items-center gap-3 flex-wrap">
               {/* 编辑模式下选择器 */}

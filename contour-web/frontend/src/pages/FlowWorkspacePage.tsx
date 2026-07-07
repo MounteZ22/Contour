@@ -200,7 +200,7 @@ export function FlowWorkspacePage() {
       <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
         <div>
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">{initialFlow.flowId}</p>
-          <h2 className="text-xl font-bold text-on-background font-headline">{initialFlow.title}</h2>
+          <h2 className="text-xl font-bold text-text-primary font-headline">{initialFlow.title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Link

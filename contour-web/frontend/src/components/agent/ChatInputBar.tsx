@@ -80,7 +80,7 @@ export function ChatInputBar({
       <div className="max-w-[720px] mx-auto">
         <div
           className="bg-surface border border-border rounded-lg overflow-hidden
-            focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent-subtle-bg
+            focus-within:border-accent-strong focus-within:ring-[3px] focus-within:ring-accent-subtle-bg
             transition-all duration-150"
         >
           <textarea
