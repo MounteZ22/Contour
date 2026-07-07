@@ -15,7 +15,7 @@ export interface UseChatReturn {
   toolActivities: ToolActivity[];
   error: string | null;
   handleSend: () => Promise<void>;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  handleKeyDown: (e: React.KeyboardEvent) => void;
   clearMessages: () => void;
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -306,7 +306,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();

@@ -329,6 +329,17 @@
   }
 }
 
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-in {
   animation-fill-mode: both;
 }
@@ -347,4 +358,8 @@
 
 .fill-mode-both {
   animation-fill-mode: both;
+}
+
+.animate-fade-slide-in {
+  animation: fade-slide-in 250ms ease-out both;
 }

@@ -28,9 +28,9 @@ export function SessionHeader({ session }: { session: AgentSession }) {
   };
 
   return (
-    <header className="h-16 shrink-0 border-b border-border bg-background/80 backdrop-blur-xl px-6 flex items-center justify-between gap-4">
+    <header className="h-[52px] shrink-0 border-b border-border bg-background/80 backdrop-blur-xl px-6 flex items-center justify-between gap-4">
       <div className="min-w-0 flex items-center gap-3">
-        <Link to="/agent" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm">
+        <Link to="/agent" className="text-text-secondary hover:text-text-primary inline-flex items-center gap-1.5 text-sm">
           <ArrowLeft size={16} />
           会话
         </Link>
@@ -71,8 +71,8 @@ export function SessionHeader({ session }: { session: AgentSession }) {
             onClick={() => setEditing(true)}
             type="button"
           >
-            <h1 className="text-lg font-semibold font-headline truncate">{session.title}</h1>
-            <Pencil size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            <h1 className="text-heading-md font-semibold font-headline truncate">{session.title}</h1>
+            <Pencil size={14} className="text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         )}
       </div>
@@ -90,7 +90,7 @@ export function SessionHeader({ session }: { session: AgentSession }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          className="h-9 w-9 text-text-secondary hover:text-danger hover:bg-danger-subtle-bg"
           onClick={handleDelete}
           title="删除会话"
           type="button"
