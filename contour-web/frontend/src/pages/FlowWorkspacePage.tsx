@@ -74,15 +74,15 @@ export function FlowWorkspacePage() {
   if (!activeSection) {
     return (
       <div className="grid gap-6">
-        <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-          <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
+        <div className="flex items-center gap-2.5 text-body text-text-secondary">
+          <Link className="inline-flex items-center gap-1.5 text-accent-strong transition-colors hover:text-accent-strong" to="/contour">
             <ArrowLeft size={16} />
             Back to Contour
           </Link>
         </div>
-        <div className="border border-outline-variant rounded-xl p-10 bg-surface-container text-center">
-          <p className="text-on-surface-variant">此 Flow 暂无 Section</p>
-          <p className="text-on-surface-variant text-sm mt-2">
+        <div className="border border-border rounded-xl p-10 bg-surface-sunken text-center">
+          <p className="text-text-secondary">此 Flow 暂无 Section</p>
+          <p className="text-text-secondary text-sm mt-2">
             请在左侧添加新的 Section
           </p>
         </div>
@@ -188,23 +188,23 @@ export function FlowWorkspacePage() {
 
   return (
     <div className="grid gap-6">
-      <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
+      <div className="flex items-center gap-2.5 text-body text-text-secondary">
+        <Link className="inline-flex items-center gap-1.5 text-accent-strong transition-colors hover:text-accent-strong" to="/contour">
           <ArrowLeft size={16} />
           Back to Contour
         </Link>
-        <span className="text-outline-variant">/</span>
-        <span className="text-on-surface font-medium">{initialFlow.flowId}</span>
+        <span className="text-border">/</span>
+        <span className="text-text-primary font-medium">{initialFlow.flowId}</span>
       </div>
 
-      <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
+      <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">{initialFlow.flowId}</p>
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">{initialFlow.flowId}</p>
           <h2 className="text-xl font-bold text-on-background font-headline">{initialFlow.title}</h2>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Link
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
             to="/agent"
           >
             <Bot size={14} />
@@ -219,14 +219,14 @@ export function FlowWorkspacePage() {
               <StatusBadge status={flowStatus} />
             </button>
             {showStatusMenu && (
-              <div className="absolute top-full left-0 mt-1.5 z-20 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-lg p-1.5 min-w-[140px]"
+              <div className="absolute top-full left-0 mt-1.5 z-20 bg-surface-raised border border-border rounded-lg shadow-lg p-1.5 min-w-[140px]"
               >
                 {(['in_progress', 'completed', 'archived', 'abandoned'] as FlowStatus[]).map((s) => (
                   <button
                     className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-mono transition-colors cursor-pointer ${
                       s === flowStatus
-                        ? 'bg-primary/10 text-primary'
-                        : 'hover:bg-surface-container-high text-on-surface'
+                        ? 'bg-accent-strong/10 text-accent-strong'
+                        : 'hover:bg-surface text-text-secondary'
                     }`}
                     key={s}
                     onClick={() => handleStatusChange(s)}
@@ -241,35 +241,35 @@ export function FlowWorkspacePage() {
               </div>
             )}
           </div>
-          <span className="text-xs text-on-surface-variant font-mono">{initialFlow.type.replace('_', ' ')}</span>
-          <span className="text-xs text-on-surface-variant font-mono">更新于 {initialFlow.updated}</span>
+          <span className="text-caption text-text-secondary font-mono">{initialFlow.type.replace('_', ' ')}</span>
+          <span className="text-caption text-text-secondary font-mono">更新于 {initialFlow.updated}</span>
         </div>
       </header>
 
-      <section className="grid grid-cols-3 gap-4 border border-outline-variant rounded-xl p-5 bg-surface-container max-lg:grid-cols-1">
+      <section className="grid grid-cols-3 gap-4 border border-border rounded-xl p-6 bg-surface-sunken max-lg:grid-cols-1">
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">待解决的不确定性</p>
-          <strong className="text-sm text-on-surface font-mono">{initialFlow.openUncertainties[0]}</strong>
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">待解决的不确定性</p>
+          <strong className="text-body text-text-primary font-mono">{initialFlow.openUncertainties[0]}</strong>
         </div>
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">父节点</p>
-          <strong className="text-sm text-on-surface font-mono">{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">父节点</p>
+          <strong className="text-body text-text-primary font-mono">{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
         </div>
         <div>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">标签</p>
-          <strong className="text-sm text-on-surface font-mono">{initialFlow.tags.join(' · ')}</strong>
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">标签</p>
+          <strong className="text-body text-text-primary font-mono">{initialFlow.tags.join(' · ')}</strong>
         </div>
       </section>
 
       <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
-        <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
+        <aside className="border border-border bg-surface-sunken rounded-xl p-6 sticky top-[122px] max-xl:static">
           <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Files size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Sections</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">Flow documents</h3>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">Sections</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">Flow documents</h3>
             </div>
           </div>
 
@@ -278,8 +278,8 @@ export function FlowWorkspacePage() {
               <div
                 className={`w-full text-left border rounded-lg p-3.5 flex items-center justify-between gap-2 cursor-pointer transition-all ${
                   section.id === activeSection.id
-                    ? 'border-primary/20 bg-primary-container/5'
-                    : 'border-transparent bg-surface-container-low/50 hover:border-primary/20 hover:bg-primary-container/5'
+                    ? 'border-accent-strong/20 bg-accent-subtle-bg/5'
+                    : 'border-transparent bg-surface-sunken/50 hover:border-accent-strong/20 hover:bg-accent-subtle-bg/5'
                 }`}
                 key={section.id}
               >
@@ -291,11 +291,11 @@ export function FlowWorkspacePage() {
                   }}
                   type="button"
                 >
-                  <strong className="text-sm text-on-surface">{section.title}</strong>
-                  <span className="text-[11px] text-on-surface-variant font-mono">{section.filename}</span>
+                  <strong className="text-body text-text-primary">{section.title}</strong>
+                  <span className="text-caption text-text-secondary font-mono">{section.filename}</span>
                 </button>
                 <button
-                  className="w-6 h-6 rounded-md border border-outline-variant/50 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/20 hover:border-error/30 hover:text-error"
+                  className="w-6 h-6 rounded-md border border-border/50 bg-surface text-text-secondary flex items-center justify-center cursor-pointer transition-colors hover:bg-danger/20 hover:border-danger/30 hover:text-danger"
                   onClick={() => handleDeleteSection(section.id, section.title)}
                   title="删除 Section"
                   type="button"
@@ -306,10 +306,10 @@ export function FlowWorkspacePage() {
             ))}
 
             {showNewSection ? (
-              <div className="grid gap-2 p-3 border border-primary/25 rounded-lg bg-primary-container/5">
+              <div className="grid gap-2 p-3 border border-accent-strong/25 rounded-lg bg-accent-subtle-bg/5">
                 <input
                   autoFocus
-                  className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+                  className="w-full px-3 py-2 rounded-md border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
                   onChange={(e) => setNewSectionTitle(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAddSection();
@@ -320,16 +320,16 @@ export function FlowWorkspacePage() {
                   value={newSectionTitle}
                 />
                 <div className="flex gap-2">
-                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleAddSection} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono" onClick={handleAddSection} type="button">
                     添加
                   </button>
-                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={() => setShowNewSection(false)} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono" onClick={() => setShowNewSection(false)} type="button">
                     取消
                   </button>
                 </div>
               </div>
             ) : (
-              <button className="w-full text-left border border-dashed border-outline-variant rounded-lg p-3 bg-transparent text-on-surface-variant inline-flex items-center gap-2 cursor-pointer hover:border-primary/40 hover:text-primary hover:bg-surface-container-low transition-all" onClick={() => setShowNewSection(true)} type="button">
+              <button className="w-full text-left border border-dashed border-border rounded-lg p-3 bg-transparent text-text-secondary inline-flex items-center gap-2 cursor-pointer hover:border-accent-strong/40 hover:text-accent-strong hover:bg-surface-sunken transition-all" onClick={() => setShowNewSection(true)} type="button">
                 <Plus size={14} />
                 New Section
               </button>
@@ -337,27 +337,27 @@ export function FlowWorkspacePage() {
           </div>
         </aside>
 
-        <section className="border border-outline-variant bg-surface-container rounded-xl p-5 min-h-[70vh]">
+        <section className="border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
           <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Sparkles size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">{isEditing ? '编辑模式' : '阅读区'}</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">{activeSection.title}</h3>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">{isEditing ? '编辑模式' : '阅读区'}</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">{activeSection.title}</h3>
             </div>
             <div className="flex gap-2 items-center">
               {isEditing ? (
                 <>
-                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">
                     保存
                   </button>
-                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={handleCancel} type="button">
+                  <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono" onClick={handleCancel} type="button">
                     取消
                   </button>
                 </>
               ) : (
-                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono" onClick={handleEdit} type="button">
+                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono" onClick={handleEdit} type="button">
                   <Edit3 size={14} />
                   编辑
                 </button>
@@ -367,7 +367,7 @@ export function FlowWorkspacePage() {
 
           {isEditing ? (
             <textarea
-              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-container-lowest border border-primary/25 text-on-surface font-mono text-sm leading-7 resize-y outline-none focus:border-primary/40"
+              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-raised border border-accent-strong/25 text-text-primary font-mono text-sm leading-7 resize-y outline-none focus:border-accent-strong/40"
               onChange={(e) => setEditedContent(e.target.value)}
               value={editedContent}
             />

@@ -266,13 +266,13 @@ export function ContourView() {
       <header className="pb-5 flex items-start justify-between gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold text-foreground font-headline truncate">{project.title}</h1>
+            <h1 className="text-heading-lg font-bold text-text-primary font-headline truncate">{project.title}</h1>
             <div className="flex items-center gap-3 shrink-0">
-              <span className="text-sm font-mono text-primary font-semibold">{flows.length} Flows</span>
+              <span className="text-caption font-mono text-accent-strong font-semibold">{flows.length} Flows</span>
               <span className="text-border">·</span>
-              <span className="text-sm font-mono text-muted-foreground">{project.docs.length} Docs</span>
+              <span className="text-caption font-mono text-muted-foreground">{project.docs.length} Docs</span>
               <span className="text-border">·</span>
-              <span className="text-sm font-mono text-muted-foreground">{project.claims.length} Claims</span>
+              <span className="text-caption font-mono text-muted-foreground">{project.claims.length} Claims</span>
             </div>
           </div>
           {project.researchGoal && (
@@ -287,7 +287,7 @@ export function ContourView() {
           title="开启后可多选 Flow 和文档，作为 Agent 会话上下文"
           type="button"
         >
-          <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-primary' : 'bg-muted-foreground'}`} />
+          <span className={`w-2 h-2 rounded-full ${contextSelectMode ? 'bg-accent-strong' : 'bg-muted-foreground'}`} />
           {contextSelectMode ? '多选模式' : '单选模式'}
         </Button>
       </header>
@@ -296,8 +296,8 @@ export function ContourView() {
         <div>
           <div className="flex items-end justify-between gap-4 mb-3">
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Project Contour</p>
-              <h2 className="text-xl font-bold text-foreground font-headline">项目轮廓</h2>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-1">Project Contour</p>
+              <h2 className="text-xl font-bold text-text-primary font-headline">项目轮廓</h2>
             </div>
             {!contextSelectMode && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
@@ -322,8 +322,8 @@ export function ContourView() {
         <div>
           <div className="flex items-end justify-between gap-4 mb-4">
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Background</p>
-              <h2 className="text-xl font-bold text-foreground font-headline">背景文档</h2>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-1">Background</p>
+              <h2 className="text-xl font-bold text-text-primary font-headline">背景文档</h2>
             </div>
           </div>
 
@@ -335,7 +335,7 @@ export function ContourView() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="inline-flex items-center gap-2 text-muted-foreground">
                       <FolderOpen size={16} />
-                      <span className="text-sm font-semibold text-foreground font-headline">{doc.id}</span>
+                      <span className="text-sm font-semibold text-text-primary font-headline">{doc.id}</span>
                     </div>
                     {!contextSelectMode && (
                       <Button
@@ -354,8 +354,8 @@ export function ContourView() {
                       </Button>
                     )}
                     {contextSelectMode && isDocSelected && (
-                      <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
-                        <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                      <div className="w-6 h-6 rounded-md bg-accent-subtle-bg flex items-center justify-center">
+                        <svg className="w-3.5 h-3.5 text-accent-strong" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                           <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
@@ -365,7 +365,7 @@ export function ContourView() {
                   {doc.tags && doc.tags.length > 0 && (
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
                       {doc.tags.map((tag) => (
-                        <span key={tag} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                        <span key={tag} className="text-caption font-mono px-1.5 py-0.5 rounded-sm bg-surface text-text-secondary border border-border/30">
                           {tag}
                         </span>
                       ))}
@@ -376,10 +376,10 @@ export function ContourView() {
 
               return contextSelectMode ? (
                 <Card
-                  className={`p-5 transition-all cursor-pointer ${
+                  className={`p-6 transition-all cursor-pointer ${
                     isDocSelected
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'hover:border-primary/25 hover:shadow-md'
+                      ? 'border-accent-strong/50 bg-accent-subtle-bg'
+                      : 'hover:border-accent-strong/25'
                   }`}
                   key={doc.id}
                   onClick={() => toggleDocSelection(doc.id)}
@@ -387,8 +387,8 @@ export function ContourView() {
                   {cardContent}
                 </Card>
               ) : (
-                <Card className="transition-all hover:border-primary/25 hover:shadow-md" key={doc.id}>
-                  <Link className="block p-5" to={`/project/${project.projectId}/docs/${doc.id}`}>
+                <Card className="transition-all hover:border-accent-strong/25" key={doc.id}>
+                  <Link className="block p-6" to={`/project/${project.projectId}/docs/${doc.id}`}>
                     {cardContent}
                   </Link>
                 </Card>
@@ -396,10 +396,10 @@ export function ContourView() {
             })}
 
             {showNewDoc ? (
-              <Card className="p-5">
+              <Card className="p-6">
                 <div className="flex items-center gap-2 mb-3">
-                  <Plus size={16} className="text-primary" />
-                  <span className="text-xs text-primary font-semibold font-mono">New</span>
+                  <Plus size={16} className="text-accent-strong" />
+                  <span className="text-caption text-accent-strong font-semibold font-mono">New</span>
                 </div>
                 <div className="grid gap-3">
                   <Input
@@ -426,15 +426,15 @@ export function ContourView() {
             ) : (
               <Button
                 variant="outline"
-                className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-5 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5"
+                className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-6 text-muted-foreground hover:text-accent-strong hover:border-accent-strong/30"
                 onClick={() => setShowNewDoc(true)}
                 type="button"
               >
-                <div className="flex items-center gap-2 text-primary">
+                <div className="flex items-center gap-2 text-accent-strong">
                   <Plus size={16} />
-                  <span className="text-xs font-semibold font-mono">New</span>
+                  <span className="text-caption font-semibold font-mono">New</span>
                 </div>
-                <h3 className="text-base font-semibold text-primary font-headline">New Document</h3>
+                <h3 className="text-base font-semibold text-accent-strong font-headline">New Document</h3>
                 <p className="text-xs text-muted-foreground font-mono">添加新的背景文档</p>
               </Button>
             )}
@@ -444,8 +444,8 @@ export function ContourView() {
         <div>
           <div className="flex items-end justify-between gap-4 mb-4">
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-1">Claims</p>
-              <h2 className="text-xl font-bold text-foreground font-headline">研究判断</h2>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-1">Claims</p>
+              <h2 className="text-xl font-bold text-text-primary font-headline">研究判断</h2>
             </div>
           </div>
 
@@ -463,7 +463,7 @@ export function ContourView() {
                       <span className="text-xs font-mono">{claim.claimId}</span>
                     </div>
                     <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold font-mono"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-caption font-semibold font-mono"
                       style={{ backgroundColor: cb, color: cc, border: `1px solid ${cc}` }}
                     >
                       {claim.confidence}
@@ -473,7 +473,7 @@ export function ContourView() {
                   {claim.tags && claim.tags.length > 0 && (
                     <div className="flex items-center gap-1.5 flex-wrap mt-1">
                       {claim.tags.map((tag) => (
-                        <span key={tag} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                        <span key={tag} className="text-caption font-mono px-1.5 py-0.5 rounded-sm bg-surface text-text-secondary border border-border/30">
                           {tag}
                         </span>
                       ))}
@@ -484,10 +484,10 @@ export function ContourView() {
 
               return contextSelectMode ? (
                 <Card
-                  className={`p-5 transition-all cursor-pointer ${
+                  className={`p-6 transition-all cursor-pointer ${
                     isClaimSelected
-                      ? 'border-primary/50 bg-primary/5'
-                      : 'hover:border-primary/25 hover:shadow-md'
+                      ? 'border-accent-strong/50 bg-accent-subtle-bg'
+                      : 'hover:border-accent-strong/25'
                   }`}
                   key={claim.claimId}
                   onClick={() => toggleClaimSelection(claim.claimId)}
@@ -495,8 +495,8 @@ export function ContourView() {
                   {cardContent}
                 </Card>
               ) : (
-                <Card className="transition-all hover:border-primary/25 hover:shadow-md" key={claim.claimId}>
-                  <Link className="block p-5" to={`/project/${project.projectId}/claims/${claim.claimId}`}>
+                <Card className="transition-all hover:border-accent-strong/25" key={claim.claimId}>
+                  <Link className="block p-6" to={`/project/${project.projectId}/claims/${claim.claimId}`}>
                     {cardContent}
                   </Link>
                 </Card>
@@ -504,10 +504,10 @@ export function ContourView() {
             })}
 
             {showNewClaim ? (
-              <Card className="p-5">
+              <Card className="p-6">
                 <div className="flex items-center gap-2 mb-3">
-                  <Plus size={16} className="text-primary" />
-                  <span className="text-xs text-primary font-semibold font-mono">New</span>
+                  <Plus size={16} className="text-accent-strong" />
+                  <span className="text-caption text-accent-strong font-semibold font-mono">New</span>
                 </div>
                 <div className="grid gap-3">
                   <input
@@ -534,15 +534,15 @@ export function ContourView() {
             ) : (
               <Button
                 variant="outline"
-                className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-5 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5"
+                className="flex flex-col items-center justify-center gap-2.5 min-h-[140px] border-dashed rounded-xl p-6 text-muted-foreground hover:text-accent-strong hover:border-accent-strong/30"
                 onClick={() => setShowNewClaim(true)}
                 type="button"
               >
-                <div className="flex items-center gap-2 text-primary">
+                <div className="flex items-center gap-2 text-accent-strong">
                   <Plus size={16} />
-                  <span className="text-xs font-semibold font-mono">New</span>
+                  <span className="text-caption font-semibold font-mono">New</span>
                 </div>
-                <h3 className="text-base font-semibold text-primary font-headline">New Claim</h3>
+                <h3 className="text-base font-semibold text-accent-strong font-headline">New Claim</h3>
                 <p className="text-xs text-muted-foreground font-mono">记录新的研究判断</p>
               </Button>
             )}

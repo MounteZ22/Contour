@@ -35,10 +35,10 @@ export function TagEditor({ tags, onTagsChange, placeholder = '添加标签' }: 
 
   return (
     <div className="grid gap-1">
-      <span className="text-[10px] font-mono text-on-surface-variant">Tags</span>
+      <span className="text-caption font-mono text-text-secondary">Tags</span>
       <div className="flex items-center gap-1.5">
         <input
-          className="w-28 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40"
+          className="w-28 rounded-md border border-border/60 bg-surface-raised px-3 py-2 text-sm text-text-primary font-mono outline-none focus:border-accent-strong/40"
           placeholder={placeholder}
           value={tagInput}
           onChange={(e) => setTagInput(e.target.value)}
@@ -50,7 +50,7 @@ export function TagEditor({ tags, onTagsChange, placeholder = '添加标签' }: 
           }}
         />
         <button
-          className="px-2 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-mono cursor-pointer hover:bg-primary/20 transition-colors"
+          className="px-2 py-1.5 rounded-md bg-accent-subtle-bg text-accent-subtle-text text-caption font-mono cursor-pointer hover:bg-accent-strong/10 transition-colors"
           onClick={addTag}
           type="button"
         >
@@ -62,11 +62,11 @@ export function TagEditor({ tags, onTagsChange, placeholder = '添加标签' }: 
           {tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-caption font-mono text-text-secondary bg-surface border border-border/40"
             >
               {tag}
               <button
-                className="cursor-pointer hover:text-error transition-colors"
+                className="cursor-pointer hover:text-danger transition-colors"
                 onClick={() => removeTag(tag)}
                 type="button"
               >

@@ -234,11 +234,11 @@ export function ContourMap({
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-auto border border-outline-variant rounded-xl bg-surface-container"
+      className="relative w-full overflow-auto border border-border rounded-xl bg-surface-sunken"
       style={{
         minHeight: canvasHeight,
         backgroundImage:
-          'radial-gradient(circle, var(--token-outline-variant) 1px, transparent 1px)',
+          'radial-gradient(circle, var(--border) 1px, transparent 1px)',
         backgroundSize: '16px 16px',
       }}
     >
@@ -257,7 +257,7 @@ export function ContourMap({
               d={drawEdgePath(from, to, nodeWidth, nodeHeight)}
               fill="none"
               key={`${edge.from}-${edge.to}`}
-              stroke="var(--token-primary)"
+              stroke="var(--accent)"
               strokeDasharray="4"
               strokeWidth="1.5"
             />
@@ -273,13 +273,13 @@ export function ContourMap({
 
         const nodeContent = (
           <>
-            <div className="px-3.5 py-2 border-b border-outline-variant bg-surface-container-low rounded-t-lg flex items-center justify-between">
-              <span className="text-[11px] font-mono text-primary">{flow.flowId}</span>
+            <div className="px-3.5 py-2 border-b border-border bg-surface-sunken rounded-t-lg flex items-center justify-between">
+              <span className="text-label font-mono text-accent-strong">{flow.flowId}</span>
               <div className="flex items-center gap-1.5">
                 <StatusBadge status={flow.status} />
                 {!contextSelectMode && onDeleteFlow && (
                   <button
-                    className="w-5 h-5 rounded border border-outline-variant/40 bg-surface-container-high text-on-surface-variant flex items-center justify-center cursor-pointer transition-colors hover:bg-error/15 hover:border-error/25 hover:text-error"
+                    className="w-5 h-5 rounded border border-border/40 bg-surface text-text-secondary flex items-center justify-center cursor-pointer transition-colors hover:bg-danger/15 hover:border-danger/25 hover:text-danger"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -294,10 +294,10 @@ export function ContourMap({
               </div>
             </div>
             <div className="p-3.5">
-              <h4 className="text-sm font-semibold text-on-surface font-headline line-clamp-1">
+              <h4 className="text-heading-sm font-semibold text-text-primary font-headline line-clamp-1">
                 {flow.title}
               </h4>
-              <div className="flex items-center justify-between mt-2 text-xs text-on-surface-variant font-mono">
+              <div className="flex items-center justify-between mt-2 text-caption text-text-secondary font-mono">
                 <span className="inline-flex items-center gap-1">
                   <GitBranch size={12} />
                   {flow.parentFlows.length === 0
@@ -305,7 +305,7 @@ export function ContourMap({
                     : flow.parentFlows.join(', ')}
                 </span>
                 {!contextSelectMode && (
-                  <span className="inline-flex items-center gap-1 text-primary">
+                  <span className="inline-flex items-center gap-1 text-accent-strong">
                     <ArrowRight size={12} />
                     Open
                   </span>
@@ -330,22 +330,22 @@ export function ContourMap({
           >
             {contextSelectMode ? (
               <div
-                className={`block relative bg-surface-container-lowest border rounded-lg shadow-sm transition-colors ${
+                className={`block relative bg-surface-raised border rounded-lg transition-colors ${
                   isContextSelected
-                    ? 'border-primary/50 bg-primary-container/5'
-                    : 'border-outline-variant hover:border-primary/30'
+                    ? 'border-accent-strong/50 bg-accent-subtle-bg'
+                    : 'border-border hover:border-accent-strong/30'
                 }`}
               >
                 {isContextSelected && (
                   <div className="absolute top-2 right-2 z-10">
-                    <Check size={12} className="text-primary" />
+                    <Check size={12} className="text-accent-strong" />
                   </div>
                 )}
                 {nodeContent}
               </div>
             ) : (
               <Link
-                className="block bg-surface-container-lowest border border-outline-variant rounded-lg shadow-sm hover:border-primary/30 transition-colors"
+                className="block bg-surface-raised border border-border rounded-lg hover:border-accent-strong/30 transition-colors"
                 onClick={(e) => {
                   if (preventClickRef.current) {
                     e.preventDefault();
@@ -361,7 +361,7 @@ export function ContourMap({
             {/* 从此节点创建新 Flow — 多选模式下隐藏 */}
             {!contextSelectMode && creatingFromId !== flow.flowId && (
               <button
-                className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center cursor-pointer hover:scale-110 transition-all shadow-sm z-20"
+                className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-accent-strong text-accent-on flex items-center justify-center cursor-pointer hover:scale-110 transition-all shadow-sm z-20"
                 onClick={(e) => {
                   e.stopPropagation();
                   setCreatingFromId(flow.flowId);
@@ -376,12 +376,12 @@ export function ContourMap({
 
             {creatingFromId === flow.flowId && (
               <div
-                className="absolute left-0 top-full mt-2 w-[220px] bg-surface-container-lowest border border-primary/25 rounded-lg shadow-lg p-3 z-50"
+                className="absolute left-0 top-full mt-2 w-[220px] bg-surface-raised border border-accent-strong/25 rounded-lg shadow-lg p-3 z-50"
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <input
                   autoFocus
-                  className="w-full px-2.5 py-1.5 rounded-md border border-outline-variant bg-surface-container-lowest text-on-surface text-xs outline-none focus:border-primary/40 font-mono mb-2"
+                  className="w-full px-2.5 py-1.5 rounded-md border border-border bg-surface-raised text-text-primary text-caption outline-none focus:border-accent-strong/40 font-mono mb-2"
                   onChange={(e) => setCreateTitle(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && createTitle.trim()) {
@@ -400,7 +400,7 @@ export function ContourMap({
                 />
                 <div className="flex gap-2">
                   <button
-                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono"
                     onClick={() => {
                       if (createTitle.trim()) {
                         onCreateFlow?.(flow.flowId, createTitle.trim());
@@ -413,7 +413,7 @@ export function ContourMap({
                     创建
                   </button>
                   <button
-                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
+                    className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono"
                     onClick={() => {
                       setCreatingFromId(null);
                       setCreateTitle('');
@@ -430,7 +430,7 @@ export function ContourMap({
       })}
 
       {/* 节点数量提示 */}
-      <div className="absolute bottom-3 right-3 text-[11px] font-mono text-on-surface-variant bg-surface-container/80 px-2 py-1 rounded">
+      <div className="absolute bottom-3 right-3 text-label font-mono text-text-secondary bg-surface-sunken/80 px-2 py-1 rounded-md">
         {flows.length} nodes · {edges.length} edges
       </div>
     </div>
