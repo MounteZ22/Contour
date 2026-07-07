@@ -30,6 +30,8 @@ interface UseChatOptions {
   projectId?: string;
 }
 
+// ── localStorage 读写 ───────────────────────────────────────────────────────────
+
 function readStoredMessages(sessionId: string | undefined): ChatMessage[] {
   if (!sessionId) return [];
   try {
@@ -46,6 +48,117 @@ function writeStoredMessages(sessionId: string | undefined, messages: ChatMessag
   if (!sessionId) return;
   localStorage.setItem(`contour:chat:${sessionId}`, JSON.stringify(messages));
 }
+
+// ── 后端 API ────────────────────────────────────────────────────────────────────
+
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+/**
+ * 从后端获取会话的完整消息历史（JSONL 原始记录）
+ * 失败时返回 null（调用方降级到 localStorage）
+ */
+async function fetchBackendMessages(
+  projectId: string,
+  sessionId: string,
+): Promise<Record<string, unknown>[] | null> {
+  try {
+    const res = await fetch(
+      `/api/agent/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
+    );
+    if (!res.ok) return null;
+    const json: ApiResponse<Record<string, unknown>[]> = await res.json();
+    if (!json.success || !Array.isArray(json.data)) return null;
+    return json.data;
+  } catch {
+    return null;
+  }
+}
+
+// ── JSONL → ChatMessage 转换 ────────────────────────────────────────────────────
+
+/**
+ * 将 Pi SDK JSONL 事件记录转换为 ChatMessage 数组
+ *
+ * Pi SDK JSONL 中的事件格式：
+ * - 用户消息：{ "role": "user", "content": "..." }
+ * - Assistant 文本增量：{ "type": "message_update", "assistantMessageEvent": { "type": "text_delta", "delta": "..." } }
+ * - 或直接的 text_delta：{ "type": "text_delta", "delta": "..." }
+ * - 会话管理事件（agent_start / turn_start / turn_end / agent_end）被忽略
+ *
+ * 转换策略：将连续的 text_delta 聚合为一条 assistant 消息，
+ * turn_start / turn_end 边界作为消息分隔。
+ */
+function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  let currentAssistantContent = '';
+  let msgIndex = 0;
+
+  for (const record of records) {
+    // 会话元数据（跳过）
+    if (record.type === 'session_created') continue;
+
+    // 用户消息
+    if (record.role === 'user' && typeof record.content === 'string') {
+      // 先保存之前累积的 assistant 内容
+      if (currentAssistantContent) {
+        messages.push({
+          id: `hist_${msgIndex++}_${Date.now()}`,
+          role: 'assistant',
+          content: currentAssistantContent,
+        });
+        currentAssistantContent = '';
+      }
+      messages.push({
+        id: (record.id as string) || `hist_${msgIndex++}_${Date.now()}`,
+        role: 'user',
+        content: record.content,
+      });
+      continue;
+    }
+
+    // Pi SDK message_update.text_delta 事件
+    if (record.type === 'message_update') {
+      const sub = record.assistantMessageEvent as Record<string, unknown> | undefined;
+      if (sub?.type === 'text_delta' && typeof sub.delta === 'string') {
+        currentAssistantContent += sub.delta;
+      }
+      continue;
+    }
+
+    // 直接的 text_delta 事件（简化格式）
+    if (record.type === 'text_delta' && typeof record.delta === 'string') {
+      currentAssistantContent += record.delta;
+      continue;
+    }
+
+    // turn_end 作为 assistant 消息边界
+    if (record.type === 'turn_end' && currentAssistantContent) {
+      messages.push({
+        id: `hist_${msgIndex++}_${Date.now()}`,
+        role: 'assistant',
+        content: currentAssistantContent,
+      });
+      currentAssistantContent = '';
+    }
+  }
+
+  // 保存最后未结束的 assistant 内容
+  if (currentAssistantContent) {
+    messages.push({
+      id: `hist_${msgIndex++}_${Date.now()}`,
+      role: 'assistant',
+      content: currentAssistantContent,
+    });
+  }
+
+  return messages;
+}
+
+// ── Hook ────────────────────────────────────────────────────────────────────────
 
 export function useChat(initialContext: AIContextItem[] = [], options: UseChatOptions = {}): UseChatReturn {
   const { sessionId, projectId } = options;
@@ -64,9 +177,40 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // ── sessionId / projectId 变化时加载消息历史 ──────────────────────────────
+  // 优先从后端 JSONL 加载，失败时降级到 localStorage
   useEffect(() => {
-    setMessages(readStoredMessages(sessionId));
-  }, [sessionId]);
+    if (!sessionId) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    if (projectId) {
+      fetchBackendMessages(projectId, sessionId).then((records) => {
+        if (cancelled) return;
+        if (records && records.length > 0) {
+          const converted = convertJsonlToChatMessages(records);
+          if (converted.length > 0) {
+            setMessages(converted);
+            // 同步到 localStorage 作为离线缓存
+            writeStoredMessages(sessionId, converted);
+            return;
+          }
+        }
+        // 后端无数据或转换结果为空 → 降级到 localStorage
+        setMessages(readStoredMessages(sessionId));
+      });
+    } else {
+      // 无 projectId → 仅使用 localStorage
+      setMessages(readStoredMessages(sessionId));
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, projectId]);
 
   const updateMessages = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[]) => {

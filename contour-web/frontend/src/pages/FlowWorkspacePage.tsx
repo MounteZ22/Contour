@@ -1,9 +1,9 @@
 import { ArrowLeft, Bot, ChevronDown, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { showToast } from '../components/Toast';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import { StatusBadge } from '../components/StatusBadge';
+import { useOptimisticMutation } from '../hooks/useOptimisticMutation';
 import type { FlowStatus, ProjectData } from '../types';
 
 export function FlowWorkspacePage() {
@@ -25,6 +25,7 @@ export function FlowWorkspacePage() {
   const [flowStatus, setFlowStatus] = useState<FlowStatus>(initialFlow.status);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  const { mutate, isPending } = useOptimisticMutation();
 
   useEffect(() => {
     setFlowStatus(initialFlow.status);
@@ -102,22 +103,24 @@ export function FlowWorkspacePage() {
     );
     setIsEditing(false);
 
-    try {
-      const res = await fetch(`/api/flows/${initialFlow.flowId}/sections/${activeSection.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editedContent, projectId: project.projectId }),
-      });
-      const result = await res.json();
-      if (!result.success) {
-        setLocalSections(previousSections);
+    const ok = await mutate({
+      optimistic: () => previousSections,
+      mutationFn: async () => {
+        const res = await fetch(`/api/flows/${initialFlow.flowId}/sections/${activeSection.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: editedContent, projectId: project.projectId }),
+        });
+        return res.json() as Promise<{ success: boolean; error?: string }>;
+      },
+      rollback: (prev) => {
+        setLocalSections(prev);
         setIsEditing(true);
-        showToast(`保存 Section 失败：${result.error}`, 'error');
-      }
-    } catch (err) {
-      setLocalSections(previousSections);
+      },
+      errorMessage: '保存 Section 失败',
+    });
+    if (!ok) {
       setIsEditing(true);
-      showToast(`保存 Section 请求失败：${(err as Error).message}`, 'error');
     }
   };
 

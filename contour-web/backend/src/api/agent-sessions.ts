@@ -1,13 +1,13 @@
 /**
  * Agent 会话持久化 API
  *
- * 提供会话列表查询、消息历史获取和会话删除功能。
+ * 提供会话列表查询、消息历史获取、会话创建和删除功能。
  * 数据来源为 Pi SDK SessionManager 自动持久化的 JSONL 文件，
  * 存储路径：{dataDir}/projects/{projectId}/sessions/{timestamp}_{sessionId}.jsonl
  */
 
 import { Router } from 'express';
-import { readFile, readdir, unlink } from 'fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
@@ -166,6 +166,77 @@ router.get('/:projectId', async (req, res) => {
   } catch (err) {
     console.error(`[GET /api/agent/sessions/:projectId]`, err);
     res.status(500).json({ success: false, error: '获取会话列表失败' });
+  }
+});
+
+// ── POST /api/agent/sessions/:projectId ─────────────────────────────────────────
+// 创建新会话文件（写入一条元数据记录，后续 Pi SDK SessionManager 可 open 追加）
+
+router.post('/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { sessionId, title } = req.body as { sessionId?: string; title?: string };
+
+    if (!sessionId || typeof sessionId !== 'string') {
+      res.status(400).json({ success: false, error: '缺少 sessionId 参数' });
+      return;
+    }
+
+    const sessionsDir = getSessionsDir(projectId);
+    await mkdir(sessionsDir, { recursive: true });
+
+    // 检查是否已存在同名会话文件（按 sessionId 匹配）
+    let existingFiles: string[];
+    try {
+      existingFiles = await readdir(sessionsDir);
+    } catch {
+      existingFiles = [];
+    }
+    const existingFile = existingFiles.find((f) => extractSessionId(f) === sessionId);
+    if (existingFile) {
+      // 会话文件已存在，直接返回现有摘要
+      const filePath = path.join(sessionsDir, existingFile);
+      const records = await parseJsonlFile(filePath);
+      const timestampMatch = existingFile.match(/^(\d+)_/);
+      const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : Date.now();
+
+      const session: SessionSummary = {
+        id: sessionId,
+        title: title || `会话 ${sessionId.slice(0, 8)}`,
+        lastMessage: extractLastMessage(records),
+        updatedAt: timestamp,
+        messageCount: records.length,
+      };
+      res.json({ success: true, data: session });
+      return;
+    }
+
+    // 创建新的会话文件
+    const timestamp = Date.now();
+    const filename = `${timestamp}_${sessionId}.jsonl`;
+    const filePath = path.join(sessionsDir, filename);
+
+    // 写入一条元数据记录，确保文件非空（便于后续 SessionManager.open 识别）
+    const metadataLine = JSON.stringify({
+      type: 'session_created',
+      sessionId,
+      title: title || `会话 ${sessionId.slice(0, 8)}`,
+      createdAt: timestamp,
+    }) + '\n';
+    await writeFile(filePath, metadataLine, 'utf-8');
+
+    const session: SessionSummary = {
+      id: sessionId,
+      title: title || `会话 ${sessionId.slice(0, 8)}`,
+      lastMessage: '空会话',
+      updatedAt: timestamp,
+      messageCount: 1,
+    };
+
+    res.status(201).json({ success: true, data: session });
+  } catch (err) {
+    console.error(`[POST /api/agent/sessions/:projectId]`, err);
+    res.status(500).json({ success: false, error: '创建会话失败' });
   }
 });
 

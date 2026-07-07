@@ -1,8 +1,9 @@
-import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library, Shield, Tag, X } from 'lucide-react';
+import { ArrowLeft, Bot, Edit3, Eye, FileStack, Library, Shield, Tag } from 'lucide-react';
 import { useState } from 'react';
-import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
+import { TagEditor } from '../components/shared/TagEditor';
+import { useOptimisticMutation } from '../hooks/useOptimisticMutation';
 import type { Claim, ProjectData } from '../types';
 import { CONFIDENCE_COLORS, STATUS_COLORS } from '../constants/claimColors';
 
@@ -38,7 +39,8 @@ export function ProjectClaimPage() {
   const [editedConfidence, setEditedConfidence] = useState<string>(activeClaim?.confidence ?? 'medium');
   const [editedStatus, setEditedStatus] = useState<string>(activeClaim?.status ?? 'tentative');
   const [editedTags, setEditedTags] = useState<string[]>(activeClaim?.tags ?? []);
-  const [tagInput, setTagInput] = useState('');
+
+  const { mutate, isPending } = useOptimisticMutation();
 
   if (!activeClaim) {
     return null;
@@ -49,20 +51,7 @@ export function ProjectClaimPage() {
     setEditedConfidence(activeClaim.confidence);
     setEditedStatus(activeClaim.status);
     setEditedTags([...activeClaim.tags]);
-    setTagInput('');
     setIsEditing(true);
-  };
-
-  const addTag = () => {
-    const t = tagInput.trim();
-    if (t && !editedTags.includes(t)) {
-      setEditedTags([...editedTags, t]);
-    }
-    setTagInput('');
-  };
-
-  const removeTag = (tag: string) => {
-    setEditedTags(editedTags.filter((t) => t !== tag));
   };
 
   const handleSave = async () => {
@@ -77,27 +66,29 @@ export function ProjectClaimPage() {
     );
     setIsEditing(false);
 
-    try {
-      const res = await fetch(`/api/claims/${activeClaim.claimId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: editedContent,
-          confidence: editedConfidence,
-          status: editedStatus,
-          tags: editedTags,
-        }),
-      });
-      const result = await res.json();
-      if (!result.success) {
-        setLocalClaims(previousClaims);
+    const ok = await mutate({
+      optimistic: () => previousClaims,
+      mutationFn: async () => {
+        const res = await fetch(`/api/claims/${activeClaim.claimId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: editedContent,
+            confidence: editedConfidence,
+            status: editedStatus,
+            tags: editedTags,
+          }),
+        });
+        return res.json() as Promise<{ success: boolean; error?: string }>;
+      },
+      rollback: (prev) => {
+        setLocalClaims(prev);
         setIsEditing(true);
-        showToast(`保存 Claim 失败：${result.error}`, 'error');
-      }
-    } catch (err) {
-      setLocalClaims(previousClaims);
+      },
+      errorMessage: '保存 Claim 失败',
+    });
+    if (!ok) {
       setIsEditing(true);
-      showToast(`保存 Claim 请求失败：${(err as Error).message}`, 'error');
     }
   };
 
@@ -156,46 +147,10 @@ export function ProjectClaimPage() {
                 </select>
               </div>
               {/* 标签编辑 */}
-              <div className="grid gap-1">
-                <span className="text-[10px] font-mono text-on-surface-variant">Tags</span>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    className="w-28 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40"
-                    placeholder="添加标签"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); addTag(); }
-                    }}
-                  />
-                  <button
-                    className="px-2 py-1.5 rounded-md bg-primary/10 text-primary text-xs font-mono cursor-pointer hover:bg-primary/20 transition-colors"
-                    onClick={addTag}
-                    type="button"
-                  >
-                    添加
-                  </button>
-                </div>
-                {editedTags.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                    {editedTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
-                      >
-                        {tag}
-                        <button
-                          className="cursor-pointer hover:text-error transition-colors"
-                          onClick={() => removeTag(tag)}
-                          type="button"
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <TagEditor
+                tags={editedTags}
+                onTagsChange={setEditedTags}
+              />
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
