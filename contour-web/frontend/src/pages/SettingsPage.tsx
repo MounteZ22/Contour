@@ -6,7 +6,7 @@ import { ChannelSettings } from '../components/settings/ChannelSettings';
 import { Button } from '../components/ui/button';
 import { buttonVariants } from '../components/ui/button';
 import { cn } from '@/lib/utils';
-import { baseThemeAtom } from '../state/theme';
+import { baseThemeAtom, accentThemeAtom } from '../state/theme';
 
 type SettingsTab = 'general' | 'ai' | 'appearance';
 
@@ -22,8 +22,16 @@ const TABS: TabItem[] = [
   { id: 'appearance', label: '外观设置', icon: <Palette size={16} /> },
 ];
 
+const ACCENT_OPTIONS: { id: string; label: string; color: string }[] = [
+  { id: 'neutral', label: '中性',   color: 'oklch(0.22 0 0)' },
+  { id: 'blue',    label: '蓝色',   color: 'oklch(0.50 0.15 265)' },
+  { id: 'green',   label: '绿色',   color: 'oklch(0.50 0.12 155)' },
+  { id: 'purple',  label: '紫色',   color: 'oklch(0.50 0.15 300)' },
+];
+
 function AppearanceSettings() {
   const [baseTheme, setBaseTheme] = useAtom(baseThemeAtom);
+  const [accentTheme, setAccentTheme] = useAtom(accentThemeAtom);
 
   const isDark = baseTheme === 'dark';
 
@@ -77,10 +85,39 @@ function AppearanceSettings() {
         </div>
       </div>
 
-      {/* 强调色 — P5 实现完整选择器 UI */}
+      {/* 强调色 */}
       <div className="space-y-3">
         <h4 className="text-sm font-medium text-foreground">主题色</h4>
-        <p className="text-xs text-muted-foreground">强调色选择器将在后续版本中提供。</p>
+        <p className="text-xs text-muted-foreground">选择界面强调色，影响按钮、链接、选中态等</p>
+        <div className="flex items-center gap-3">
+          {ACCENT_OPTIONS.map((opt) => {
+            const active = accentTheme === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setAccentTheme(opt.id)}
+                title={opt.label}
+                aria-label={opt.label}
+                aria-pressed={active}
+                className={cn(
+                  'relative w-9 h-9 rounded-full transition-all cursor-pointer',
+                  active
+                    ? 'ring-2 ring-offset-2 ring-offset-background ring-foreground/40 scale-105'
+                    : 'ring-1 ring-border hover:scale-105',
+                )}
+                style={{ backgroundColor: opt.color }}
+              >
+                {active && (
+                  <Check
+                    size={14}
+                    className="absolute inset-0 m-auto text-white drop-shadow-sm"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

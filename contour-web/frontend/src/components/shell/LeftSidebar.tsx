@@ -19,6 +19,7 @@ import { currentProjectIdAtom, sidebarCollapsedAtom } from '../../state/shell';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import type { ProjectData } from '../../types';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from './ThemeToggle';
 
 function projectInitial(title: string) {
   return title.trim().slice(0, 1).toUpperCase() || 'P';
@@ -319,6 +320,7 @@ export function LeftSidebar({
 
       {/* Footer */}
       <div className="p-3 border-t border-border grid gap-1.5">
+        <ThemeToggle collapsed={collapsed} />
         <NavLink
           to="/settings"
           className={({ isActive }) =>
