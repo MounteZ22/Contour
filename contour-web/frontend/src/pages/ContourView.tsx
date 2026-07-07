@@ -8,6 +8,7 @@ import { ContourMap } from '../components/ContourMap';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { CONFIDENCE_COLOR_MAP, CONFIDENCE_BG_MAP } from '../constants/claimColors';
 import { chatContextItemsAtom } from '../state/chat';
 import { useAgentSessions } from '../hooks/useAgentSessions';
 import type { ShellOutletContext } from '../components/shell/ShellLayout';
@@ -451,18 +452,8 @@ export function ContourView() {
           <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
             {project.claims.map((claim) => {
               const isClaimSelected = selectedClaims.has(claim.claimId);
-              const confidenceColors: Record<string, string> = {
-                low: '#f59e0b',
-                medium: '#3b82f6',
-                high: '#10b981',
-              };
-              const confidenceBgs: Record<string, string> = {
-                low: '#fef3c7',
-                medium: '#dbeafe',
-                high: '#d1fae5',
-              };
-              const cc = confidenceColors[claim.confidence] ?? '#6b7280';
-              const cb = confidenceBgs[claim.confidence] ?? '#f3f4f6';
+              const cc = CONFIDENCE_COLOR_MAP[claim.confidence] ?? '#6b7280';
+              const cb = CONFIDENCE_BG_MAP[claim.confidence] ?? '#f3f4f6';
 
               const cardContent = (
                 <>

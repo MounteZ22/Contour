@@ -4,6 +4,7 @@ import { showToast } from '../components/Toast';
 import { Link, NavLink, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import type { Claim, ProjectData } from '../types';
+import { CONFIDENCE_COLORS, STATUS_COLORS } from '../constants/claimColors';
 
 const CONFIDENCE_OPTIONS = ['low', 'medium', 'high'] as const;
 const STATUS_OPTIONS = ['tentative', 'active', 'revised', 'weakened', 'superseded', 'rejected'] as const;
@@ -14,11 +15,6 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   high: 'High',
 };
 
-const CONFIDENCE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  low: { bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
-  medium: { bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
-  high: { bg: '#d1fae5', text: '#065f46', border: '#10b981' },
-};
 
 const STATUS_LABELS: Record<string, string> = {
   tentative: 'Tentative',
@@ -27,15 +23,6 @@ const STATUS_LABELS: Record<string, string> = {
   weakened: 'Weakened',
   superseded: 'Superseded',
   rejected: 'Rejected',
-};
-
-const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  tentative: { bg: '#f3f4f6', text: '#374151', border: '#9ca3af' },
-  active: { bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
-  revised: { bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
-  weakened: { bg: '#fce7f3', text: '#9d174d', border: '#ec4899' },
-  superseded: { bg: '#e5e7eb', text: '#4b5563', border: '#6b7280' },
-  rejected: { bg: '#fee2e2', text: '#991b1b', border: '#ef4444' },
 };
 
 const selectBase = `w-full rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40`;

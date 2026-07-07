@@ -4,11 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { User, Bot, ChevronRight, Loader2, CheckCircle2, XCircle, Wrench } from 'lucide-react';
 import type { ChatMessage, ToolActivity } from '../state/aiApi';
 
-const TOOL_LABELS: Record<string, string> = {
-  getFlowDetail: '读取研究脉络',
-  searchFlows: '搜索研究脉络',
-  getDoc: '读取文档',
-};
+import { TOOL_LABELS } from '../constants/toolLabels';
 
 function getToolPhrase(toolName: string, input?: Record<string, unknown>): { label: string; loadingLabel: string } {
   const label = TOOL_LABELS[toolName] || toolName;
