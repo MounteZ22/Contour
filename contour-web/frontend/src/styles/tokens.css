@@ -2,339 +2,289 @@
 
 @theme inline {
   /* ==========================================
-     Color Tokens (mapped to CSS variables)
+     §2.1 基底语义映射 — Contour 自有 token
      ========================================== */
-  --color-primary: var(--token-primary);
-  --color-on-primary: var(--token-on-primary);
-  --color-primary-container: var(--token-primary-container);
-  --color-on-primary-container: var(--token-on-primary-container);
-  --color-primary-fixed: var(--token-primary-fixed);
-  --color-primary-fixed-dim: var(--token-primary-fixed-dim);
-  --color-on-primary-fixed: var(--token-on-primary-fixed);
-  --color-on-primary-fixed-variant: var(--token-on-primary-fixed-variant);
+  --color-background:           var(--background);
+  --color-surface:              var(--surface);
+  --color-surface-raised:       var(--surface-raised);
+  --color-surface-sunken:       var(--surface-sunken);
 
-  --color-secondary: var(--token-secondary);
-  --color-on-secondary: var(--token-on-secondary);
-  --color-secondary-container: var(--token-secondary-container);
-  --color-on-secondary-container: var(--token-on-secondary-container);
-  --color-secondary-fixed: var(--token-secondary-fixed);
-  --color-secondary-fixed-dim: var(--token-secondary-fixed-dim);
-  --color-on-secondary-fixed: var(--token-on-secondary-fixed);
-  --color-on-secondary-fixed-variant: var(--token-on-secondary-fixed-variant);
+  --color-text-primary:         var(--text-primary);
+  --color-text-secondary:       var(--text-secondary);
+  --color-text-tertiary:        var(--text-tertiary);
 
-  --color-tertiary: var(--token-tertiary);
-  --color-on-tertiary: var(--token-on-tertiary);
-  --color-tertiary-container: var(--token-tertiary-container);
-  --color-on-tertiary-container: var(--token-on-tertiary-container);
-  --color-tertiary-fixed: var(--token-tertiary-fixed);
-  --color-tertiary-fixed-dim: var(--token-tertiary-fixed-dim);
-  --color-on-tertiary-fixed: var(--token-on-tertiary-fixed);
-  --color-on-tertiary-fixed-variant: var(--token-on-tertiary-fixed-variant);
+  --color-border:               var(--border);
+  --color-border-subtle:        var(--border-subtle);
 
-  --color-error: var(--token-error);
-  --color-on-error: var(--token-on-error);
-  --color-error-container: var(--token-error-container);
-  --color-on-error-container: var(--token-on-error-container);
+  --color-accent:               var(--accent);
+  --color-accent-hover:         var(--accent-hover);
+  --color-accent-subtle-bg:     var(--accent-subtle-bg);
+  --color-accent-subtle-text:   var(--accent-subtle-text);
+  --color-accent-on:            var(--accent-on);
 
-  --color-background: var(--token-background);
-  --color-on-background: var(--token-on-background);
-  --color-surface: var(--token-surface);
-  --color-on-surface: var(--token-on-surface);
-  --color-surface-variant: var(--token-surface-variant);
-  --color-surface-dim: var(--token-surface-dim);
-  --color-surface-bright: var(--token-surface-bright);
-  --color-surface-container-lowest: var(--token-surface-container-lowest);
-  --color-surface-container-low: var(--token-surface-container-low);
-  --color-surface-container: var(--token-surface-container);
-  --color-surface-container-high: var(--token-surface-container-high);
-  --color-surface-container-highest: var(--token-surface-container-highest);
-  --color-inverse-surface: var(--token-inverse-surface);
-  --color-inverse-on-surface: var(--token-inverse-on-surface);
-  --color-inverse-primary: var(--token-inverse-primary);
-  --color-outline: var(--token-outline);
-  --color-outline-variant: var(--token-outline-variant);
-  --color-surface-tint: var(--token-surface-tint);
+  --color-danger:               var(--danger);
+  --color-danger-subtle-bg:     var(--danger-subtle-bg);
+  --color-danger-subtle-text:   var(--danger-subtle-text);
+  --color-warning:              var(--warning);
+  --color-success:              var(--success);
 
-  /* ==========================================
-     shadcn/ui Color Tokens
-     ========================================== */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar-background: var(--sidebar-background);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  /* 圆角 */
+  --radius-sm:   calc(var(--radius) - 2px);   /* 4px */
+  --radius:      var(--radius);                /* 6px */
+  --radius-md:   calc(var(--radius) + 2px);   /* 8px */
+  --radius-lg:   calc(var(--radius) * 2);     /* 12px */
+  --radius-full: 9999px;
 
-  /* shadcn border radius */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
-  /* ==========================================
-     Typography
-     ========================================== */
-  --font-sans: "Inter", "Segoe UI", sans-serif;
+  /* 字体 */
+  --font-sans:     "Inter", "Segoe UI", sans-serif;
   --font-headline: "Hanken Grotesk", "Inter", sans-serif;
-  --font-body: "Inter", "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  --font-mono:     "JetBrains Mono", "Cascadia Code", monospace;
 
-  --text-headline-lg: 32px;
-  --text-headline-md: 24px;
-  --text-headline-sm: 18px;
-  --text-body-lg: 16px;
-  --text-body-md: 14px;
-  --text-label-mono: 13px;
-  --text-code-block: 13px;
-
-  --font-weight-headline-lg: 700;
-  --font-weight-headline-md: 600;
-  --font-weight-headline-sm: 600;
-  --font-weight-body: 400;
-  --font-weight-label-mono: 500;
-
-  --line-height-headline-lg: 1.2;
-  --line-height-headline-md: 1.3;
-  --line-height-headline-sm: 1.4;
-  --line-height-body-lg: 1.6;
-  --line-height-body-md: 1.5;
-  --line-height-label-mono: 1.2;
-  --line-height-code-block: 1.6;
-
-  --tracking-label-mono: -0.01em;
+  /* 字号 */
+  --text-display:    28px;
+  --text-heading-lg: 22px;
+  --text-heading-md: 17px;
+  --text-heading-sm: 15px;
+  --text-body:       14px;
+  --text-body-sm:    13px;
+  --text-caption:    12px;
+  --text-label:      11px;
+  --text-mono:       13px;
 
   /* ==========================================
-     Spacing
+     §2.2 shadcn/ui 兼容映射
+     ========================================== */
+  --color-primary:              var(--accent);
+  --color-primary-foreground:   var(--accent-on);
+  --color-secondary:            var(--surface-sunken);
+  --color-secondary-foreground: var(--text-primary);
+  --color-muted:                var(--surface-sunken);
+  --color-muted-foreground:     var(--text-secondary);
+  /* shadcn 的 accent ≈ 我们的 accent-subtle（覆盖 §2.1 的同名条目） */
+  --color-accent:               var(--accent-subtle-bg);
+  --color-accent-foreground:    var(--accent-subtle-text);
+  --color-destructive:          var(--danger);
+  --color-destructive-foreground: oklch(0.99 0 0);
+  --color-card:                 var(--surface);
+  --color-card-foreground:      var(--text-primary);
+  --color-popover:              var(--surface-raised);
+  --color-popover-foreground:   var(--text-primary);
+  --color-input:                var(--border);
+  --color-ring:                 var(--accent);
+  --color-foreground:           var(--text-primary);
+
+  /* shadcn chart */
+  --color-chart-1: var(--accent);
+  --color-chart-2: oklch(0.6 0.12 300);
+  --color-chart-3: oklch(0.55 0.12 160);
+  --color-chart-4: oklch(0.65 0.1 60);
+  --color-chart-5: var(--danger);
+
+  /* shadcn sidebar */
+  --color-sidebar-background:          var(--surface);
+  --color-sidebar-foreground:          var(--text-primary);
+  --color-sidebar-primary:             var(--accent);
+  --color-sidebar-primary-foreground:  var(--accent-on);
+  --color-sidebar-accent:              var(--accent-subtle-bg);
+  --color-sidebar-accent-foreground:   var(--accent-subtle-text);
+  --color-sidebar-border:              var(--border);
+  --color-sidebar-ring:                var(--accent);
+
+  /* ==========================================
+     M3 兼容别名 — P3 后删除
+     （仍在用 M3 类名的组件：ChatMessage / ContourMap /
+      MarkdownArticle / LeftSidebar / ContourView /
+      ProjectClaimPage / ProjectDocPage / FlowWorkspacePage /
+      ContextActionBar / ErrorBoundary / TagEditor 等）
+     ========================================== */
+  --color-primary-container:    var(--accent-subtle-bg);
+  --color-on-primary-container: var(--text-primary);
+  --color-secondary-container:  var(--surface-sunken);
+  --color-on-secondary-container: var(--text-primary);
+  --color-surface-container-high:    var(--surface);
+  --color-surface-container-low:     var(--surface-sunken);
+  --color-surface-container:         var(--surface-sunken);
+  --color-surface-container-lowest:  var(--surface-raised);
+  --color-on-surface:          var(--text-primary);
+  --color-on-surface-variant:  var(--text-secondary);
+  --color-outline-variant:     var(--border);
+  /* M3 error 别名（text-error / bg-error/xx 等） */
+  --color-error:               var(--danger);
+  --color-on-error:            oklch(0.99 0 0);
+  --color-error-container:     var(--danger-subtle-bg);
+  --color-on-error-container:  var(--danger-subtle-text);
+  /* M3 primary-fixed-dim（hover 色用） */
+  --color-primary-fixed-dim:   var(--accent);
+  /* M3 tertiary（ContourMap 标签按钮等，P3 后删除） */
+  --color-tertiary-container:  var(--accent-subtle-bg);
+  --color-tertiary:            var(--accent);
+
+  /* ==========================================
+     Spacing（保留现有）
      ========================================== */
   --spacing-sidebar: 320px;
   --spacing-page: 2rem;
   --spacing-gutter: 1.5rem;
   --spacing-node: 2rem;
-
-  /* ==========================================
-     Border Radius (shadcn style, derived from --radius)
-     ========================================== */
-  --radius-full: 9999px;
 }
 
 /* ==========================================
-   Light Scientific Theme (default)
+   Light 基底（默认）
    ========================================== */
 :root,
-.theme-light-scientific {
-  /* shadcn CSS variables */
-  --radius: 0.5rem;
-  --background: oklch(0.985 0.005 260);
-  --foreground: oklch(0.15 0.03 260);
-  --card: oklch(0.97 0.008 260);
-  --card-foreground: oklch(0.15 0.03 260);
-  --popover: oklch(0.97 0.008 260);
-  --popover-foreground: oklch(0.15 0.03 260);
-  --primary: oklch(0.45 0.18 265);
-  --primary-foreground: oklch(0.99 0.002 260);
-  --secondary: oklch(0.93 0.015 260);
-  --secondary-foreground: oklch(0.2 0.03 260);
-  --muted: oklch(0.94 0.01 260);
-  --muted-foreground: oklch(0.45 0.02 260);
-  --accent: oklch(0.93 0.015 260);
-  --accent-foreground: oklch(0.2 0.03 260);
-  --destructive: oklch(0.5 0.18 25);
-  --destructive-foreground: oklch(0.99 0.002 260);
-  --border: oklch(0.88 0.01 260);
-  --input: oklch(0.85 0.012 260);
-  --ring: oklch(0.45 0.18 265);
-  --chart-1: oklch(0.55 0.15 265);
+.theme-light {
+  /* 表面层级 */
+  --background:      oklch(0.985 0 0);
+  --surface:         oklch(0.975 0 0);
+  --surface-raised:  oklch(0.990 0 0);
+  --surface-sunken:  oklch(0.955 0 0);
+
+  /* 文字 */
+  --text-primary:    oklch(0.15 0 0);
+  --text-secondary:  oklch(0.45 0 0);
+  --text-tertiary:   oklch(0.60 0 0);
+
+  /* 边框 */
+  --border:        oklch(0.90 0 0);
+  --border-subtle: oklch(0.94 0 0);
+
+  /* 语义色 */
+  --danger:             oklch(0.55 0.18 25);
+  --danger-subtle-bg:   oklch(0.96 0.02 25);
+  --danger-subtle-text: oklch(0.40 0.15 25);
+  --warning:            oklch(0.60 0.15 80);
+  --success:            oklch(0.55 0.14 155);
+
+  /* shadcn CSS 变量别名 */
+  --foreground:             var(--text-primary);
+  --card:                   var(--surface);
+  --card-foreground:        var(--text-primary);
+  --popover:                var(--surface-raised);
+  --popover-foreground:     var(--text-primary);
+  --primary:                var(--accent);
+  --primary-foreground:     var(--accent-on);
+  --secondary:              var(--surface-sunken);
+  --secondary-foreground:   var(--text-primary);
+  --muted:                  var(--surface-sunken);
+  --muted-foreground:       var(--text-secondary);
+  --accent-foreground:      var(--accent-subtle-text);
+  --destructive:            var(--danger);
+  --destructive-foreground: oklch(0.99 0 0);
+  --input:                  var(--border);
+  --ring:                   var(--accent);
+
+  --chart-1: var(--accent);
   --chart-2: oklch(0.6 0.12 300);
   --chart-3: oklch(0.55 0.12 160);
   --chart-4: oklch(0.65 0.1 60);
-  --chart-5: oklch(0.5 0.15 25);
-  --sidebar-background: oklch(0.97 0.008 260);
-  --sidebar-foreground: oklch(0.15 0.03 260);
-  --sidebar-primary: oklch(0.45 0.18 265);
-  --sidebar-primary-foreground: oklch(0.99 0.002 260);
-  --sidebar-accent: oklch(0.93 0.015 260);
-  --sidebar-accent-foreground: oklch(0.2 0.03 260);
-  --sidebar-border: oklch(0.88 0.01 260);
-  --sidebar-ring: oklch(0.45 0.18 265);
+  --chart-5: var(--danger);
 
-  /* M3 tokens (backward compat) */
-  --token-primary: #004ac6;
-  --token-on-primary: #ffffff;
-  --token-primary-container: #2563eb;
-  --token-on-primary-container: #eeefff;
-  --token-primary-fixed: #dbe1ff;
-  --token-primary-fixed-dim: #b4c5ff;
-  --token-on-primary-fixed: #00174b;
-  --token-on-primary-fixed-variant: #003ea8;
+  --sidebar-background:          var(--surface);
+  --sidebar-foreground:          var(--text-primary);
+  --sidebar-primary:             var(--accent);
+  --sidebar-primary-foreground:  var(--accent-on);
+  --sidebar-accent:              var(--accent-subtle-bg);
+  --sidebar-accent-foreground:   var(--accent-subtle-text);
+  --sidebar-border:              var(--border);
+  --sidebar-ring:                var(--accent);
 
-  --token-secondary: #6b38d4;
-  --token-on-secondary: #ffffff;
-  --token-secondary-container: #8455ef;
-  --token-on-secondary-container: #fffbff;
-  --token-secondary-fixed: #e9ddff;
-  --token-secondary-fixed-dim: #d0bcff;
-  --token-on-secondary-fixed: #23005c;
-  --token-on-secondary-fixed-variant: #5516be;
-
-  --token-tertiary: #006242;
-  --token-on-tertiary: #ffffff;
-  --token-tertiary-container: #007d55;
-  --token-on-tertiary-container: #bdffdb;
-  --token-tertiary-fixed: #6ffbbe;
-  --token-tertiary-fixed-dim: #4edea3;
-  --token-on-tertiary-fixed: #002113;
-  --token-on-tertiary-fixed-variant: #005236;
-
-  --token-error: #ba1a1a;
-  --token-on-error: #ffffff;
-  --token-error-container: #ffdad6;
-  --token-on-error-container: #93000a;
-
-  --token-background: #f8f9ff;
-  --token-on-background: #0d1c2e;
-  --token-surface: #f8f9ff;
-  --token-on-surface: #0d1c2e;
-  --token-surface-variant: #d5e3fc;
-  --token-surface-dim: #ccdbf3;
-  --token-surface-bright: #f8f9ff;
-  --token-surface-container-lowest: #ffffff;
-  --token-surface-container-low: #eff4ff;
-  --token-surface-container: #e6eeff;
-  --token-surface-container-high: #dce9ff;
-  --token-surface-container-highest: #d5e3fc;
-  --token-inverse-surface: #233144;
-  --token-inverse-on-surface: #eaf1ff;
-  --token-inverse-primary: #b4c5ff;
-  --token-outline: #737686;
-  --token-outline-variant: #c3c6d7;
-  --token-surface-tint: #0053db;
+  /* M3 --token-* 变量别名（ContourMap.tsx 内联样式引用） */
+  --token-primary:         var(--accent);
+  --token-outline-variant: var(--border);
 }
 
 /* ==========================================
-   Dark Scientific Theme
+   Dark 基底
    ========================================== */
-.theme-dark-scientific {
-  /* shadcn CSS variables */
-  --radius: 0.5rem;
-  --background: oklch(0.14 0.025 260);
-  --foreground: oklch(0.93 0.01 260);
-  --card: oklch(0.18 0.025 260);
-  --card-foreground: oklch(0.93 0.01 260);
-  --popover: oklch(0.18 0.025 260);
-  --popover-foreground: oklch(0.93 0.01 260);
-  --primary: oklch(0.7 0.12 265);
-  --primary-foreground: oklch(0.14 0.025 260);
-  --secondary: oklch(0.22 0.03 260);
-  --secondary-foreground: oklch(0.9 0.01 260);
-  --muted: oklch(0.2 0.025 260);
-  --muted-foreground: oklch(0.6 0.02 260);
-  --accent: oklch(0.22 0.03 260);
-  --accent-foreground: oklch(0.9 0.01 260);
-  --destructive: oklch(0.65 0.15 25);
-  --destructive-foreground: oklch(0.14 0.025 260);
-  --border: oklch(0.28 0.02 260);
-  --input: oklch(0.28 0.02 260);
-  --ring: oklch(0.7 0.12 265);
-  --chart-1: oklch(0.65 0.15 265);
+.theme-dark {
+  /* 表面层级 */
+  --background:      oklch(0.14 0 0);
+  --surface:         oklch(0.18 0 0);
+  --surface-raised:  oklch(0.22 0 0);
+  --surface-sunken:  oklch(0.11 0 0);
+
+  /* 文字 */
+  --text-primary:    oklch(0.93 0 0);
+  --text-secondary:  oklch(0.60 0 0);
+  --text-tertiary:   oklch(0.40 0 0);
+
+  /* 边框 */
+  --border:        oklch(0.26 0 0);
+  --border-subtle: oklch(0.20 0 0);
+
+  /* 语义色 */
+  --danger:             oklch(0.70 0.15 25);
+  --danger-subtle-bg:   oklch(0.20 0.03 25);
+  --danger-subtle-text: oklch(0.75 0.12 25);
+  --warning:            oklch(0.70 0.12 80);
+  --success:            oklch(0.65 0.12 155);
+
+  /* shadcn CSS 变量别名 */
+  --foreground:             var(--text-primary);
+  --card:                   var(--surface);
+  --card-foreground:        var(--text-primary);
+  --popover:                var(--surface-raised);
+  --popover-foreground:     var(--text-primary);
+  --primary:                var(--accent);
+  --primary-foreground:     var(--accent-on);
+  --secondary:              var(--surface-sunken);
+  --secondary-foreground:   var(--text-primary);
+  --muted:                  var(--surface-sunken);
+  --muted-foreground:       var(--text-secondary);
+  --accent-foreground:      var(--accent-subtle-text);
+  --destructive:            var(--danger);
+  --destructive-foreground: oklch(0.14 0 0);
+  --input:                  var(--border);
+  --ring:                   var(--accent);
+
+  --chart-1: var(--accent);
   --chart-2: oklch(0.6 0.12 300);
   --chart-3: oklch(0.55 0.12 160);
   --chart-4: oklch(0.65 0.1 60);
-  --chart-5: oklch(0.6 0.15 25);
-  --sidebar-background: oklch(0.16 0.025 260);
-  --sidebar-foreground: oklch(0.93 0.01 260);
-  --sidebar-primary: oklch(0.7 0.12 265);
-  --sidebar-primary-foreground: oklch(0.14 0.025 260);
-  --sidebar-accent: oklch(0.22 0.03 260);
-  --sidebar-accent-foreground: oklch(0.9 0.01 260);
-  --sidebar-border: oklch(0.28 0.02 260);
-  --sidebar-ring: oklch(0.7 0.12 265);
+  --chart-5: var(--danger);
 
-  /* M3 tokens (backward compat) */
-  --token-primary: #b4c5ff;
-  --token-on-primary: #00174b;
-  --token-primary-container: #003ea8;
-  --token-on-primary-container: #dbe1ff;
-  --token-primary-fixed: #004ac6;
-  --token-primary-fixed-dim: #2563eb;
-  --token-on-primary-fixed: #ffffff;
-  --token-on-primary-fixed-variant: #b4c5ff;
+  --sidebar-background:          var(--surface);
+  --sidebar-foreground:          var(--text-primary);
+  --sidebar-primary:             var(--accent);
+  --sidebar-primary-foreground:  var(--accent-on);
+  --sidebar-accent:              var(--accent-subtle-bg);
+  --sidebar-accent-foreground:   var(--accent-subtle-text);
+  --sidebar-border:              var(--border);
+  --sidebar-ring:                var(--accent);
 
-  --token-secondary: #d0bcff;
-  --token-on-secondary: #23005c;
-  --token-secondary-container: #5516be;
-  --token-on-secondary-container: #e9ddff;
-  --token-secondary-fixed: #6b38d4;
-  --token-secondary-fixed-dim: #8455ef;
-  --token-on-secondary-fixed: #ffffff;
-  --token-on-secondary-fixed-variant: #d0bcff;
-
-  --token-tertiary: #4edea3;
-  --token-on-tertiary: #002113;
-  --token-tertiary-container: #005236;
-  --token-on-tertiary-container: #6ffbbe;
-  --token-tertiary-fixed: #006242;
-  --token-tertiary-fixed-dim: #007d55;
-  --token-on-tertiary-fixed: #ffffff;
-  --token-on-tertiary-fixed-variant: #4edea3;
-
-  --token-error: #ffb4ab;
-  --token-on-error: #690005;
-  --token-error-container: #93000a;
-  --token-on-error-container: #ffdad6;
-
-  --token-background: #0d1c2e;
-  --token-on-background: #eaf1ff;
-  --token-surface: #0d1c2e;
-  --token-on-surface: #eaf1ff;
-  --token-surface-variant: #233144;
-  --token-surface-dim: #06111f;
-  --token-surface-bright: #233144;
-  --token-surface-container-lowest: #0d1c2e;
-  --token-surface-container-low: #112136;
-  --token-surface-container: #172740;
-  --token-surface-container-high: #1d2f4a;
-  --token-surface-container-highest: #233855;
-  --token-inverse-surface: #eaf1ff;
-  --token-inverse-on-surface: #0d1c2e;
-  --token-inverse-primary: #004ac6;
-  --token-outline: #8a919e;
-  --token-outline-variant: #3a4555;
-  --token-surface-tint: #b4c5ff;
+  /* M3 --token-* 变量别名 */
+  --token-primary:         var(--accent);
+  --token-outline-variant: var(--border);
 }
 
-/* Override legacy global styles */
-html {
-  background: var(--token-background);
+/* ==========================================
+   Blue 强调色 — Light
+   ========================================== */
+:root[data-accent="blue"],
+.theme-light[data-accent="blue"] {
+  --accent:              oklch(0.50 0.15 265);
+  --accent-hover:        oklch(0.45 0.17 265);
+  --accent-subtle-bg:    oklch(0.96 0.02 265);
+  --accent-subtle-text:  oklch(0.35 0.10 265);
+  --accent-on:           oklch(0.99 0 0);
 }
 
-body {
-  color: var(--token-on-background);
+/* ==========================================
+   Blue 强调色 — Dark
+   ========================================== */
+.theme-dark[data-accent="blue"] {
+  --accent:              oklch(0.70 0.12 265);
+  --accent-hover:        oklch(0.75 0.10 265);
+  --accent-subtle-bg:    oklch(0.20 0.03 265);
+  --accent-subtle-text:  oklch(0.80 0.08 265);
+  --accent-on:           oklch(0.14 0 0);
+}
+
+/* ==========================================
+   圆角基准值
+   ========================================== */
+:root {
+  --radius: 6px;
 }
 
 /* ==========================================

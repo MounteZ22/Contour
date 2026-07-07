@@ -6,7 +6,7 @@ import { ChannelSettings } from '../components/settings/ChannelSettings';
 import { Button } from '../components/ui/button';
 import { buttonVariants } from '../components/ui/button';
 import { cn } from '@/lib/utils';
-import { themeAtom, THEME_OPTIONS, type ThemeId } from '../state/theme';
+import { baseThemeAtom } from '../state/theme';
 
 type SettingsTab = 'general' | 'ai' | 'appearance';
 
@@ -23,14 +23,9 @@ const TABS: TabItem[] = [
 ];
 
 function AppearanceSettings() {
-  const [theme, setTheme] = useAtom(themeAtom);
+  const [baseTheme, setBaseTheme] = useAtom(baseThemeAtom);
 
-  const isDark = theme.includes('dark');
-
-  const toggleMode = () => {
-    const newTheme = theme.replace(isDark ? 'dark' : 'light', isDark ? 'light' : 'dark') as ThemeId;
-    setTheme(newTheme);
-  };
+  const isDark = baseTheme === 'dark';
 
   return (
     <div className="space-y-8">
@@ -44,7 +39,7 @@ function AppearanceSettings() {
         <h4 className="text-sm font-medium text-foreground">模式</h4>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => { if (isDark) toggleMode(); }}
+            onClick={() => setBaseTheme('light')}
             className={cn(
               "relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all cursor-pointer",
               !isDark
@@ -62,7 +57,7 @@ function AppearanceSettings() {
             <span className="text-sm font-medium text-foreground">浅色</span>
           </button>
           <button
-            onClick={() => { if (!isDark) toggleMode(); }}
+            onClick={() => setBaseTheme('dark')}
             className={cn(
               "relative flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all cursor-pointer",
               isDark
@@ -82,45 +77,10 @@ function AppearanceSettings() {
         </div>
       </div>
 
-      {/* 主题色 */}
+      {/* 强调色 — P5 实现完整选择器 UI */}
       <div className="space-y-3">
         <h4 className="text-sm font-medium text-foreground">主题色</h4>
-        <div className="grid grid-cols-1 gap-2">
-          {THEME_OPTIONS.map((option) => {
-            const isActive = theme === option.id;
-            const optionIsDark = option.id.includes('dark');
-            return (
-              <button
-                key={option.id}
-                onClick={() => setTheme(option.id)}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg border px-4 py-3 transition-all cursor-pointer text-left",
-                  isActive
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/30"
-                )}
-                type="button"
-              >
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center",
-                  option.id.includes('scientific') && "bg-blue-500",
-                  option.id.includes('emerald') && "bg-emerald-500",
-                  option.id.includes('violet') && "bg-violet-500",
-                )}>
-                  {optionIsDark ? (
-                    <Moon size={14} className="text-white" />
-                  ) : (
-                    <Sun size={14} className="text-white" />
-                  )}
-                </div>
-                <span className="flex-1 text-sm font-medium text-foreground">{option.label}</span>
-                {isActive && (
-                  <Check size={16} className="text-primary" />
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <p className="text-xs text-muted-foreground">强调色选择器将在后续版本中提供。</p>
       </div>
     </div>
   );
