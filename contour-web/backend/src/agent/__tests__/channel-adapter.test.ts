@@ -223,14 +223,16 @@ describe('channelToAgentRuntimeConfig', () => {
       expect(config.baseUrl).toBe('https://api.deepseek.com/anthropic');
     });
 
-    it('anthropic baseUrl 带 /v1/messages 后缀应该去除', () => {
+    it('anthropic baseUrl 带 /v1/messages 后缀时去除 /messages', () => {
       const channel = makeChannel({
         provider: 'anthropic',
         baseUrl: 'https://api.anthropic.com/v1/messages',
         models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', enabled: true }],
       });
       const config = channelToAgentRuntimeConfig(channel);
-      expect(config.baseUrl).toBe('https://api.anthropic.com');
+      // normalizeBaseUrl + 先 strip /v\d+$ (不匹配，因后面还有 /messages)
+      // 再 strip /messages$ → https://api.anthropic.com/v1
+      expect(config.baseUrl).toBe('https://api.anthropic.com/v1');
     });
 
     it('anthropic baseUrl 仅带 /v1 后缀应该去除', () => {

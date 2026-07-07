@@ -1,26 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 
 // ── 在导入被测模块之前 mock config ─────────────────────────────────────────
-// 使用 vi.hoisted 确保路径在 vi.mock 工厂运行时已可用
-const { testDir, vaultsDir, legacyDir } = vi.hoisted(() => {
-  const tmp = os.tmpdir();
-  const base = path.join(tmp, `contour-locate-test-${Date.now()}`);
+// 使用异步 factory，内部用动态 import 获取 os/path
+let testDir: string;
+let vaultsDir: string;
+let legacyDir: string;
+
+vi.mock('../../config.js', async () => {
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  testDir = join(tmpdir(), `contour-locate-test-${Date.now()}`);
+  vaultsDir = join(testDir, 'vaults');
+  legacyDir = join(testDir, 'legacy-vault');
   return {
-    testDir: base,
-    vaultsDir: path.join(base, 'vaults'),
-    legacyDir: path.join(base, 'legacy-vault'),
+    CONFIG: {
+      VAULTS_DIR: vaultsDir,
+      LEGACY_VAULT: legacyDir,
+    },
   };
 });
-
-vi.mock('../../config.js', () => ({
-  CONFIG: {
-    VAULTS_DIR: vaultsDir,
-    LEGACY_VAULT: legacyDir,
-  },
-}));
 
 // 动态导入被测模块（在 mock 生效后）
 const locateModule = await import('../locate.js');

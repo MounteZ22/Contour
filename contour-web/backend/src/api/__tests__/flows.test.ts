@@ -1,33 +1,33 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import express from 'express';
 import request from 'supertest';
 
 // ── 在导入被测模块之前 mock config ─────────────────────────────────────────
-const { testDir, vaultsDir, legacyDir } = vi.hoisted(() => {
-  const tmp = os.tmpdir();
-  const base = path.join(tmp, `contour-flows-test-${Date.now()}`);
+let testDir: string;
+let vaultsDir: string;
+let legacyDir: string;
+
+vi.mock('../../config.js', async () => {
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  testDir = join(tmpdir(), `contour-flows-test-${Date.now()}`);
+  vaultsDir = join(testDir, 'vaults');
+  legacyDir = join(testDir, 'legacy-vault');
   return {
-    testDir: base,
-    vaultsDir: path.join(base, 'vaults'),
-    legacyDir: path.join(base, 'legacy-vault'),
+    CONFIG: {
+      PORT: 3001,
+      VAULTS_DIR: vaultsDir,
+      LEGACY_VAULT: legacyDir,
+      CONFIG_DIR: testDir,
+      CONFIG_FILE: path.join(testDir, 'settings.json'),
+      IS_DEV: true,
+      DATA_DIR: testDir,
+      PROJECTS_DIR: path.join(testDir, 'projects'),
+    },
   };
 });
-
-vi.mock('../../config.js', () => ({
-  CONFIG: {
-    PORT: 3001,
-    VAULTS_DIR: vaultsDir,
-    LEGACY_VAULT: legacyDir,
-    CONFIG_DIR: testDir,
-    CONFIG_FILE: path.join(testDir, 'settings.json'),
-    IS_DEV: true,
-    DATA_DIR: testDir,
-    PROJECTS_DIR: path.join(testDir, 'projects'),
-  },
-}));
 
 // 动态导入被测模块
 const flowsRouter = (await import('../flows.js')).default;
@@ -238,7 +238,6 @@ describe('Flows API', () => {
     });
 
     it('删除后查询应返回 404', async () => {
-      // 需要先确保有可删除的 flow
       // 创建一个临时 flow 然后删除
       await request(app)
         .post('/api/flows')

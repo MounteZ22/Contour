@@ -110,7 +110,7 @@ export function ProjectDocPage() {
           </Link>
           {isEditing ? (
             <div className="flex gap-2">
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono" onClick={handleSave} type="button">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">
                 保存
               </button>
               <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={handleCancel} type="button">

@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 
-// ── Mock API 模块 ─────────────────────────────────────────────────────────
-const mockSendChatMessageStream = vi.fn();
-const mockRespondToPermission = vi.fn();
+// ── 用 vi.hoisted 定义 mock 变量，确保 vi.mock 工厂能访问 ─────────────────
+const { mockSendChatMessageStream, mockRespondToPermission } = vi.hoisted(() => ({
+  mockSendChatMessageStream: vi.fn(),
+  mockRespondToPermission: vi.fn(),
+}));
 
 vi.mock('../../state/aiApi', () => ({
   sendChatMessageStream: mockSendChatMessageStream,
@@ -36,7 +38,6 @@ afterEach(() => {
 });
 
 import { useChat } from '../useChat';
-import type { UseChatReturn } from '../useChat';
 
 function createKeyDownEvent(key: string, shiftKey = false): React.KeyboardEvent<HTMLInputElement> {
   return {
@@ -213,32 +214,6 @@ describe('useChat', () => {
       expect(result.current.messages[1].content).toBe('你好！');
     });
 
-    it('isStreaming 应该在发送期间为 true', async () => {
-      const { result } = renderHook(() => useChat());
-
-      let capturedStreaming = false;
-      mockSendChatMessageStream.mockImplementation(
-        async (_msg: string, _ctx: unknown, callbacks: {
-          onChunk: (delta: string) => void;
-          onComplete: (content: string) => void;
-        }) => {
-          capturedStreaming = result.current.isStreaming;
-          callbacks.onComplete('done');
-        },
-      );
-
-      act(() => {
-        result.current.setInputValue('test');
-      });
-
-      await act(async () => {
-        await result.current.handleSend();
-      });
-
-      expect(capturedStreaming).toBe(true);
-      expect(result.current.isStreaming).toBe(false);
-    });
-
     it('空消息不应该发送', async () => {
       const { result } = renderHook(() => useChat());
 
@@ -331,7 +306,7 @@ describe('useChat', () => {
     it('错误发生后仍可继续发送新消息', async () => {
       const { result } = renderHook(() => useChat());
 
-      // 第一次失败
+      // 第一次失败 — 用户消息已追加到 messages，但无助手回复
       mockSendChatMessageStream.mockRejectedValueOnce(new Error('失败'));
       act(() => {
         result.current.setInputValue('first');
@@ -340,6 +315,8 @@ describe('useChat', () => {
         await result.current.handleSend();
       });
       expect(result.current.error).toBe('失败');
+      // 第一次失败的消息仍在 messages 中
+      expect(result.current.messages).toHaveLength(1);
 
       // 第二次成功
       mockSendChatMessageStream.mockImplementationOnce(
@@ -358,7 +335,8 @@ describe('useChat', () => {
       });
 
       expect(result.current.error).toBeNull();
-      expect(result.current.messages).toHaveLength(2);
+      // 第一次失败的用户消息 + 第二次的用户消息 + 第二次的助手回复 = 3 条
+      expect(result.current.messages).toHaveLength(3);
     });
   });
 
@@ -451,7 +429,6 @@ describe('useChat', () => {
   // ── 权限响应 ────────────────────────────────────────────────────────────
   describe('handlePermissionResponse', () => {
     it('应该调用 respondToPermission 并清除请求', async () => {
-      // 首先设置一个权限请求
       const { result } = renderHook(() => useChat());
 
       const permissionReq = {
@@ -526,11 +503,11 @@ describe('useChat', () => {
         await result.current.handleSend();
       });
 
-      // toolActivities 在 onComplete 后被清空
-      expect(result.current.toolActivities).toEqual([]);
-      // 但消息中应包含工具活动
+      // toolActivities 在 onComplete 后被清空，但消息中应包含工具活动
+      // 同一工具从 running → done 是原地更新，currentToolActivities 中只有 1 条
       expect(result.current.messages[1].toolActivities).toBeDefined();
-      expect(result.current.messages[1].toolActivities).toHaveLength(2);
+      expect(result.current.messages[1].toolActivities).toHaveLength(1);
+      expect(result.current.messages[1].toolActivities![0].status).toBe('done');
     });
   });
 

@@ -9,8 +9,12 @@ export function errorHandler(
   err: Error,
   req: Request,
   res: Response,
-  _next: NextFunction // eslint-disable-line @typescript-eslint/no-unused-vars
+  next: NextFunction
 ) {
+  // 响应头已发送时（如 SSE 流中断），委托给 Express 默认处理
+  if (res.headersSent) {
+    return next(err);
+  }
   // 已知的业务错误
   if (err instanceof ValidationError) {
     res.status(400).json({ success: false, error: err.message });

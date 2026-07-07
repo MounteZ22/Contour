@@ -206,6 +206,7 @@ export function ProjectClaimPage() {
             <div className="flex gap-2">
               <button
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
+                disabled={isPending}
                 onClick={handleSave}
                 type="button"
               >
