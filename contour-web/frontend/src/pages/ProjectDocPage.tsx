@@ -77,7 +77,7 @@ export function ProjectDocPage() {
         <div style={{ minWidth: 0, flex: 1 }}>
           <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">Background</p>
           <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
-          {isEditing && (
+          {isEditing ? (
             <div className="flex items-center gap-3 flex-wrap mt-3">
               <TagEditor
                 tags={editedTags}
