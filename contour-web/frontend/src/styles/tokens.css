@@ -258,6 +258,29 @@
 }
 
 /* ==========================================
+   Neutral 强调色（默认，单色）— Light
+   ========================================== */
+:root[data-accent="neutral"],
+.theme-light[data-accent="neutral"] {
+  --accent:              oklch(0.22 0 0);
+  --accent-hover:        oklch(0.18 0 0);
+  --accent-subtle-bg:    oklch(0.94 0 0);
+  --accent-subtle-text:  oklch(0.30 0 0);
+  --accent-on:           oklch(0.99 0 0);
+}
+
+/* ==========================================
+   Neutral 强调色（默认，单色）— Dark
+   ========================================== */
+.theme-dark[data-accent="neutral"] {
+  --accent:              oklch(0.92 0 0);
+  --accent-hover:        oklch(0.95 0 0);
+  --accent-subtle-bg:    oklch(0.20 0 0);
+  --accent-subtle-text:  oklch(0.75 0 0);
+  --accent-on:           oklch(0.14 0 0);
+}
+
+/* ==========================================
    Blue 强调色 — Light
    ========================================== */
 :root[data-accent="blue"],

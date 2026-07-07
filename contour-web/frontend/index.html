@@ -11,12 +11,12 @@
       (function() {
         try {
           var base = localStorage.getItem('contour-base-theme') || 'light';
-          var accent = localStorage.getItem('contour-accent-theme') || 'blue';
+          var accent = localStorage.getItem('contour-accent-theme') || 'neutral';
           document.documentElement.classList.add('theme-' + base);
           document.documentElement.dataset.accent = accent;
         } catch(e) {
           document.documentElement.classList.add('theme-light');
-          document.documentElement.dataset.accent = 'blue';
+          document.documentElement.dataset.accent = 'neutral';
         }
       })();
     </script>

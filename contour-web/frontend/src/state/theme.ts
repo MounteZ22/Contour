@@ -6,8 +6,8 @@ import { atom } from 'jotai';
 /** 基底主题：light | dark */
 export const baseThemeAtom = atomWithStorage<'light' | 'dark'>('contour-base-theme', 'light');
 
-/** 强调色：blue | green | purple | amber（未来扩展） */
-export const accentThemeAtom = atomWithStorage<string>('contour-accent-theme', 'blue');
+/** 强调色：neutral（默认单色）| blue | green | purple | amber */
+export const accentThemeAtom = atomWithStorage<string>('contour-accent-theme', 'neutral');
 
 // ── 向后兼容导出（旧代码引用了 themeAtom / THEME_OPTIONS / ThemeId） ──
 
