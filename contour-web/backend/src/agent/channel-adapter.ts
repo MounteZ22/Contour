@@ -39,8 +39,9 @@ const FULL_BUILTIN_TOOLS = [
  *
  * @returns 第一个可用的 agent 兼容渠道，没有则返回 undefined
  */
-export function findDefaultAgentChannel(): Channel | undefined {
-  return listChannels().find(
+export async function findDefaultAgentChannel(): Promise<Channel | undefined> {
+  const channels = await listChannels();
+  return channels.find(
     (c) => c.enabled && AGENT_COMPATIBLE_PROVIDERS.has(c.provider),
   );
 }

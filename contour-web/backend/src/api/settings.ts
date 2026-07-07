@@ -5,9 +5,9 @@ import type { ApiResponse, AppSettings } from '../types.js';
 const router = Router();
 
 // GET /api/settings - 获取应用设置
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const settings = getSettings();
+    const settings = await getSettings();
     const response: ApiResponse<AppSettings> = { success: true, data: settings };
     res.json(response);
   } catch (err) {
@@ -17,10 +17,10 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/settings - 更新应用设置
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const updates = req.body as Partial<AppSettings>;
-    const updated = updateSettings(updates);
+    const updated = await updateSettings(updates);
     const response: ApiResponse<AppSettings> = { success: true, data: updated };
     res.json(response);
   } catch (err) {

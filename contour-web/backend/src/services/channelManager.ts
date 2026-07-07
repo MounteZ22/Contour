@@ -1,4 +1,5 @@
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CONFIG } from '../config.js';
@@ -22,26 +23,26 @@ const CONFIG_VERSION = 1;
 const CHANNELS_FILE = path.join(CONFIG.CONFIG_DIR, 'channels.json');
 
 /** 读取渠道配置文件 */
-function readConfig(): ChannelsConfig {
-  if (!fs.existsSync(CHANNELS_FILE)) {
-    return { version: CONFIG_VERSION, channels: [] };
-  }
+async function readConfig(): Promise<ChannelsConfig> {
   try {
-    const raw = fs.readFileSync(CHANNELS_FILE, 'utf-8');
+    const raw = await fs.readFile(CHANNELS_FILE, 'utf-8');
     return JSON.parse(raw) as ChannelsConfig;
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { version: CONFIG_VERSION, channels: [] };
+    }
     console.error('[channelManager] 读取配置失败:', error);
     return { version: CONFIG_VERSION, channels: [] };
   }
 }
 
 /** 写入渠道配置文件 */
-function writeConfig(config: ChannelsConfig): void {
+async function writeConfig(config: ChannelsConfig): Promise<void> {
   try {
-    if (!fs.existsSync(CONFIG.CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG.CONFIG_DIR, { recursive: true });
+    if (!existsSync(CONFIG.CONFIG_DIR)) {
+      mkdirSync(CONFIG.CONFIG_DIR, { recursive: true });
     }
-    fs.writeFileSync(CHANNELS_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    await fs.writeFile(CHANNELS_FILE, JSON.stringify(config, null, 2), 'utf-8');
   } catch (error) {
     console.error('[channelManager] 写入配置失败:', error);
     throw new Error('写入渠道配置失败');
@@ -86,18 +87,18 @@ function getTestModel(provider: ProviderType): string {
 
 // ===== 渠道 CRUD =====
 
-export function listChannels(): Channel[] {
-  const config = readConfig();
+export async function listChannels(): Promise<Channel[]> {
+  const config = await readConfig();
   return config.channels;
 }
 
-export function getChannelById(id: string): Channel | undefined {
-  const config = readConfig();
+export async function getChannelById(id: string): Promise<Channel | undefined> {
+  const config = await readConfig();
   return config.channels.find((c) => c.id === id);
 }
 
-export function createChannel(input: ChannelCreateInput): Channel {
-  const config = readConfig();
+export async function createChannel(input: ChannelCreateInput): Promise<Channel> {
+  const config = await readConfig();
   const now = Date.now();
 
   const channel: Channel = {
@@ -113,13 +114,13 @@ export function createChannel(input: ChannelCreateInput): Channel {
   };
 
   config.channels.push(channel);
-  writeConfig(config);
+  await writeConfig(config);
   console.log(`[channelManager] 已创建渠道: ${channel.name} (${channel.id})`);
   return channel;
 }
 
-export function updateChannel(id: string, input: ChannelUpdateInput): Channel {
-  const config = readConfig();
+export async function updateChannel(id: string, input: ChannelUpdateInput): Promise<Channel> {
+  const config = await readConfig();
   const index = config.channels.findIndex((c) => c.id === id);
   if (index === -1) {
     throw new Error(`渠道不存在: ${id}`);
@@ -138,20 +139,20 @@ export function updateChannel(id: string, input: ChannelUpdateInput): Channel {
   };
 
   config.channels[index] = updated;
-  writeConfig(config);
+  await writeConfig(config);
   console.log(`[channelManager] 已更新渠道: ${updated.name} (${updated.id})`);
   return updated;
 }
 
-export function deleteChannel(id: string): void {
-  const config = readConfig();
+export async function deleteChannel(id: string): Promise<void> {
+  const config = await readConfig();
   const index = config.channels.findIndex((c) => c.id === id);
   if (index === -1) {
     throw new Error(`渠道不存在: ${id}`);
   }
 
   const removed = config.channels.splice(index, 1)[0]!;
-  writeConfig(config);
+  await writeConfig(config);
   console.log(`[channelManager] 已删除渠道: ${removed.name} (${removed.id})`);
 }
 
@@ -172,7 +173,7 @@ export async function testChannelDirect(
 }
 
 export async function testChannelById(channelId: string): Promise<ChannelTestResult> {
-  const channel = getChannelById(channelId);
+  const channel = await getChannelById(channelId);
   if (!channel) {
     return { success: false, message: '渠道不存在' };
   }

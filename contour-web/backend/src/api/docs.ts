@@ -11,6 +11,67 @@ import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../va
 
 const router = Router();
 
+// GET /api/docs - 列出所有文档
+router.get('/', async (_req, res) => {
+  try {
+    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const docs = projects.flatMap((p) =>
+      p.docs.map((d) => ({ ...d, projectId: p.projectId, projectName: p.name }))
+    );
+    const response: ApiResponse<{ docs: typeof docs }> = { success: true, data: { docs } };
+    res.json(response);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${_req.method} ${_req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /api/docs/:docId - 获取单个文档完整内容
+router.get('/:docId', async (req, res) => {
+  try {
+    const { docId } = req.params;
+
+    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
+    if (!doc) {
+      const response: ApiResponse<never> = { success: false, error: 'Doc not found' };
+      res.status(404).json(response);
+      return;
+    }
+
+    const projectDir = await findProjectDirForDoc(docId);
+    if (!projectDir) {
+      const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
+      res.status(500).json(response);
+      return;
+    }
+
+    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
+    try {
+      const content = await fs.readFile(targetFile, 'utf-8');
+      const response: ApiResponse<{ docId: string; content: string }> = {
+        success: true,
+        data: { docId, content },
+      };
+      res.json(response);
+    } catch {
+      const response: ApiResponse<never> = { success: false, error: 'Doc file not found' };
+      res.status(404).json(response);
+    }
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // POST /api/docs - 创建新背景文档
 router.post('/', async (req, res) => {
   try {

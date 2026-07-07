@@ -21,9 +21,9 @@ import type {
 const router = Router();
 
 // GET /api/channels - 获取所有渠道
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const channels = listChannels();
+    const channels = await listChannels();
     const response: ApiResponse<{ channels: Channel[] }> = { success: true, data: { channels } };
     res.json(response);
   } catch (err) {
@@ -33,14 +33,14 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/channels - 创建渠道
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const input = req.body as ChannelCreateInput;
     if (!input.name || !input.provider || !input.baseUrl || !input.apiKey) {
       res.status(400).json({ success: false, error: '名称、供应商、Base URL 和 API Key 为必填项' });
       return;
     }
-    const channel = createChannel(input);
+    const channel = await createChannel(input);
     const response: ApiResponse<{ channel: Channel }> = { success: true, data: { channel } };
     res.status(201).json(response);
   } catch (err) {
@@ -54,11 +54,11 @@ router.post('/', (req, res) => {
 });
 
 // PATCH /api/channels/:id - 更新渠道
-router.patch('/:id', (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const input = req.body as ChannelUpdateInput;
-    const channel = updateChannel(id, input);
+    const channel = await updateChannel(id, input);
     const response: ApiResponse<{ channel: Channel }> = { success: true, data: { channel } };
     res.json(response);
   } catch (err) {
@@ -72,10 +72,10 @@ router.patch('/:id', (req, res) => {
 });
 
 // DELETE /api/channels/:id - 删除渠道
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    deleteChannel(id);
+    await deleteChannel(id);
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
   } catch (err) {

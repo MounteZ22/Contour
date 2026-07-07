@@ -95,8 +95,8 @@ router.post('/pi-chat', async (req, res) => {
 
     // 2. 获取渠道配置：优先用显式传入的 channelId，否则回退到默认 agent 渠道
     const channel = body.channelId
-      ? getChannelById(body.channelId)
-      : findDefaultAgentChannel();
+      ? await getChannelById(body.channelId)
+      : await findDefaultAgentChannel();
     if (!channel) {
       const hint = body.channelId
         ? `渠道不存在: ${body.channelId}`

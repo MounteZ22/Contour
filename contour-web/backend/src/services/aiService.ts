@@ -1,14 +1,14 @@
 import { listChannels } from './channelManager.js';
 
 /** 获取第一个启用的渠道 */
-function getDefaultChannel() {
-  const channels = listChannels();
+async function getDefaultChannel() {
+  const channels = await listChannels();
   return channels.find((c) => c.enabled);
 }
 
 /** 测试 LLM 连接 */
 export async function testLLMConnection(): Promise<{ success: boolean; message: string }> {
-  const channel = getDefaultChannel();
+  const channel = await getDefaultChannel();
   if (!channel) {
     return { success: false, message: '未配置可用的 AI 渠道' };
   }

@@ -11,6 +11,19 @@ import { yamlSafeValue } from '../vault/yaml-utils.js';
 
 const router = Router();
 
+/** 将项目目录移动到回收站（软删除） */
+async function moveToTrash(projectDir: string, projectName: string): Promise<void> {
+  const trashDir = path.join(CONFIG.DATA_DIR, '.trash');
+  await fs.mkdir(trashDir, { recursive: true });
+
+  const timestamp = Date.now();
+  const trashName = `${projectName}_${timestamp}`;
+  const trashPath = path.join(trashDir, trashName);
+
+  await fs.rename(projectDir, trashPath);
+  console.log(`项目已移至回收站: ${trashPath}`);
+}
+
 // GET /api/project - 返回所有项目
 router.get('/', async (req, res) => {
   try {
@@ -98,7 +111,9 @@ router.delete('/:projectId', async (req, res) => {
       res.status(404).json(response);
       return;
     }
-    await fs.rm(projectDir, { recursive: true, force: true });
+    // 软删除：移动到回收站而非永久删除
+    const projectName = path.basename(projectDir);
+    await moveToTrash(projectDir, projectName);
     invalidateCache();
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);

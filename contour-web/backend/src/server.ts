@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { CONFIG } from './config.js';
 import routes from './routes.js';
 import projectsRouter from './api/projects.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
@@ -21,6 +22,9 @@ app.use('/api', apiLimiter);
 
 app.use('/api', routes);
 app.use('/api/projects', projectsRouter);
+
+// 全局错误处理（必须放在所有路由之后）
+app.use(errorHandler);
 
 const server = app.listen(CONFIG.PORT, () => {
   console.log(`Contour backend running on http://localhost:${CONFIG.PORT}`);

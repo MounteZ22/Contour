@@ -6,8 +6,9 @@
  */
 
 import { Router } from "express";
-import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import {
   getAttachedDirectories,
   attachDirectory,
@@ -15,6 +16,39 @@ import {
 } from "../services/projectManager.js";
 
 const router = Router();
+
+/** 系统目录黑名单（防止路径穿越附加敏感目录） */
+const FORBIDDEN_DIRS = new Set([
+  "/Windows", "/System32", "/SysWOW64", "/System Volume Information",
+  "/etc", "/sys", "/proc", "/dev", "/boot", "/root", "/var/log", "/var/run",
+  "/Library", "/System", "/Applications/Xcode.app",
+]);
+
+/** 校验路径安全：不指向系统目录、不越权 */
+function validateAttachmentPath(absPath: string): void {
+  // 拒绝根目录
+  const normalized = path.normalize(absPath).replace(/\\/g, "/").replace(/\/$/, "");
+  if (normalized === "" || normalized === "/" || /^[A-Z]:\/$/i.test(normalized)) {
+    throw new Error("不允许附加根目录");
+  }
+
+  // 拒绝系统关键目录
+  for (const forbidden of FORBIDDEN_DIRS) {
+    const f = forbidden.replace(/\\/g, "/");
+    if (normalized === f || normalized.startsWith(f + "/")) {
+      throw new Error(`不允许附加系统目录: ${forbidden}`);
+    }
+  }
+
+  // 拒绝 .contour / .contour-dev 数据目录自身（防止循环引用）
+  const homeDir = path.normalize(os.homedir()).replace(/\\/g, "/").replace(/\/$/, "");
+  const contourDir = `${homeDir}/.contour`;
+  const contourDevDir = `${homeDir}/.contour-dev`;
+  if (normalized === contourDir || normalized.startsWith(contourDir + "/") ||
+      normalized === contourDevDir || normalized.startsWith(contourDevDir + "/")) {
+    throw new Error("不允许附加 Contour 自身的数据目录");
+  }
+}
 
 /**
  * GET /api/projects/:name/attachments
@@ -43,7 +77,7 @@ router.get("/:name/attachments", (_req, res) => {
  * 添加附加目录到指定项目
  * Body: { path: string }
  */
-router.post("/:name/attachments", (req, res) => {
+router.post("/:name/attachments", async (req, res) => {
   try {
     const projectName = req.params.name;
     if (!projectName) {
@@ -58,7 +92,18 @@ router.post("/:name/attachments", (req, res) => {
     }
 
     const absPath = path.resolve(dirPath);
-    if (!existsSync(absPath)) {
+
+    // 安全校验：拒绝系统目录和越权路径
+    validateAttachmentPath(absPath);
+
+    // 异步检查路径是否存在且为目录
+    try {
+      const stats = await stat(absPath);
+      if (!stats.isDirectory()) {
+        res.status(400).json({ success: false, error: `路径不是目录: ${absPath}` });
+        return;
+      }
+    } catch {
       res.status(400).json({ success: false, error: `目录不存在: ${absPath}` });
       return;
     }
