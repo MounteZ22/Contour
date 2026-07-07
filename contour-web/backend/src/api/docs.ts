@@ -5,7 +5,7 @@ import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
-import { findProjectDir, findProjectDirForDoc, extractFrontmatterText } from '../vault/locate.js';
+import { findProjectDir, extractFrontmatterText } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
 
@@ -35,22 +35,23 @@ router.get('/:docId', async (req, res) => {
   try {
     const { docId } = req.params;
 
+    // 校验 docId 字符安全，防止路径穿越
+    if (!/^[a-zA-Z0-9\-_一-鿿]+$/.test(docId)) {
+      const response: ApiResponse<never> = { success: false, error: `docId 包含不允许的字符: ${docId}` };
+      res.status(400).json(response);
+      return;
+    }
+
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
-    const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
-    if (!doc) {
+    // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
+    const project = projects.find((p) => p.docs.some((d) => d.id === docId));
+    if (!project) {
       const response: ApiResponse<never> = { success: false, error: 'Doc not found' };
       res.status(404).json(response);
       return;
     }
 
-    const projectDir = await findProjectDirForDoc(docId);
-    if (!projectDir) {
-      const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
-      res.status(500).json(response);
-      return;
-    }
-
-    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
+    const targetFile = path.join(project.projectDir, 'background', `${docId}.md`);
     try {
       const content = await fs.readFile(targetFile, 'utf-8');
       const response: ApiResponse<{ docId: string; content: string }> = {
@@ -135,24 +136,23 @@ router.put('/:docId', async (req, res) => {
       return;
     }
 
-    // docId 允许中文等字符，不校验格式
+    // 校验 docId 字符安全，防止路径穿越
+    if (!/^[a-zA-Z0-9\-_一-鿿]+$/.test(docId)) {
+      const response: ApiResponse<never> = { success: false, error: `docId 包含不允许的字符: ${docId}` };
+      res.status(400).json(response);
+      return;
+    }
 
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
-    const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
-    if (!doc) {
+    // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
+    const project = projects.find((p) => p.docs.some((d) => d.id === docId));
+    if (!project) {
       const response: ApiResponse<never> = { success: false, error: 'Doc not found' };
       res.status(404).json(response);
       return;
     }
 
-    const projectDir = await findProjectDirForDoc(docId);
-    if (!projectDir) {
-      const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
-      res.status(500).json(response);
-      return;
-    }
-
-    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
+    const targetFile = path.join(project.projectDir, 'background', `${docId}.md`);
 
     let finalContent = content;
     try {
@@ -190,15 +190,24 @@ router.put('/:docId', async (req, res) => {
 router.delete('/:docId', async (req, res) => {
   try {
     const { docId } = req.params;
-    // docId 允许中文等字符，不校验格式
-    const projectDir = await findProjectDirForDoc(docId);
-    if (!projectDir) {
+
+    // 校验 docId 字符安全，防止路径穿越
+    if (!/^[a-zA-Z0-9\-_一-鿿]+$/.test(docId)) {
+      const response: ApiResponse<never> = { success: false, error: `docId 包含不允许的字符: ${docId}` };
+      res.status(400).json(response);
+      return;
+    }
+
+    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
+    const project = projects.find((p) => p.docs.some((d) => d.id === docId));
+    if (!project) {
       const response: ApiResponse<never> = { success: false, error: 'Doc not found' };
       res.status(404).json(response);
       return;
     }
 
-    const targetFile = path.join(projectDir, 'background', `${docId}.md`);
+    const targetFile = path.join(project.projectDir, 'background', `${docId}.md`);
     try {
       await fs.unlink(targetFile);
     } catch {

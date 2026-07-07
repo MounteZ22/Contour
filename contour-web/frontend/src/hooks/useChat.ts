@@ -73,7 +73,8 @@ async function fetchBackendMessages(
     const json: ApiResponse<Record<string, unknown>[]> = await res.json();
     if (!json.success || !Array.isArray(json.data)) return null;
     return json.data;
-  } catch {
+  } catch (err) {
+    console.warn('[AgentSessions] 从后端获取消息失败，将降级到 localStorage:', err);
     return null;
   }
 }
@@ -106,14 +107,14 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
       // 先保存之前累积的 assistant 内容
       if (currentAssistantContent) {
         messages.push({
-          id: `hist_${msgIndex++}_${Date.now()}`,
+          id: `hist_${msgIndex++}`,
           role: 'assistant',
           content: currentAssistantContent,
         });
         currentAssistantContent = '';
       }
       messages.push({
-        id: (record.id as string) || `hist_${msgIndex++}_${Date.now()}`,
+        id: (record.id as string) || `hist_${msgIndex++}`,
         role: 'user',
         content: record.content,
       });
@@ -138,7 +139,7 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
     // turn_end 作为 assistant 消息边界
     if (record.type === 'turn_end' && currentAssistantContent) {
       messages.push({
-        id: `hist_${msgIndex++}_${Date.now()}`,
+        id: `hist_${msgIndex++}`,
         role: 'assistant',
         content: currentAssistantContent,
       });
@@ -149,7 +150,7 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
   // 保存最后未结束的 assistant 内容
   if (currentAssistantContent) {
     messages.push({
-      id: `hist_${msgIndex++}_${Date.now()}`,
+      id: `hist_${msgIndex++}`,
       role: 'assistant',
       content: currentAssistantContent,
     });
@@ -228,7 +229,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     if (!trimmed || isLoading) return;
 
     const userMessage: ChatMessage = {
-      id: `msg_${Date.now()}`,
+      id: `msg`,
       role: 'user',
       content: trimmed,
     };
@@ -275,7 +276,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         },
         onComplete: (fullContent) => {
           const assistantMessage: ChatMessage = {
-            id: `msg_${Date.now()}`,
+            id: `msg`,
             role: 'assistant',
             content: fullContent,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,

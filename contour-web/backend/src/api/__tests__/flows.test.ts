@@ -140,8 +140,9 @@ describe('Flows API', () => {
 
   // ── POST /api/flows ─────────────────────────────────────────────────────
   describe('POST /api/flows — 创建新 Flow', () => {
-    it('应该成功创建新 Flow 并返回 201', async () => {
-      const res = await request(app)
+    it('应该成功创建新 Flow 并能在列表中查到', async () => {
+      // 创建
+      const createRes = await request(app)
         .post('/api/flows')
         .send({
           projectId: 'test-project',
@@ -150,14 +151,13 @@ describe('Flows API', () => {
           type: 'analysis',
           parentFlows: ['F001'],
         });
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.flowId).toBe('F002');
-    });
+      expect(createRes.status).toBe(201);
+      expect(createRes.body.success).toBe(true);
+      expect(createRes.body.data.flowId).toBe('F002');
 
-    it('创建后应该能在列表中查到', async () => {
-      const res = await request(app).get('/api/flows');
-      const flows: Array<{ flowId: string }> = res.body.data.flows;
+      // 创建后在列表中能查到（同一测试内，不依赖其他测试的数据）
+      const listRes = await request(app).get('/api/flows');
+      const flows: Array<{ flowId: string }> = listRes.body.data.flows;
       const found = flows.find((f) => f.flowId === 'F002');
       expect(found).toBeDefined();
       expect(found!.title).toBe('新测试流程');
@@ -197,18 +197,18 @@ describe('Flows API', () => {
 
   // ── PUT /api/flows/:flowId ──────────────────────────────────────────────
   describe('PUT /api/flows/:flowId — 更新 Flow 状态', () => {
-    it('应该成功更新 Flow 状态', async () => {
-      const res = await request(app)
+    it('应该成功更新 Flow 状态，且更新后查询应反映新状态', async () => {
+      // 更新
+      const updateRes = await request(app)
         .put('/api/flows/F001')
         .send({ status: 'completed', projectId: 'test-project' });
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.status).toBe('completed');
-    });
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.success).toBe(true);
+      expect(updateRes.body.data.status).toBe('completed');
 
-    it('更新后查询应反映新状态', async () => {
-      const res = await request(app).get('/api/flows/F001?projectId=test-project');
-      expect(res.body.data.status).toBe('completed');
+      // 更新后查询应反映新状态（同一测试内验证）
+      const getRes = await request(app).get('/api/flows/F001?projectId=test-project');
+      expect(getRes.body.data.status).toBe('completed');
     });
 
     it('缺少 status 字段应该返回 400', async () => {
@@ -230,8 +230,13 @@ describe('Flows API', () => {
   // ── DELETE /api/flows/:flowId ───────────────────────────────────────────
   describe('DELETE /api/flows/:flowId — 删除 Flow', () => {
     it('应该成功删除 Flow', async () => {
+      // 先创建独立数据，不依赖其他测试
+      await request(app)
+        .post('/api/flows')
+        .send({ projectId: 'test-project', flowId: 'F002_DEL', title: '待删除的 Flow' });
+
       const res = await request(app)
-        .delete('/api/flows/F002')
+        .delete('/api/flows/F002_DEL')
         .query({ projectId: 'test-project' });
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

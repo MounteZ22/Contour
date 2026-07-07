@@ -7,7 +7,7 @@
  */
 
 import { Router } from 'express';
-import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
@@ -88,7 +88,15 @@ function extractLastMessage(records: Record<string, unknown>[]): string {
       return text.slice(0, 100);
     }
 
-    // Pi SDK message_update.text_delta 事件
+    // Pi SDK message_update.assistantMessageEvent.text_delta 事件（实际 JSONL 格式）
+    if (r.type === 'message_update') {
+      const sub = r.assistantMessageEvent as Record<string, unknown> | undefined;
+      if (sub?.type === 'text_delta' && typeof sub.delta === 'string' && sub.delta.trim()) {
+        return (sub.delta as string).slice(0, 100);
+      }
+    }
+
+    // Pi SDK message_update.text_delta 事件（简化格式，向后兼容）
     if (r.type === 'text_delta' && typeof r.delta === 'string' && r.delta.trim()) {
       return (r.delta as string).slice(0, 100);
     }
@@ -102,10 +110,28 @@ function extractLastMessage(records: Record<string, unknown>[]): string {
 }
 
 /**
+ * 校验 projectId 格式：仅允许字母、数字、短横线、下划线和中文
+ * 防止路径穿越攻击（如 ../ 等）
+ */
+function validateProjectId(projectId: string): void {
+  if (!projectId || !/^[\w\-一-鿿]+$/.test(projectId)) {
+    throw new Error(`无效的 projectId: ${projectId}`);
+  }
+}
+
+/**
  * 获取指定项目的会话目录路径
+ * 包含路径穿越防护：白名单校验 + resolve/relative 双重保障
  */
 function getSessionsDir(projectId: string): string {
-  return path.join(CONFIG.DATA_DIR, 'projects', projectId, 'sessions');
+  validateProjectId(projectId);
+  const baseDir = path.resolve(CONFIG.DATA_DIR, 'projects');
+  const targetDir = path.resolve(baseDir, projectId, 'sessions');
+  // 确保解析后的路径仍在 baseDir 之下，防止 ../ 穿越
+  if (!targetDir.startsWith(baseDir + path.sep)) {
+    throw new Error(`路径穿越检测: ${projectId}`);
+  }
+  return targetDir;
 }
 
 // ── GET /api/agent/sessions/:projectId ──────────────────────────────────────────
@@ -142,15 +168,23 @@ router.get('/:projectId', async (req, res) => {
           return null;
         }
 
-        // 从文件名提取时间戳（毫秒级 Unix 时间）
-        const timestampMatch = filename.match(/^(\d+)_/);
-        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : 0;
+        // 使用 fs.stat 获取文件实际修改时间（mtime），
+        // 解决文件名创建后永不更新导致 updatedAt 不准确的问题
+        let updatedAt: number;
+        try {
+          const fileStat = await stat(filePath);
+          updatedAt = fileStat.mtimeMs;
+        } catch {
+          // stat 失败时降级使用文件名时间戳
+          const timestampMatch = filename.match(/^(\d+)_/);
+          updatedAt = timestampMatch ? parseInt(timestampMatch[1], 10) : 0;
+        }
 
         return {
           id: sessionId,
           title: `会话 ${sessionId.slice(0, 8)}`,
           lastMessage: extractLastMessage(records),
-          updatedAt: timestamp,
+          updatedAt,
           messageCount: records.length,
         } satisfies SessionSummary;
       }),
@@ -197,33 +231,83 @@ router.post('/:projectId', async (req, res) => {
       // 会话文件已存在，直接返回现有摘要
       const filePath = path.join(sessionsDir, existingFile);
       const records = await parseJsonlFile(filePath);
-      const timestampMatch = existingFile.match(/^(\d+)_/);
-      const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : Date.now();
+
+      let updatedAt: number;
+      try {
+        const fileStat = await stat(filePath);
+        updatedAt = fileStat.mtimeMs;
+      } catch {
+        const timestampMatch = existingFile.match(/^(\d+)_/);
+        updatedAt = timestampMatch ? parseInt(timestampMatch[1], 10) : Date.now();
+      }
 
       const session: SessionSummary = {
         id: sessionId,
         title: title || `会话 ${sessionId.slice(0, 8)}`,
         lastMessage: extractLastMessage(records),
-        updatedAt: timestamp,
+        updatedAt,
         messageCount: records.length,
       };
       res.json({ success: true, data: session });
       return;
     }
 
-    // 创建新的会话文件
+    // 创建新的会话文件（使用 wx 标志原子创建，避免 TOCTOU 竞态条件）
     const timestamp = Date.now();
     const filename = `${timestamp}_${sessionId}.jsonl`;
     const filePath = path.join(sessionsDir, filename);
 
-    // 写入一条元数据记录，确保文件非空（便于后续 SessionManager.open 识别）
     const metadataLine = JSON.stringify({
       type: 'session_created',
       sessionId,
       title: title || `会话 ${sessionId.slice(0, 8)}`,
       createdAt: timestamp,
     }) + '\n';
-    await writeFile(filePath, metadataLine, 'utf-8');
+
+    // 使用 wx 标志：文件不存在时创建，已存在则抛出 EEXIST
+    try {
+      await writeFile(filePath, metadataLine, { flag: 'wx', encoding: 'utf-8' });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        // 文件已被并发请求创建，返回已存在的会话摘要
+        const records = await parseJsonlFile(filePath);
+        const session: SessionSummary = {
+          id: sessionId,
+          title: title || `会话 ${sessionId.slice(0, 8)}`,
+          lastMessage: extractLastMessage(records),
+          updatedAt: timestamp,
+          messageCount: records.length,
+        };
+        res.json({ success: true, data: session });
+        return;
+      }
+      throw err;
+    }
+
+    // 二次检查：防止同一 sessionId 不同时间戳的竞态（两个并发请求的
+    // Date.now() 可能返回不同毫秒值，wx 标志无法阻止不同文件名同时创建）
+    const postCreateFiles = await readdir(sessionsDir);
+    const duplicate = postCreateFiles.find(
+      (f) => f !== filename && extractSessionId(f) === sessionId,
+    );
+    if (duplicate) {
+      // 已有更早创建的会话文件，删除刚创建的，返回已有的
+      await unlink(filePath);
+      const existingPath = path.join(sessionsDir, duplicate);
+      const records = await parseJsonlFile(existingPath);
+      const dupTimestampMatch = duplicate.match(/^(\d+)_/);
+      const dupTimestamp = dupTimestampMatch ? parseInt(dupTimestampMatch[1], 10) : timestamp;
+
+      const session: SessionSummary = {
+        id: sessionId,
+        title: title || `会话 ${sessionId.slice(0, 8)}`,
+        lastMessage: extractLastMessage(records),
+        updatedAt: dupTimestamp,
+        messageCount: records.length,
+      };
+      res.json({ success: true, data: session });
+      return;
+    }
 
     const session: SessionSummary = {
       id: sessionId,

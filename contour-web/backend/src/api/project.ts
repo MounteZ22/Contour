@@ -11,6 +11,11 @@ import { yamlSafeValue } from '../vault/yaml-utils.js';
 
 const router = Router();
 
+/** 过滤路径中的危险字符，防止路径穿越 */
+function sanitizePathSegment(input: string): string {
+  return input.replace(/\.\./g, '').replace(/[/\\:*?"<>|]/g, '_');
+}
+
 /** 将项目目录移动到回收站（软删除） */
 async function moveToTrash(projectDir: string, projectName: string): Promise<void> {
   const trashDir = path.join(CONFIG.DATA_DIR, '.trash');
@@ -20,7 +25,18 @@ async function moveToTrash(projectDir: string, projectName: string): Promise<voi
   const trashName = `${projectName}_${timestamp}`;
   const trashPath = path.join(trashDir, trashName);
 
-  await fs.rename(projectDir, trashPath);
+  try {
+    await fs.rename(projectDir, trashPath);
+  } catch (err: unknown) {
+    // 跨分区移动会抛出 EXDEV 错误，回退到复制后删除
+    if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'EXDEV') {
+      console.log(`跨设备移动，使用复制+删除: ${projectDir} → ${trashPath}`);
+      await fs.cp(projectDir, trashPath, { recursive: true });
+      await fs.rm(projectDir, { recursive: true, force: true });
+    } else {
+      throw err;
+    }
+  }
   console.log(`项目已移至回收站: ${trashPath}`);
 }
 
@@ -59,7 +75,9 @@ router.post('/', async (req, res) => {
 
     const safeTitle = yamlSafeValue(title);
     const safeGoal = yamlSafeValue(researchGoal || '');
-    const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
+    // 过滤 title 中的路径穿越字符，防止目录逃逸
+    const safePathTitle = sanitizePathSegment(title.replace(/\s+/g, '_').toLowerCase());
+    const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${safePathTitle}`);
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'background'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'flows'), { recursive: true });

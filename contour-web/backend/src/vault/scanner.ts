@@ -104,6 +104,7 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
     title,
     researchGoal: '',
     currentStage: '',
+    projectDir,
     docs,
     flows,
     claims,

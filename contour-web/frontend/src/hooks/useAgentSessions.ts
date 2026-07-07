@@ -196,8 +196,8 @@ export function useAgentSessions(projectId?: string) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId: session.id, title: session.title }),
-        }).catch(() => {
-          // 后端不可用时静默失败，localStorage 已持久化
+        }).catch((err) => {
+          console.warn('[AgentSessions] 后端创建会话失败，已降级到 localStorage:', err);
         });
       }
 
@@ -228,8 +228,8 @@ export function useAgentSessions(projectId?: string) {
       fetch(
         `/api/agent/sessions/${encodeURIComponent(targetSession.projectId)}/${encodeURIComponent(sessionId)}`,
         { method: 'DELETE' },
-      ).catch(() => {
-        // 后端不可用时静默失败
+      ).catch((err) => {
+        console.warn('[AgentSessions] 后端删除会话失败，已从 localStorage 清理:', err);
       });
     }
 

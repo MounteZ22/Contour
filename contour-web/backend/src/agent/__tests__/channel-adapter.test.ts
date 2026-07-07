@@ -31,9 +31,13 @@ describe('channelToAgentRuntimeConfig', () => {
     });
 
     it('anthropic baseUrl 应该去除版本路径和后缀（Pi SDK 自行处理）', () => {
-      const channel = makeChannel();
+      // 使用带版本路径的 URL 以验证 strip 逻辑
+      const channel = makeChannel({ baseUrl: 'https://api.anthropic.com/v1/messages' });
       const config = channelToAgentRuntimeConfig(channel);
-      expect(config.baseUrl).toBe('https://api.anthropic.com');
+      // normalizeBaseUrl → 去尾部斜杠（无）
+      // replace /v\d+$ → 不匹配（后面还有 /messages）
+      // replace /messages$ → 匹配，去除 → https://api.anthropic.com/v1
+      expect(config.baseUrl).toBe('https://api.anthropic.com/v1');
     });
 
     it('默认模型应该为第一个 enabled 模型', () => {

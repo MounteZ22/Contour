@@ -45,6 +45,7 @@ export interface ProjectData {
   title: string;
   researchGoal: string;
   currentStage: string;
+  projectDir: string;
   docs: ProjectDoc[];
   flows: Flow[];
   claims: Claim[];

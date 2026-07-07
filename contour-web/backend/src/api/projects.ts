@@ -6,7 +6,7 @@
  */
 
 import { Router } from "express";
-import { stat } from "node:fs/promises";
+import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import {
@@ -17,31 +17,31 @@ import {
 
 const router = Router();
 
-/** 系统目录黑名单（防止路径穿越附加敏感目录） */
-const FORBIDDEN_DIRS = new Set([
-  "/Windows", "/System32", "/SysWOW64", "/System Volume Information",
-  "/etc", "/sys", "/proc", "/dev", "/boot", "/root", "/var/log", "/var/run",
-  "/Library", "/System", "/Applications/Xcode.app",
-]);
+/** 校验路径安全：基于用户主目录白名单 + 符号链接解析 */
+async function validateAttachmentPath(absPath: string): Promise<void> {
+  // 解析符号链接 / junction，防止绕过检查
+  let resolvedPath: string;
+  try {
+    resolvedPath = await realpath(absPath);
+  } catch {
+    throw new Error("无法解析路径，请确认路径存在且可访问");
+  }
 
-/** 校验路径安全：不指向系统目录、不越权 */
-function validateAttachmentPath(absPath: string): void {
+  // 规范化路径用于比较
+  const normalized = path.normalize(resolvedPath).replace(/\\/g, "/").replace(/\/$/, "");
+
   // 拒绝根目录
-  const normalized = path.normalize(absPath).replace(/\\/g, "/").replace(/\/$/, "");
   if (normalized === "" || normalized === "/" || /^[A-Z]:\/$/i.test(normalized)) {
     throw new Error("不允许附加根目录");
   }
 
-  // 拒绝系统关键目录
-  for (const forbidden of FORBIDDEN_DIRS) {
-    const f = forbidden.replace(/\\/g, "/");
-    if (normalized === f || normalized.startsWith(f + "/")) {
-      throw new Error(`不允许附加系统目录: ${forbidden}`);
-    }
+  // 白名单：只允许用户主目录下的路径
+  const homeDir = path.normalize(os.homedir()).replace(/\\/g, "/").replace(/\/$/, "");
+  if (normalized !== homeDir && !normalized.startsWith(homeDir + "/")) {
+    throw new Error("只允许附加用户主目录下的路径");
   }
 
   // 拒绝 .contour / .contour-dev 数据目录自身（防止循环引用）
-  const homeDir = path.normalize(os.homedir()).replace(/\\/g, "/").replace(/\/$/, "");
   const contourDir = `${homeDir}/.contour`;
   const contourDevDir = `${homeDir}/.contour-dev`;
   if (normalized === contourDir || normalized.startsWith(contourDir + "/") ||
@@ -93,10 +93,7 @@ router.post("/:name/attachments", async (req, res) => {
 
     const absPath = path.resolve(dirPath);
 
-    // 安全校验：拒绝系统目录和越权路径
-    validateAttachmentPath(absPath);
-
-    // 异步检查路径是否存在且为目录
+    // 先检查路径是否存在且为目录（realpath 需要路径存在）
     try {
       const stats = await stat(absPath);
       if (!stats.isDirectory()) {
@@ -107,6 +104,9 @@ router.post("/:name/attachments", async (req, res) => {
       res.status(400).json({ success: false, error: `目录不存在: ${absPath}` });
       return;
     }
+
+    // 安全校验：解析符号链接 + 白名单检查
+    await validateAttachmentPath(absPath);
 
     const config = attachDirectory(absPath, projectName);
     res.json({
