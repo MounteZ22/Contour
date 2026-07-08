@@ -105,7 +105,7 @@ export function ChatInputBar({
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-label font-mono font-medium ${
                     item.type === 'flow'
                       ? 'bg-accent-subtle-bg text-accent-subtle-text'
-                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-success/10 text-success'
                   }`}
                 >
                   {item.type === 'flow' ? 'F' : 'D'}
@@ -120,6 +120,7 @@ export function ChatInputBar({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    aria-label="权限模式选择"
                     className="h-6 px-2 rounded-sm bg-surface-sunken text-text-secondary text-label font-medium
                       hover:text-text-primary inline-flex items-center gap-1 transition-colors duration-150 cursor-pointer"
                   >
@@ -166,6 +167,7 @@ export function ChatInputBar({
                 onClick={onSend}
                 disabled={isLoading || !inputValue.trim()}
                 title="发送 (Enter)"
+                aria-label={isLoading ? '正在发送...' : '发送消息'}
                 className="w-[30px] h-[30px] rounded-full bg-accent-strong text-accent-on
                   hover:bg-accent-hover active:scale-[0.92] transition-all duration-150
                   flex items-center justify-center shrink-0

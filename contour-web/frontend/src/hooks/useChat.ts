@@ -229,7 +229,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     if (!trimmed || isLoading) return;
 
     const userMessage: ChatMessage = {
-      id: `msg`,
+      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       role: 'user',
       content: trimmed,
     };
@@ -276,7 +276,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         },
         onComplete: (fullContent) => {
           const assistantMessage: ChatMessage = {
-            id: `msg`,
+            id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             role: 'assistant',
             content: fullContent,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,

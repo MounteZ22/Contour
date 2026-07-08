@@ -22,13 +22,14 @@ interface PermissionDialogProps {
  */
 export function PermissionDialog({ request, onResponse }: PermissionDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div role="dialog" aria-modal="true" aria-labelledby="permission-dialog-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <Card className="w-full max-w-md mx-4 shadow-2xl border-border-subtle">
         <CardHeader className="relative">
           {/* 关闭按钮（等价于拒绝本次） */}
           <button
             className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
             onClick={() => onResponse("deny", false)}
+            aria-label="关闭对话框"
             title="拒绝本次"
             type="button"
           >
@@ -40,7 +41,7 @@ export function PermissionDialog({ request, onResponse }: PermissionDialogProps)
               <ShieldAlert size={20} className="text-warning" />
             </div>
             <div>
-              <CardTitle className="text-base">需要确认</CardTitle>
+              <CardTitle id="permission-dialog-title" className="text-base">需要确认</CardTitle>
               <CardDescription className="text-xs mt-0.5">
                 Agent 请求执行需要用户确认的操作
               </CardDescription>

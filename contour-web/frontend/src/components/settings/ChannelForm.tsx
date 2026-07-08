@@ -52,6 +52,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -167,8 +168,11 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           enabled,
         });
       }
+      setSaveError(null);
       onSaved();
     } catch (err) {
+      const message = err instanceof Error ? err.message : '保存失败，请重试';
+      setSaveError(message);
       console.error('保存渠道失败:', err);
     } finally {
       setSaving(false);
@@ -202,6 +206,14 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           <span>{isEdit ? '保存' : '创建'}</span>
         </button>
       </div>
+
+      {/* 保存错误提示 */}
+      {saveError && (
+        <div className="flex items-center gap-1.5 text-xs text-danger">
+          <XCircle size={12} />
+          <span>{saveError}</span>
+        </div>
+      )}
 
       {/* 基本信息 */}
       <div className="space-y-4">

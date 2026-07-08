@@ -314,6 +314,29 @@
 }
 
 /* ==========================================
+   Amber 强调色 — Light
+   ========================================== */
+:root[data-accent="amber"],
+.theme-light[data-accent="amber"] {
+  --accent:              oklch(0.55 0.12 75);
+  --accent-hover:        oklch(0.50 0.14 75);
+  --accent-subtle-bg:    oklch(0.96 0.02 75);
+  --accent-subtle-text:  oklch(0.38 0.10 75);
+  --accent-on:           oklch(0.99 0 0);
+}
+
+/* ==========================================
+   Amber 强调色 — Dark
+   ========================================== */
+.theme-dark[data-accent="amber"] {
+  --accent:              oklch(0.72 0.10 75);
+  --accent-hover:        oklch(0.77 0.08 75);
+  --accent-subtle-bg:    oklch(0.20 0.03 75);
+  --accent-subtle-text:  oklch(0.82 0.06 75);
+  --accent-on:           oklch(0.14 0 0);
+}
+
+/* ==========================================
    圆角基准值
    ========================================== */
 :root {
