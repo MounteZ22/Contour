@@ -27,7 +27,7 @@ const ACCENT_OPTIONS: { id: string; label: string; color: string }[] = [
   { id: 'blue',    label: '蓝色',   color: 'oklch(0.50 0.15 265)' },
   { id: 'green',   label: '绿色',   color: 'oklch(0.50 0.12 155)' },
   { id: 'purple',  label: '紫色',   color: 'oklch(0.50 0.15 300)' },
-  { id: 'amber',   label: '琥珀',   color: 'oklch(0.55 0.12 75)' },
+  { id: 'amber',   label: '琥珀',   color: 'oklch(0.55 0.06 60)' },
 ];
 
 function AppearanceSettings() {
