@@ -52,6 +52,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -167,8 +168,11 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           enabled,
         });
       }
+      setSaveError(null);
       onSaved();
     } catch (err) {
+      const message = err instanceof Error ? err.message : '保存失败，请重试';
+      setSaveError(message);
       console.error('保存渠道失败:', err);
     } finally {
       setSaving(false);
@@ -183,17 +187,17 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
       {/* 标题栏 */}
       <div className="flex items-center gap-3">
         <button
-          className="p-1.5 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+          className="p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface transition-colors cursor-pointer"
           onClick={onCancel}
           type="button"
         >
           <ArrowLeft size={18} />
         </button>
-        <h3 className="text-base font-semibold text-on-surface font-headline flex-1">
+        <h3 className="text-base font-semibold text-text-primary font-headline flex-1">
           {isEdit ? '编辑模型配置' : '添加模型配置'}
         </h3>
         <button
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-primary text-on-primary hover:bg-primary/90 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-accent-strong text-accent-on hover:bg-accent-hover disabled:opacity-50"
           disabled={saving || !name.trim() || !apiKey.trim()}
           onClick={handleSave}
           type="button"
@@ -203,29 +207,37 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
         </button>
       </div>
 
+      {/* 保存错误提示 */}
+      {saveError && (
+        <div className="flex items-center gap-1.5 text-xs text-danger">
+          <XCircle size={12} />
+          <span>{saveError}</span>
+        </div>
+      )}
+
       {/* 基本信息 */}
       <div className="space-y-4">
-        <h4 className="text-sm font-medium text-on-surface">基本信息</h4>
-        <div className="rounded-xl border border-outline-variant bg-surface-container overflow-hidden">
+        <h4 className="text-sm font-medium text-text-primary">基本信息</h4>
+        <div className="rounded-xl border border-border bg-surface-sunken overflow-hidden">
           {/* 名称 */}
           <div className="px-4 py-3 space-y-2">
-            <div className="text-sm font-medium text-on-surface">配置名称</div>
+            <div className="text-sm font-medium text-text-primary">配置名称</div>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="例如: My Anthropic"
-              className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
             />
           </div>
 
           {/* 供应商 */}
-          <div className="px-4 py-3 space-y-2 border-t border-outline-variant/40">
-            <div className="text-sm font-medium text-on-surface">供应商类型</div>
+          <div className="px-4 py-3 space-y-2 border-t border-border/40">
+            <div className="text-sm font-medium text-text-primary">供应商类型</div>
             <select
               value={provider}
               onChange={(e) => handleProviderChange(e.target.value as ProviderType)}
-              className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
             >
               {PROVIDER_OPTIONS.map((p) => (
                 <option key={p} value={p}>
@@ -236,23 +248,23 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           </div>
 
           {/* Base URL */}
-          <div className="px-4 py-3 space-y-2 border-t border-outline-variant/40">
-            <div className="text-sm font-medium text-on-surface">Base URL</div>
+          <div className="px-4 py-3 space-y-2 border-t border-border/40">
+            <div className="text-sm font-medium text-text-primary">Base URL</div>
             <input
               type="text"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.example.com"
-              className="w-full px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
             />
           </div>
 
           {/* API Key + 测试 */}
-          <div className="px-4 py-3 space-y-2 border-t border-outline-variant/40">
+          <div className="px-4 py-3 space-y-2 border-t border-border/40">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-on-surface">API Key</div>
+              <div className="text-sm font-medium text-text-primary">API Key</div>
               <button
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors cursor-pointer border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors cursor-pointer border-border bg-surface-sunken text-text-primary hover:bg-surface disabled:opacity-50"
                 disabled={testing || !apiKey.trim() || !baseUrl.trim()}
                 onClick={handleTest}
                 type="button"
@@ -267,12 +279,12 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={isEdit ? '留空则不更新' : '输入 API Key'}
-                className="w-full px-3 py-2 pr-10 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+                className="w-full px-3 py-2 pr-10 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-on-surface-variant hover:text-on-surface transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
                 tabIndex={-1}
               >
                 {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -281,7 +293,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
             {testResult && (
               <div
                 className={`flex items-center gap-1.5 text-xs ${
-                  testResult.success ? 'text-emerald-600' : 'text-error'
+                  testResult.success ? 'text-success' : 'text-danger'
                 }`}
               >
                 {testResult.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
@@ -291,20 +303,20 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           </div>
 
           {/* 启用开关 */}
-          <div className="px-4 py-3 flex items-center justify-between border-t border-outline-variant/40">
+          <div className="px-4 py-3 flex items-center justify-between border-t border-border/40">
             <div>
-              <div className="text-sm font-medium text-on-surface">启用此配置</div>
-              <div className="text-sm text-on-surface-variant">关闭后该配置的模型不会在选择列表中出现</div>
+              <div className="text-sm font-medium text-text-primary">启用此配置</div>
+              <div className="text-sm text-text-secondary">关闭后该配置的模型不会在选择列表中出现</div>
             </div>
             <button
               type="button"
               onClick={() => setEnabled(!enabled)}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
-                enabled ? 'bg-primary' : 'bg-outline-variant'
+                enabled ? 'bg-accent-strong' : 'bg-border'
               }`}
             >
               <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-on-primary transition-transform ${
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-accent-on transition-transform ${
                   enabled ? 'translate-x-4.5' : 'translate-x-1'
                 }`}
               />
@@ -316,14 +328,14 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
       {/* 已启用模型 */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-on-surface">
+          <h4 className="text-sm font-medium text-text-primary">
             已启用模型
             {enabledModels.length > 0 && (
-              <span className="text-on-surface-variant ml-2">({enabledModels.length})</span>
+              <span className="text-text-secondary ml-2">({enabledModels.length})</span>
             )}
           </h4>
           <button
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors cursor-pointer border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-colors cursor-pointer border-border bg-surface-sunken text-text-primary hover:bg-surface disabled:opacity-50"
             disabled={fetchingModels || !apiKey.trim() || !baseUrl.trim()}
             onClick={handleFetchModels}
             type="button"
@@ -336,7 +348,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
         {fetchResult && (
           <div
             className={`flex items-center gap-1.5 text-xs ${
-              fetchResult.success ? 'text-emerald-600' : 'text-error'
+              fetchResult.success ? 'text-success' : 'text-danger'
             }`}
           >
             {fetchResult.success ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
@@ -344,29 +356,29 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           </div>
         )}
 
-        <div className="rounded-xl border border-outline-variant bg-surface-container overflow-hidden">
+        <div className="rounded-xl border border-border bg-surface-sunken overflow-hidden">
           {enabledModels.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-on-surface-variant">
+            <div className="px-4 py-6 text-center text-sm text-text-secondary">
               还没有启用任何模型，从供应商获取或手动添加
             </div>
           ) : (
-            <div className="divide-y divide-outline-variant/40">
+            <div className="divide-y divide-border/40">
               {enabledModels.map((model) => (
                 <div
                   key={model.id}
                   className="flex items-center gap-2 px-4 py-2.5 group"
                 >
-                  <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-                  <span className="text-sm text-on-surface flex-1">
+                  <CheckCircle2 size={14} className="text-success flex-shrink-0" />
+                  <span className="text-sm text-text-primary flex-1">
                     {model.name}
                     {model.name !== model.id && (
-                      <span className="text-on-surface-variant ml-1">({model.id})</span>
+                      <span className="text-text-secondary ml-1">({model.id})</span>
                     )}
                   </span>
                   <button
                     type="button"
                     onClick={() => handleToggleModel(model.id)}
-                    className="p-0.5 text-on-surface-variant hover:text-error transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                    className="p-0.5 text-text-secondary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                     title="取消启用"
                   >
                     <X size={14} />
@@ -381,23 +393,23 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
       {/* 可用模型 */}
       {disabledModels.length > 0 && (
         <div className="space-y-4">
-          <h4 className="text-sm font-medium text-on-surface">
+          <h4 className="text-sm font-medium text-text-primary">
             可用模型
-            <span className="text-on-surface-variant ml-2">({disabledModels.length})</span>
+            <span className="text-text-secondary ml-2">({disabledModels.length})</span>
           </h4>
-          <div className="rounded-xl border border-outline-variant bg-surface-container overflow-hidden">
-            <div className="divide-y divide-outline-variant/40">
+          <div className="rounded-xl border border-border bg-surface-sunken overflow-hidden">
+            <div className="divide-y divide-border/40">
               {disabledModels.map((model) => (
                 <div
                   key={model.id}
-                  className="flex items-center gap-2 px-4 py-2.5 group cursor-pointer hover:bg-surface-container-high/50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 group cursor-pointer hover:bg-surface/50 transition-colors"
                   onClick={() => handleToggleModel(model.id)}
                 >
-                  <Plus size={14} className="text-on-surface-variant flex-shrink-0" />
-                  <span className="text-sm text-on-surface flex-1">
+                  <Plus size={14} className="text-text-secondary flex-shrink-0" />
+                  <span className="text-sm text-text-primary flex-1">
                     {model.name}
                     {model.name !== model.id && (
-                      <span className="text-on-surface-variant ml-1">({model.id})</span>
+                      <span className="text-text-secondary ml-1">({model.id})</span>
                     )}
                   </span>
                   <button
@@ -406,7 +418,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
                       e.stopPropagation();
                       handleRemoveModel(model.id);
                     }}
-                    className="p-0.5 text-on-surface-variant hover:text-error transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                    className="p-0.5 text-text-secondary hover:text-danger transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                     title="删除"
                   >
                     <X size={14} />
@@ -425,7 +437,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           value={newModelId}
           onChange={(e) => setNewModelId(e.target.value)}
           placeholder="模型 ID"
-          className="flex-1 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+          className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -438,7 +450,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           value={newModelName}
           onChange={(e) => setNewModelName(e.target.value)}
           placeholder="显示名称（可选）"
-          className="flex-1 px-3 py-2 rounded-lg border border-outline-variant bg-surface-container-lowest text-on-surface text-sm outline-none focus:border-primary/40 font-mono"
+          className="flex-1 px-3 py-2 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -450,7 +462,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
           type="button"
           onClick={handleAddModel}
           disabled={!newModelId.trim()}
-          className="p-2 rounded-lg border border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-50 cursor-pointer transition-colors"
+          className="p-2 rounded-lg border border-border bg-surface-sunken text-text-primary hover:bg-surface disabled:opacity-50 cursor-pointer transition-colors"
         >
           <Plus size={16} />
         </button>

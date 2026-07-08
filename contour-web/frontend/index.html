@@ -10,14 +10,13 @@
     <script>
       (function() {
         try {
-          var t = localStorage.getItem('contour-theme');
-          if (t === 'light-scientific' || t === 'dark-scientific') {
-            document.documentElement.classList.add('theme-' + t);
-          } else {
-            document.documentElement.classList.add('theme-light-scientific');
-          }
+          var base = localStorage.getItem('contour-base-theme') || 'light';
+          var accent = localStorage.getItem('contour-accent-theme') || 'neutral';
+          document.documentElement.classList.add('theme-' + base);
+          document.documentElement.dataset.accent = accent;
         } catch(e) {
-          document.documentElement.classList.add('theme-light-scientific');
+          document.documentElement.classList.add('theme-light');
+          document.documentElement.dataset.accent = 'neutral';
         }
       })();
     </script>

@@ -1,60 +1,44 @@
 import { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Bot, ChevronRight, Loader2, CheckCircle2, XCircle, Wrench } from 'lucide-react';
+import { User, Bot, ChevronRight, Loader2, Check, XCircle, Wrench } from 'lucide-react';
 import type { ChatMessage, ToolActivity } from '../state/aiApi';
+import { toolPhrase } from '../lib/toolPhrase';
 
-import { TOOL_LABELS } from '../constants/toolLabels';
-
-function getToolPhrase(toolName: string, input?: Record<string, unknown>): { label: string; loadingLabel: string } {
-  const label = TOOL_LABELS[toolName] || toolName;
-
-  if (toolName === 'getFlowDetail' && input?.flowId) {
-    return { label: `${label} ${input.flowId}`, loadingLabel: `正在${label} ${input.flowId}...` };
-  }
-  if (toolName === 'searchFlows' && input?.query) {
-    return { label: `${label} "${input.query}"`, loadingLabel: `正在${label} "${input.query}"...` };
-  }
-  if (toolName === 'getDoc' && input?.docId) {
-    return { label: `${label} ${input.docId}`, loadingLabel: `正在${label} ${input.docId}...` };
-  }
-  return { label, loadingLabel: `正在${label}...` };
-}
-
-function ToolBlock({ activity, animate = false, index = 0 }: { activity: ToolActivity; animate?: boolean; index?: number }) {
+function ToolActivityRow({ activity, animate = false, index = 0 }: { activity: ToolActivity; animate?: boolean; index?: number }) {
   const [expanded, setExpanded] = useState(false);
-  const phrase = getToolPhrase(activity.toolName, activity.input);
+  const phrase = toolPhrase(activity.toolName, activity.input);
   const isCompleted = activity.status === 'done';
-  const displayLabel = isCompleted ? phrase.label : phrase.loadingLabel;
+  const isError = isCompleted && activity.result?.startsWith('{"error"');
   const delay = animate && index < 10 ? `${index * 30}ms` : '0ms';
 
   return (
     <div
-      className={animate ? 'animate-in fade-in slide-in-from-left-1 duration-150 fill-mode-both' : ''}
+      className={animate ? 'animate-in slide-in-from-left-1 duration-150 fill-mode-both' : ''}
       style={animate ? { animationDelay: delay } : undefined}
     >
       <button
-        className="flex items-center gap-1.5 py-1 text-left w-full group"
-        onClick={() => setExpanded(!expanded)}
         type="button"
+        className="flex items-center gap-2 py-0.5 text-left w-full group cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
       >
         {!isCompleted ? (
-          <Loader2 size={14} className="animate-spin text-primary/50 flex-shrink-0" />
-        ) : activity.result?.startsWith('{"error"') ? (
-          <XCircle size={14} className="text-error/70 flex-shrink-0" />
+          <Loader2 size={14} className="animate-spin text-text-secondary flex-shrink-0" />
+        ) : isError ? (
+          <XCircle size={14} className="text-danger/70 flex-shrink-0" />
         ) : (
-          <CheckCircle2 size={14} className="text-primary/70 flex-shrink-0" />
+          <Check size={14} className="text-accent-strong/70 flex-shrink-0" />
         )}
-        <Wrench size={12} className="text-on-surface-variant/60 flex-shrink-0" />
-        <span className="text-[13px] text-on-surface-variant truncate">{displayLabel}</span>
+        <Wrench size={13} className="text-text-tertiary flex-shrink-0" />
+        <span className="text-caption font-mono text-text-secondary truncate">{phrase}</span>
         <ChevronRight
           size={12}
-          className={`flex-shrink-0 text-on-surface-variant/40 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          className={`flex-shrink-0 text-text-tertiary transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
       </button>
       {expanded && activity.result && (
-        <div className="ml-6 mt-1 mb-2 pl-3 border-l-2 border-outline-variant/30">
-          <pre className="text-[11px] text-on-surface-variant font-mono whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
+        <div className="ml-6 pl-3 border-l-2 border-border text-[11px] font-mono text-text-secondary">
+          <pre className="whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto py-0.5">
             {activity.result}
           </pre>
         </div>
@@ -64,7 +48,6 @@ function ToolBlock({ activity, animate = false, index = 0 }: { activity: ToolAct
 }
 
 function ToolActivityList({ activities, isStreaming = false }: { activities: ToolActivity[]; isStreaming?: boolean }) {
-  // 合并同一工具的 running/done 事件，保留最新状态
   const merged = useMemo(() => {
     const map = new Map<string, ToolActivity>();
     for (const a of activities) {
@@ -77,9 +60,9 @@ function ToolActivityList({ activities, isStreaming = false }: { activities: Too
   if (merged.length === 0) return null;
 
   return (
-    <div className="space-y-0.5 mb-2">
+    <div className="mb-2">
       {merged.map((activity, i) => (
-        <ToolBlock key={`${activity.toolName}-${i}`} activity={activity} animate={isStreaming} index={i} />
+        <ToolActivityRow key={`${activity.toolName}-${i}`} activity={activity} animate={isStreaming} index={i} />
       ))}
     </div>
   );
@@ -93,40 +76,43 @@ interface ChatMessageProps {
 export function ChatMessageItem({ message, isStreaming = false }: ChatMessageProps) {
   const isUser = message.role === 'user';
 
-  const avatarClass = useMemo(() => {
-    return isUser
-      ? 'bg-primary text-on-primary'
-      : 'bg-secondary-container text-secondary';
-  }, [isUser]);
-
-  const bubbleClass = useMemo(() => {
-    return isUser
-      ? 'bg-primary-container text-on-primary-container'
-      : 'bg-surface-container-high text-on-surface';
-  }, [isUser]);
-
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div
+      className={`flex gap-2.5 animate-fade-slide-in ${isUser ? 'flex-row-reverse items-end' : ''}`}
+    >
+      {/* 头像 */}
       <div
-        className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${avatarClass}`}
+        className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+          isUser
+            ? 'bg-accent-subtle-bg text-accent-subtle-text'
+            : 'bg-surface-sunken text-text-secondary'
+        }`}
       >
         {isUser ? <User size={14} /> : <Bot size={14} />}
       </div>
-      <div className="max-w-[85%] flex flex-col gap-1">
-        {/* 工具活动指示器 */}
+
+      {/* 消息体 */}
+      <div className="max-w-[82%] flex flex-col gap-1.5">
+        {/* 工具活动指示器（仅 AI 消息） */}
         {!isUser && message.toolActivities && message.toolActivities.length > 0 && (
-          <div className="rounded-lg px-3 py-1.5 bg-surface-container-low border border-outline-variant/30">
-            <ToolActivityList activities={message.toolActivities} isStreaming={isStreaming} />
-          </div>
+          <ToolActivityList activities={message.toolActivities} isStreaming={isStreaming} />
         )}
+
         {/* 消息气泡 */}
         <div
-          className={`rounded-xl px-4 py-2.5 text-sm leading-relaxed ${bubbleClass}`}
+          className={`rounded-[10px] px-4 py-2.5 text-body leading-[1.65] ${
+            isUser
+              ? 'bg-accent-subtle-bg text-text-primary'
+              : 'bg-surface text-text-primary'
+          }`}
         >
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div className="[&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_strong]:font-semibold
+              [&_code]:font-mono [&_code]:text-[13px] [&_code]:bg-surface-sunken [&_code]:text-text-secondary
+              [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded
+              [&_ul]:pl-[18px] [&_ol]:pl-[18px] [&_li]:mb-1">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>

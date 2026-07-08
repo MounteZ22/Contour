@@ -15,7 +15,7 @@ export interface UseChatReturn {
   toolActivities: ToolActivity[];
   error: string | null;
   handleSend: () => Promise<void>;
-  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  handleKeyDown: (e: React.KeyboardEvent) => void;
   clearMessages: () => void;
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -229,7 +229,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     if (!trimmed || isLoading) return;
 
     const userMessage: ChatMessage = {
-      id: `msg`,
+      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       role: 'user',
       content: trimmed,
     };
@@ -276,7 +276,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         },
         onComplete: (fullContent) => {
           const assistantMessage: ChatMessage = {
-            id: `msg`,
+            id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             role: 'assistant',
             content: fullContent,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
@@ -306,7 +306,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();

@@ -22,13 +22,14 @@ interface PermissionDialogProps {
  */
 export function PermissionDialog({ request, onResponse }: PermissionDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <Card className="w-full max-w-md mx-4 shadow-2xl border-border/60">
+    <div role="dialog" aria-modal="true" aria-labelledby="permission-dialog-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <Card className="w-full max-w-md mx-4 shadow-2xl border-border-subtle">
         <CardHeader className="relative">
           {/* 关闭按钮（等价于拒绝本次） */}
           <button
-            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="absolute top-4 right-4 text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
             onClick={() => onResponse("deny", false)}
+            aria-label="关闭对话框"
             title="拒绝本次"
             type="button"
           >
@@ -36,11 +37,11 @@ export function PermissionDialog({ request, onResponse }: PermissionDialogProps)
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-              <ShieldAlert size={20} className="text-amber-500" />
+            <div className="w-10 h-10 rounded-full bg-warning/15 flex items-center justify-center shrink-0">
+              <ShieldAlert size={20} className="text-warning" />
             </div>
             <div>
-              <CardTitle className="text-base">需要确认</CardTitle>
+              <CardTitle id="permission-dialog-title" className="text-base">需要确认</CardTitle>
               <CardDescription className="text-xs mt-0.5">
                 Agent 请求执行需要用户确认的操作
               </CardDescription>
@@ -51,7 +52,7 @@ export function PermissionDialog({ request, onResponse }: PermissionDialogProps)
         <CardContent className="space-y-4">
           {/* 工具名 */}
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">工具</p>
+            <p className="text-xs font-medium text-text-secondary mb-1.5">工具</p>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="font-mono text-xs">
                 <Terminal size={12} className="mr-1 inline" />
@@ -63,17 +64,17 @@ export function PermissionDialog({ request, onResponse }: PermissionDialogProps)
           {/* 参数摘要 */}
           {!!request.input && (
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1.5">参数</p>
-              <pre className="max-h-28 overflow-auto rounded-lg bg-muted/50 p-3 text-xs font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap break-all">
+              <p className="text-xs font-medium text-text-secondary mb-1.5">参数</p>
+              <pre className="max-h-28 overflow-auto rounded-lg bg-surface-sunken p-3 text-xs font-mono text-text-primary/80 leading-relaxed whitespace-pre-wrap break-all">
                 {formatInput(request.input)}
               </pre>
             </div>
           )}
 
           {/* 风险提示 */}
-          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1">操作说明</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
+          <div className="rounded-lg border border-warning/20 bg-warning/5 p-3">
+            <p className="text-xs text-warning font-medium mb-1">操作说明</p>
+            <p className="text-xs text-text-secondary leading-relaxed">
               {request.reason || `${request.toolName} 工具可以修改文件或执行命令，请确认放行或拒绝。`}
             </p>
           </div>
@@ -101,7 +102,7 @@ export function PermissionDialog({ request, onResponse }: PermissionDialogProps)
           <Button
             variant="ghost"
             size="sm"
-            className="w-full text-xs text-muted-foreground hover:text-foreground"
+            className="w-full text-xs text-text-secondary hover:text-text-primary"
             onClick={() => onResponse("allow", true)}
             type="button"
           >

@@ -19,19 +19,19 @@ export function ContextActionBar({
 
   return (
     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
-      <div className="flex items-center gap-4 px-5 py-3 rounded-xl border border-outline-variant bg-surface-container/95 backdrop-blur shadow-lg">
-        <span className="text-sm text-on-surface whitespace-nowrap">
+      <div className="flex items-center gap-4 px-5 py-3 rounded-xl border border-border bg-surface-sunken/95 backdrop-blur shadow-lg">
+        <span className="text-sm text-text-primary whitespace-nowrap">
           已选择{' '}
-          <strong className="text-primary">{selectedFlowCount}</strong>{' '}
+          <strong className="text-accent-strong">{selectedFlowCount}</strong>{' '}
           个 Flow ·{' '}
-          <strong className="text-primary">{selectedDocCount}</strong>{' '}
+          <strong className="text-accent-strong">{selectedDocCount}</strong>{' '}
           个文档 ·{' '}
-          <strong className="text-primary">{selectedClaimCount}</strong>{' '}
+          <strong className="text-accent-strong">{selectedClaimCount}</strong>{' '}
           个 Claims
         </span>
-        <div className="w-px h-5 bg-outline-variant" />
+        <div className="w-px h-5 bg-border" />
         <button
-          className="text-xs text-on-surface-variant hover:text-error transition-colors"
+          className="text-xs text-text-secondary hover:text-danger transition-colors"
           onClick={onClear}
           type="button"
         >
@@ -39,7 +39,7 @@ export function ContextActionBar({
         </button>
         {onDiscuss && (
           <button
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-medium disabled:opacity-40 cursor-pointer transition-opacity"
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-accent-strong text-accent-on text-caption font-medium disabled:opacity-40 cursor-pointer transition-opacity"
             disabled={!hasSelection}
             onClick={onDiscuss}
             title={hasSelection ? '' : '至少选择一个 Flow 或文档'}

@@ -64,19 +64,19 @@ export function ProjectDocPage() {
 
   return (
     <div className="grid gap-6">
-      <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
-        <Link className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim" to="/contour">
+      <div className="flex items-center gap-2.5 text-body text-text-secondary">
+        <Link className="inline-flex items-center gap-1.5 text-accent-strong transition-colors hover:text-accent-strong" to="/contour">
           <ArrowLeft size={16} />
           Back to Contour
         </Link>
-        <span className="text-outline-variant">/</span>
-        <span className="text-on-surface font-medium">Background</span>
+        <span className="text-border">/</span>
+        <span className="text-text-primary font-medium">Background</span>
       </div>
 
-      <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
+      <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
         <div style={{ minWidth: 0, flex: 1 }}>
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">Background</p>
-          <h2 className="text-xl font-bold text-on-background font-headline">{activeDoc.title}</h2>
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">Background</p>
+          <h2 className="text-xl font-bold text-text-primary font-headline">{activeDoc.title}</h2>
           {isEditing ? (
             <div className="flex items-center gap-3 flex-wrap mt-3">
               <TagEditor
@@ -90,7 +90,7 @@ export function ProjectDocPage() {
                 {activeDoc.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-caption font-mono text-text-secondary bg-surface border border-border/40"
                   >
                     <Tag size={10} />
                     {tag}
@@ -102,7 +102,7 @@ export function ProjectDocPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap shrink-0">
           <Link
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
             to="/agent"
           >
             <Bot size={14} />
@@ -110,15 +110,15 @@ export function ProjectDocPage() {
           </Link>
           {isEditing ? (
             <div className="flex gap-2">
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">
                 保存
               </button>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono" onClick={handleCancel} type="button">
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono" onClick={handleCancel} type="button">
                 取消
               </button>
             </div>
           ) : (
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono" onClick={handleEdit} type="button">
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono" onClick={handleEdit} type="button">
               <Edit3 size={14} />
               编辑
             </button>
@@ -127,14 +127,14 @@ export function ProjectDocPage() {
       </header>
 
       <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
-        <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
+        <aside className="border border-border bg-surface-sunken rounded-xl p-6 sticky top-[122px] max-xl:static">
           <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Library size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Project Docs</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">Browse references</h3>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">Project Docs</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">Browse references</h3>
             </div>
           </div>
 
@@ -144,37 +144,37 @@ export function ProjectDocPage() {
                 className={({ isActive }) =>
                   `w-full text-left border rounded-lg p-3 flex items-center justify-between gap-2 cursor-pointer transition-all ${
                     isActive
-                      ? 'border-primary/20 bg-primary-container/5'
-                      : 'border-transparent bg-surface-container-low/50 hover:border-primary/20 hover:bg-primary-container/5'
+                      ? 'border-accent-strong/20 bg-accent-subtle-bg/5'
+                      : 'border-transparent bg-surface-sunken/50 hover:border-accent-strong/20 hover:bg-accent-subtle-bg/5'
                   }`
                 }
                 key={doc.id}
                 to={`/project/${project.projectId}/docs/${doc.id}`}
               >
                 <div className="grid gap-1">
-                  <strong className="text-sm text-on-surface">{doc.title}</strong>
-                  <span className="text-xs text-on-surface-variant line-clamp-2">{doc.summary}</span>
+                  <strong className="text-body text-text-primary">{doc.title}</strong>
+                  <span className="text-caption text-text-secondary line-clamp-2">{doc.summary}</span>
                 </div>
               </NavLink>
             ))}
           </div>
         </aside>
 
-        <section className="border border-outline-variant bg-surface-container rounded-xl p-5 min-h-[70vh]">
+        <section className="border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
           <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <FileStack size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">{isEditing ? '编辑模式' : '文档阅读器'}</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">{activeDoc.title}</h3>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">{isEditing ? '编辑模式' : '文档阅读器'}</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">{activeDoc.title}</h3>
             </div>
-            {isEditing ? <Edit3 size={16} className="text-primary" /> : <Eye size={16} className="text-primary" />}
+            {isEditing ? <Edit3 size={16} className="text-accent-strong" /> : <Eye size={16} className="text-accent-strong" />}
           </div>
 
           {isEditing ? (
             <textarea
-              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-container-lowest border border-primary/25 text-on-surface font-mono text-sm leading-7 resize-y outline-none focus:border-primary/40"
+              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-raised border border-accent-strong/25 text-text-primary font-mono text-sm leading-7 resize-y outline-none focus:border-accent-strong/40"
               onChange={(e) => setEditedContent(e.target.value)}
               value={editedContent}
             />

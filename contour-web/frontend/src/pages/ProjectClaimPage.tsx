@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'Rejected',
 };
 
-const selectBase = `w-full rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface font-mono outline-none focus:border-primary/40`;
+const selectBase = `w-full rounded-lg border border-border/60 bg-surface-raised px-3 py-2 text-sm text-text-primary font-mono outline-none focus:border-accent-strong/40`;
 
 export function ProjectClaimPage() {
   const { project } = useOutletContext<{ project: ProjectData; projects: ProjectData[] }>();
@@ -101,29 +101,29 @@ export function ProjectClaimPage() {
 
   return (
     <div className="grid gap-6">
-      <div className="flex items-center gap-2.5 text-sm text-on-surface-variant">
+      <div className="flex items-center gap-2.5 text-body text-text-secondary">
         <Link
-          className="inline-flex items-center gap-1.5 text-primary transition-colors hover:text-primary-fixed-dim"
+          className="inline-flex items-center gap-1.5 text-accent-strong transition-colors hover:text-accent-strong"
           to="/contour"
         >
           <ArrowLeft size={16} />
           Back to Contour
         </Link>
-        <span className="text-outline-variant">/</span>
-        <span className="text-on-surface font-medium">Claims</span>
+        <span className="text-border">/</span>
+        <span className="text-text-primary font-medium">Claims</span>
       </div>
 
-      <header className="flex items-start justify-between gap-3 border border-outline-variant rounded-xl p-5 bg-surface-container max-md:flex-col max-md:items-start">
+      <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
         <div className="grid gap-2">
-          <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary mb-0.5">
+          <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">
             Research Claim
           </p>
-          <h2 className="text-xl font-bold text-on-background font-headline">{activeClaim.title}</h2>
+          <h2 className="text-xl font-bold text-text-primary font-headline">{activeClaim.title}</h2>
           {isEditing ? (
             <div className="flex items-center gap-3 flex-wrap">
               {/* 编辑模式下选择器 */}
               <div className="grid gap-1">
-                <span className="text-[10px] font-mono text-on-surface-variant">Confidence</span>
+                <span className="text-caption font-mono text-text-secondary">Confidence</span>
                 <select
                   className={selectBase}
                   value={editedConfidence}
@@ -135,7 +135,7 @@ export function ProjectClaimPage() {
                 </select>
               </div>
               <div className="grid gap-1">
-                <span className="text-[10px] font-mono text-on-surface-variant">Status</span>
+                <span className="text-caption font-mono text-text-secondary">Status</span>
                 <select
                   className={selectBase}
                   value={editedStatus}
@@ -183,7 +183,7 @@ export function ProjectClaimPage() {
                   {activeClaim.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-on-surface-variant bg-surface-container-high border border-outline-variant/40"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-caption font-mono text-text-secondary bg-surface border border-border/40"
                     >
                       <Tag size={10} />
                       {tag}
@@ -196,7 +196,7 @@ export function ProjectClaimPage() {
         </div>
         <div className="flex items-center gap-3 flex-wrap shrink-0">
           <Link
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
             to="/agent"
           >
             <Bot size={14} />
@@ -205,7 +205,7 @@ export function ProjectClaimPage() {
           {isEditing ? (
             <div className="flex gap-2">
               <button
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-tertiary-container/25 border-tertiary/25 text-tertiary hover:bg-tertiary-container/40 font-mono"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono"
                 disabled={isPending}
                 onClick={handleSave}
                 type="button"
@@ -213,7 +213,7 @@ export function ProjectClaimPage() {
                 保存
               </button>
               <button
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-error-container/25 border-error/20 text-error hover:bg-error-container/40 font-mono"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono"
                 onClick={handleCancel}
                 type="button"
               >
@@ -222,7 +222,7 @@ export function ProjectClaimPage() {
             </div>
           ) : (
             <button
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-outline-variant/40 bg-surface-container-high text-on-surface text-xs font-medium cursor-pointer transition-colors hover:bg-primary-container/15 hover:border-primary/25 font-mono"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
               onClick={handleEdit}
               type="button"
             >
@@ -234,14 +234,14 @@ export function ProjectClaimPage() {
       </header>
 
       <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
-        <aside className="border border-outline-variant bg-surface-container rounded-xl p-5 sticky top-[122px] max-xl:static">
+        <aside className="border border-border bg-surface-sunken rounded-xl p-6 sticky top-[122px] max-xl:static">
           <div className="flex items-start justify-between gap-3 mb-2">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Shield size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">Project Claims</p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">Research judgments</h3>
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">Project Claims</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">Research judgments</h3>
             </div>
           </div>
 
@@ -251,14 +251,14 @@ export function ProjectClaimPage() {
                 className={({ isActive }) =>
                   `w-full text-left border rounded-lg p-3 flex flex-col gap-1.5 cursor-pointer transition-all ${
                     isActive
-                      ? 'border-primary/20 bg-primary-container/5'
-                      : 'border-transparent bg-surface-container-low/50 hover:border-primary/20 hover:bg-primary-container/5'
+                      ? 'border-accent-strong/20 bg-accent-subtle-bg/5'
+                      : 'border-transparent bg-surface-sunken/50 hover:border-accent-strong/20 hover:bg-accent-subtle-bg/5'
                   }`
                 }
                 key={claim.claimId}
                 to={`/project/${project.projectId}/claims/${claim.claimId}`}
               >
-                <strong className="text-sm text-on-surface leading-snug">{claim.title}</strong>
+                <strong className="text-body text-text-primary leading-snug">{claim.title}</strong>
                 <div className="flex items-center gap-2">
                   <span
                     className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
@@ -269,7 +269,7 @@ export function ProjectClaimPage() {
                   >
                     {claim.confidence}
                   </span>
-                  <span className="text-[10px] font-mono text-on-surface-variant">
+                  <span className="text-caption font-mono text-text-secondary">
                     {claim.claimId}
                   </span>
                 </div>
@@ -278,27 +278,27 @@ export function ProjectClaimPage() {
           </div>
         </aside>
 
-        <section className="border border-outline-variant bg-surface-container rounded-xl p-5 min-h-[70vh]">
+        <section className="border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
           <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-primary-container/20 text-primary">
+            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <FileStack size={18} />
             </div>
             <div>
-              <p className="text-[11px] font-mono font-medium uppercase tracking-wider text-primary">
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">
                 {isEditing ? '编辑模式' : 'Claim 阅读器'}
               </p>
-              <h3 className="text-base font-semibold text-on-surface font-headline">{activeClaim.title}</h3>
+              <h3 className="text-base font-semibold text-text-primary font-headline">{activeClaim.title}</h3>
             </div>
             {isEditing ? (
-              <Edit3 size={16} className="text-primary" />
+              <Edit3 size={16} className="text-accent-strong" />
             ) : (
-              <Eye size={16} className="text-primary" />
+              <Eye size={16} className="text-accent-strong" />
             )}
           </div>
 
           {isEditing ? (
             <textarea
-              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-container-lowest border border-primary/25 text-on-surface font-mono text-sm leading-7 resize-y outline-none focus:border-primary/40"
+              className="w-full min-h-[60vh] mt-4 p-5 rounded-lg bg-surface-raised border border-accent-strong/25 text-text-primary font-mono text-sm leading-7 resize-y outline-none focus:border-accent-strong/40"
               onChange={(e) => setEditedContent(e.target.value)}
               value={editedContent}
             />
