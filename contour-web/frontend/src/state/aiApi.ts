@@ -1,10 +1,90 @@
 import type { AIContextItem } from '../types';
 
+export type AgentErrorCode =
+  | 'invalid_api_key'
+  | 'rate_limited'
+  | 'prompt_too_long'
+  | 'network_error'
+  | 'service_error'
+  | 'invalid_model'
+  | 'aborted'
+  | 'unknown';
+
+export interface AgentErrorInfo {
+  code: AgentErrorCode;
+  title: string;
+  message: string;
+  canRetry: boolean;
+  action?: 'open_settings';
+}
+
+const NETWORK_ERROR: AgentErrorInfo = {
+  code: 'network_error',
+  title: '网络连接失败',
+  message: 'Contour 暂时无法连接模型服务，请检查网络后重试。',
+  canRetry: true,
+};
+
+const UNKNOWN_ERROR: AgentErrorInfo = {
+  code: 'unknown',
+  title: '生成失败',
+  message: '发生了未能识别的问题，请重试；若仍然失败，请检查渠道设置。',
+  canRetry: true,
+};
+
+const ERROR_CODES = new Set<AgentErrorCode>([
+  'invalid_api_key', 'rate_limited', 'prompt_too_long', 'network_error',
+  'service_error', 'invalid_model', 'aborted', 'unknown',
+]);
+
+export function parseAgentError(value: unknown, status?: number): AgentErrorInfo {
+  if (value && typeof value === 'object') {
+    const candidate = value as Partial<AgentErrorInfo>;
+    if (
+      typeof candidate.code === 'string' && ERROR_CODES.has(candidate.code as AgentErrorCode) &&
+      typeof candidate.title === 'string' && typeof candidate.message === 'string' &&
+      typeof candidate.canRetry === 'boolean'
+    ) {
+      return candidate as AgentErrorInfo;
+    }
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      code: 'invalid_api_key',
+      title: 'API Key 无效',
+      message: '当前渠道的 API Key 无效或已过期，请在设置中更新后重试。',
+      canRetry: false,
+      action: 'open_settings',
+    };
+  }
+  if (status === 429) {
+    return { code: 'rate_limited', title: '请求过于频繁', message: '请稍等片刻后重试。', canRetry: true };
+  }
+  return UNKNOWN_ERROR;
+}
+
+export class AgentRequestError extends Error {
+  readonly details: AgentErrorInfo;
+
+  constructor(details: AgentErrorInfo) {
+    super(details.message);
+    this.name = 'AgentRequestError';
+    this.details = details;
+  }
+}
+
+export function toAgentErrorInfo(error: unknown): AgentErrorInfo {
+  if (error instanceof AgentRequestError) return error.details;
+  return NETWORK_ERROR;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   toolActivities?: ToolActivity[];
+  status?: 'stopped';
 }
 
 export interface ToolActivity {
@@ -37,8 +117,10 @@ interface StreamCallbacks {
   onPermissionRequest?: (request: PermissionRequest) => void;
   /** 流式完成 */
   onComplete: (fullContent: string) => void;
+  /** 用户主动停止，返回停止前已收到的内容 */
+  onAborted?: (partialContent: string) => void;
   /** 流式出错 */
-  onError: (error: string) => void;
+  onError: (error: AgentErrorInfo) => void;
 }
 
 /**
@@ -52,20 +134,33 @@ export async function sendChatMessageStream(
   callbacks: StreamCallbacks,
   permissionMode?: "readonly" | "review" | "yolo",
   projectId?: string,
+  sessionId?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const body: Record<string, unknown> = { message, contextItems };
   if (permissionMode) body.permissionMode = permissionMode;
   if (projectId) body.projectId = projectId;
+  if (sessionId) body.sessionId = sessionId;
 
-  const res = await fetch('/api/ai/pi-chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch('/api/ai/pi-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      callbacks.onAborted?.('');
+      return;
+    }
+    throw new AgentRequestError(NETWORK_ERROR);
+  }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`请求失败 (${res.status}): ${text.slice(0, 200)}`);
+    const payload = await res.json().catch(() => null) as { error?: unknown } | null;
+    throw new AgentRequestError(parseAgentError(payload?.error, res.status));
   }
 
   const reader = res.body!.getReader();
@@ -133,7 +228,7 @@ export async function sendChatMessageStream(
               return;
 
             case 'error':
-              callbacks.onError((raw.message as string) || '流式响应异常');
+              callbacks.onError(parseAgentError(raw.error ?? raw.message));
               return;
 
             default:
@@ -148,7 +243,11 @@ export async function sendChatMessageStream(
     }
     callbacks.onComplete(fullContent);
   } catch (err) {
-    callbacks.onError(err instanceof Error ? err.message : '连接中断');
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+      callbacks.onAborted?.(fullContent);
+    } else {
+      callbacks.onError(toAgentErrorInfo(err));
+    }
   } finally {
     reader.releaseLock();
   }

@@ -43,6 +43,7 @@ export interface PermissionRule {
 
 // ── 写入/执行类工具 ────────────────────────────────────────────────────────
 
+// bash 正常情况下已被 PiRuntime 移除；这里仍保留拦截作为纵深防护。
 const WRITE_TOOLS = new Set(["write", "edit", "bash"]);
 
 // ── 模块级 pending 请求 Map ─────────────────────────────────────────────────

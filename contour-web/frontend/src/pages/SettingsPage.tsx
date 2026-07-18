@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Bot, Check, Moon, Palette, Radio, Settings, Sun } from 'lucide-react';
 import { useAtom } from 'jotai';
 import { ChannelSettings } from '../components/settings/ChannelSettings';
+import { ProjectFilesSettings } from '../components/settings/ProjectFilesSettings';
 import { Button } from '../components/ui/button';
 import { buttonVariants } from '../components/ui/button';
 import { cn } from '@/lib/utils';
@@ -127,18 +128,7 @@ function AppearanceSettings() {
 function renderTabContent(tab: SettingsTab): React.ReactElement {
   switch (tab) {
     case 'general':
-      return (
-        <div className="space-y-8">
-          <div>
-            <h3 className="text-base font-semibold text-foreground font-headline">通用设置</h3>
-            <p className="mt-1 text-sm text-muted-foreground">基础应用配置</p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <Settings size={32} className="text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">通用设置即将推出</p>
-          </div>
-        </div>
-      );
+      return <ProjectFilesSettings />;
     case 'ai':
       return <ChannelSettings />;
     case 'appearance':
@@ -147,7 +137,7 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
 }
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('ai');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   const activeTabLabel = TABS.find((t) => t.id === activeTab)?.label ?? '设置';
 

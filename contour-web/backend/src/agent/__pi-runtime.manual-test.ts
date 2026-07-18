@@ -18,6 +18,8 @@
 
 import { PiRuntime } from "./pi-runtime.js";
 import type { AgentStreamEvent } from "./agent-runtime.js";
+import { CONFIG } from "../config.js";
+import { fileURLToPath } from "node:url";
 
 const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN;
 const BASE_URL = process.env.ANTHROPIC_BASE_URL;
@@ -46,22 +48,25 @@ async function main() {
       apiKey: API_KEY!,
       baseUrl: BASE_URL!,
       model: "claude-sonnet-5",
-      dataDir: "", // 手动测试不需要持久化
+      dataDir: CONFIG.DATA_DIR,
       projectDir: process.cwd(),
       cwd: process.cwd(),
       tools: ["read"],
+      projectId: "manual-test",
+      sessionId: `manual_${Date.now()}`,
     });
     console.log("✅ init() 成功\n");
 
     // ── Step 2: Prompt ────────────────────────────────────────────────────
     console.log("── Step 2: prompt() ──");
-    console.log('📤 发送: "请读取当前目录下的 package.json 并告诉我 name 字段"\n');
+    const packagePath = fileURLToPath(new URL('../../package.json', import.meta.url));
+    console.log(`📤 发送: "请读取 ${packagePath} 并告诉我 name 字段"\n`);
 
     const eventCounts: Record<string, number> = {};
     const textParts: string[] = [];
 
     for await (const event of runtime.prompt(
-      "请读取当前目录下的 package.json 并告诉我它的 name 字段是什么",
+      `请读取 ${packagePath} 并告诉我它的 name 字段是什么`,
     )) {
       eventCounts[event.type] = (eventCounts[event.type] ?? 0) + 1;
 
@@ -94,7 +99,7 @@ async function main() {
           console.log("\n  [agent_end] 会话结束");
           break;
         case "error":
-          console.error(`\n  [error] ${event.message}`);
+          console.error(`\n  [error] ${event.error.title}: ${event.error.message}`);
           break;
       }
     }

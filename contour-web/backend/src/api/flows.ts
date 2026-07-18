@@ -5,30 +5,51 @@ import { CONFIG } from '../config.js';
 import type { ApiResponse, Flow } from '../types.js';
 import { invalidateCache, loadProjects } from '../vault/loader.js';
 import { validateId, ValidationError } from '../vault/validate.js';
-import { findProjectDir, findProjectDirForFlow, extractFrontmatterText } from '../vault/locate.js';
-import { atomicWriteFile } from '../vault/atomic.js';
+import { findFlowDir, findProjectDir, extractFrontmatterText } from '../vault/locate.js';
+import { atomicCreateFile, atomicWriteFile } from '../vault/atomic.js';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
+import {
+  addFlowLink,
+  deleteFlowAttachment,
+  FlowAssetError,
+  removeFlowLink,
+  uploadFlowAttachment,
+  validateVaultProjectId,
+} from '../services/flowAssets.js';
 
 const router = Router();
+
+function safeFlowDirectorySuffix(title: string): string {
+  return title
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/\.+/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'flow';
+}
 
 /**
  * 解析 flow 所在的项目目录。
  *
- * 优先使用显式的 projectId 通过 findProjectDir 精确定位，避免跨项目 flowId
- * 碰撞（多个项目各有同名 F001-F005 等 flow 时，findProjectDirForFlow 只
- * 返回第一个匹配，导致位置/状态/删除等操作误操作其他项目的 flow）。
+ * 修改操作使用显式的 projectId 通过 findProjectDir 精确定位，避免跨项目
+ * flowId 碰撞导致位置/状态/删除等操作误操作其他项目的 Flow。
  *
  * projectId 来源：
- *   - GET/DELETE: req.query.projectId
- *   - PUT/POST:   req.body.projectId
+ *   - DELETE: req.query.projectId
+ *   - PUT/POST: req.body.projectId
  */
-async function resolveProjectDir(flowId: string, projectId?: string): Promise<string | null> {
-  if (projectId) {
-    const dir = await findProjectDir(projectId);
-    if (dir) return dir;
-    // 如果 projectId 传了但目录不存在，fallthrough 到扫描逻辑
+async function resolveProjectDir(projectId: string): Promise<string | null> {
+  validateVaultProjectId(projectId);
+  return findProjectDir(projectId);
+}
+
+/** 写入或删除 Flow 时必须显式指定项目，避免同名 Flow 误操作。 */
+function requireProjectId(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new ValidationError('projectId is required');
   }
-  return findProjectDirForFlow(flowId);
+  validateVaultProjectId(value);
+  return value;
 }
 
 // GET /api/flows - 所有 flow 列表（不含 sections 全文）
@@ -48,6 +69,8 @@ router.get('/', async (req, res) => {
         tags: f.tags,
         openUncertainties: f.openUncertainties,
         summary: f.summary,
+        attachments: f.attachments,
+        links: f.links,
       }))
     );
     const response: ApiResponse<{ flows: Omit<Flow, 'sections'>[] }> = { success: true, data: { flows } };
@@ -71,10 +94,10 @@ router.get('/:flowId', async (req, res) => {
 
     let flow: Flow | undefined;
     if (projectId && typeof projectId === 'string') {
+      validateVaultProjectId(projectId);
       const project = projects.find((p) => p.projectId === projectId);
       flow = project?.flows.find((f) => f.flowId === flowId);
-    }
-    if (!flow) {
+    } else {
       flow = projects.flatMap((p) => p.flows).find((f) => f.flowId === flowId);
     }
 
@@ -106,13 +129,20 @@ router.post('/', async (req, res) => {
       parentFlows?: string[];
     };
 
-    if (!projectId || !flowId || !title) {
+    if (
+      typeof projectId !== 'string' ||
+      typeof flowId !== 'string' ||
+      typeof title !== 'string' ||
+      !projectId ||
+      !flowId ||
+      !title.trim()
+    ) {
       const response: ApiResponse<never> = { success: false, error: 'projectId, flowId and title are required' };
       res.status(400).json(response);
       return;
     }
 
-    validateId(projectId, 'projectId');
+    validateVaultProjectId(projectId);
     validateId(flowId, 'flowId');
 
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
@@ -122,6 +152,10 @@ router.post('/', async (req, res) => {
       res.status(404).json(response);
       return;
     }
+    if (project.flows.some((flow) => flow.flowId === flowId)) {
+      res.status(409).json({ success: false, error: 'Flow already exists' });
+      return;
+    }
 
     const projectDir = await findProjectDir(projectId);
     if (!projectDir) {
@@ -129,11 +163,16 @@ router.post('/', async (req, res) => {
       res.status(500).json(response);
       return;
     }
+    if (await findFlowDir(projectDir, flowId)) {
+      res.status(409).json({ success: false, error: 'Flow already exists' });
+      return;
+    }
 
     const safeTitle = yamlSafeValue(title);
-    const flowDir = path.join(projectDir, 'flows', `${flowId}_${title.replace(/\s+/g, '_').toLowerCase()}`);
+    const flowDir = path.join(projectDir, 'flows', `${flowId}_${safeFlowDirectorySuffix(title)}`);
     await fs.mkdir(flowDir, { recursive: true });
     await fs.mkdir(path.join(flowDir, 'sections'), { recursive: true });
+    await fs.mkdir(path.join(flowDir, 'attachments'), { recursive: true });
 
     const today = new Date().toISOString().split('T')[0];
     const flowMd = `---
@@ -147,6 +186,7 @@ parent_flows: ${JSON.stringify(parentFlows || [])}
 related_claims: []
 related_assets: []
 tags: []
+links: []
 ---
 
 # ${flowId} ${title}
@@ -187,7 +227,7 @@ tags: []
 `;
     await atomicWriteFile(path.join(flowDir, 'flow.md'), flowMd);
     await atomicWriteFile(path.join(flowDir, 'sections', 'flow.md'), sectionMd);
-    await atomicWriteFile(path.join(flowDir, 'context_summary.md'), '');
+    await atomicWriteFile(path.join(flowDir, 'flow_summary.md'), '');
     await atomicWriteFile(path.join(flowDir, 'assets.yaml'), '[]\n');
 
     invalidateCache();
@@ -203,11 +243,106 @@ tags: []
   }
 });
 
+// POST /api/flows/:flowId/attachments - 以受限 base64 JSON 上传附件
+router.post('/:flowId/attachments', async (req, res) => {
+  try {
+    const data = await uploadFlowAttachment({
+      flowId: req.params.flowId,
+      projectId: req.body?.projectId,
+      filename: req.body?.filename,
+      contentBase64: req.body?.contentBase64,
+    });
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    if (err instanceof FlowAssetError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/flows/:flowId/attachments/:filename - 幂等删除附件
+router.delete('/:flowId/attachments/:filename', async (req, res) => {
+  try {
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    const data = await deleteFlowAttachment({
+      flowId: req.params.flowId,
+      projectId,
+      filename: req.params.filename,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof FlowAssetError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /api/flows/:flowId/links - 新增链接；同一路径再次提交时更新名称
+router.post('/:flowId/links', async (req, res) => {
+  try {
+    const { created, links } = await addFlowLink({
+      flowId: req.params.flowId,
+      projectId: req.body?.projectId,
+      path: req.body?.path,
+      label: req.body?.label,
+    });
+    res.status(created ? 201 : 200).json({ success: true, data: { links } });
+  } catch (err) {
+    if (err instanceof FlowAssetError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/flows/:flowId/links - 按绝对路径幂等移除链接
+router.delete('/:flowId/links', async (req, res) => {
+  try {
+    const data = await removeFlowLink({
+      flowId: req.params.flowId,
+      projectId: req.body?.projectId,
+      path: req.body?.path,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof FlowAssetError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    if (err instanceof ValidationError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // PUT /api/flows/:flowId - 更新 flow frontmatter
 router.put('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { status, projectId } = req.body as { status?: string; projectId?: string };
+    const { status, projectId } = req.body as { status?: string; projectId?: unknown };
 
     if (status === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'status is required' };
@@ -217,22 +352,19 @@ router.put('/:flowId', async (req, res) => {
 
     validateId(flowId, 'flowId');
 
-    const projectDir = await resolveProjectDir(flowId, projectId);
+    const projectDir = await resolveProjectDir(requireProjectId(projectId));
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
-    const flowDir = path.join(flowsDir, flowDirName);
 
     const flowMdPath = path.join(flowDir, 'flow.md');
     let raw = '';
@@ -245,12 +377,14 @@ router.put('/:flowId', async (req, res) => {
     }
 
     const parsed = parseFrontmatter(raw);
-    if (parsed) {
-      parsed.fm['status'] = status;
-      const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
-      await atomicWriteFile(flowMdPath, updated);
-      await updateFlowTimestamp(flowDir);
+    if (!parsed) {
+      res.status(422).json({ success: false, error: 'flow.md frontmatter 无效，未修改状态' });
+      return;
     }
+    parsed.fm['status'] = status;
+    const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
+    await atomicWriteFile(flowMdPath, updated);
+    await updateFlowTimestamp(flowDir);
 
     invalidateCache();
     const response: ApiResponse<{ status: string }> = { success: true, data: { status } };
@@ -269,25 +403,23 @@ router.put('/:flowId', async (req, res) => {
 router.delete('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const queryProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    const queryProjectId = requireProjectId(req.query.projectId);
     validateId(flowId, 'flowId');
-    const projectDir = await resolveProjectDir(flowId, queryProjectId);
+    const projectDir = await resolveProjectDir(queryProjectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
 
-    await fs.rm(path.join(flowsDir, flowDirName), { recursive: true, force: true });
+    await fs.rm(flowDir, { recursive: true, force: true });
     invalidateCache();
     const response: ApiResponse<null> = { success: true, data: null };
     res.json(response);
@@ -305,25 +437,25 @@ router.delete('/:flowId', async (req, res) => {
 router.delete('/:flowId/sections/:sectionId', async (req, res) => {
   try {
     const { flowId, sectionId } = req.params;
-    const queryProjectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    const queryProjectId = requireProjectId(req.query.projectId);
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
-    const projectDir = await resolveProjectDir(flowId, queryProjectId);
+    if (sectionId === 'flow') {
+      throw new ValidationError('主 Flow Section 不能删除');
+    }
+    const projectDir = await resolveProjectDir(queryProjectId);
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
-    const flowDir = path.join(flowsDir, flowDirName);
 
     let targetFile: string;
     const sectionsDir = path.join(flowDir, 'sections');
@@ -339,8 +471,8 @@ router.delete('/:flowId/sections/:sectionId', async (req, res) => {
 
     try {
       await fs.unlink(targetFile);
-    } catch {
-      // 文件不存在，忽略
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
 
     await updateFlowTimestamp(flowDir);
@@ -361,7 +493,7 @@ router.delete('/:flowId/sections/:sectionId', async (req, res) => {
 router.post('/:flowId/sections', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { sectionId, title, projectId } = req.body as { sectionId?: string; title?: string; projectId?: string };
+    const { sectionId, title, projectId } = req.body as { sectionId?: string; title?: string; projectId?: unknown };
 
     if (!sectionId || !title) {
       const response: ApiResponse<never> = { success: false, error: 'sectionId and title are required' };
@@ -371,23 +503,23 @@ router.post('/:flowId/sections', async (req, res) => {
 
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
+    if (sectionId === 'flow') {
+      throw new ValidationError('flow 是保留的主 Section ID');
+    }
 
-    const projectDir = await resolveProjectDir(flowId, projectId);
+    const projectDir = await resolveProjectDir(requireProjectId(projectId));
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
-    const flowDir = path.join(flowsDir, flowDirName);
 
     const sectionsDir = path.join(flowDir, 'sections');
     await fs.mkdir(sectionsDir, { recursive: true });
@@ -403,7 +535,15 @@ title: ${safeTitle}
 
 在此输入内容...
 `;
-    await atomicWriteFile(path.join(sectionsDir, filename), sectionContent);
+    try {
+      await atomicCreateFile(path.join(sectionsDir, filename), sectionContent);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        res.status(409).json({ success: false, error: 'Section already exists' });
+        return;
+      }
+      throw error;
+    }
     await updateFlowTimestamp(flowDir);
     invalidateCache();
 
@@ -423,7 +563,7 @@ title: ${safeTitle}
 router.put('/:flowId/sections/:sectionId', async (req, res) => {
   try {
     const { flowId, sectionId } = req.params;
-    const { content, projectId } = req.body as { content?: string; projectId?: string };
+    const { content, projectId } = req.body as { content?: string; projectId?: unknown };
 
     if (content === undefined) {
       const response: ApiResponse<never> = { success: false, error: 'content is required' };
@@ -434,22 +574,19 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
     validateId(flowId, 'flowId');
     validateId(sectionId, 'sectionId');
 
-    const projectDir = await resolveProjectDir(flowId, projectId);
+    const projectDir = await resolveProjectDir(requireProjectId(projectId));
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Project directory not found' };
       res.status(500).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
-    const flowDir = path.join(flowsDir, flowDirName);
 
     let targetFile: string;
     const sectionsDir = path.join(flowDir, 'sections');
@@ -494,7 +631,7 @@ router.put('/:flowId/sections/:sectionId', async (req, res) => {
 router.put('/:flowId/position', async (req, res) => {
   try {
     const { flowId } = req.params;
-    const { x, y, projectId } = req.body as { x?: number; y?: number; projectId?: string };
+    const { x, y, projectId } = req.body as { x?: number; y?: number; projectId?: unknown };
 
     if (typeof x !== 'number' || typeof y !== 'number') {
       const response: ApiResponse<never> = { success: false, error: 'x and y coordinates are required' };
@@ -504,22 +641,19 @@ router.put('/:flowId/position', async (req, res) => {
 
     validateId(flowId, 'flowId');
 
-    const projectDir = await resolveProjectDir(flowId, projectId);
+    const projectDir = await resolveProjectDir(requireProjectId(projectId));
     if (!projectDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow not found' };
       res.status(404).json(response);
       return;
     }
 
-    const flowsDir = path.join(projectDir, 'flows');
-    const flowEntries = await fs.readdir(flowsDir, { withFileTypes: true });
-    const flowDirName = flowEntries.find((e) => e.isDirectory() && e.name.startsWith(flowId))?.name;
-    if (!flowDirName) {
+    const flowDir = await findFlowDir(projectDir, flowId);
+    if (!flowDir) {
       const response: ApiResponse<never> = { success: false, error: 'Flow directory not found' };
       res.status(404).json(response);
       return;
     }
-    const flowDir = path.join(flowsDir, flowDirName);
 
     const flowMdPath = path.join(flowDir, 'flow.md');
     let raw = '';
@@ -532,12 +666,14 @@ router.put('/:flowId/position', async (req, res) => {
     }
 
     const parsed = parseFrontmatter(raw);
-    if (parsed) {
-      parsed.fm['position_x'] = x;
-      parsed.fm['position_y'] = y;
-      const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
-      await atomicWriteFile(flowMdPath, updated);
+    if (!parsed) {
+      res.status(422).json({ success: false, error: 'flow.md frontmatter 无效，未修改位置' });
+      return;
     }
+    parsed.fm['position_x'] = x;
+    parsed.fm['position_y'] = y;
+    const updated = stringifyWithFrontmatter(parsed.fm, parsed.body);
+    await atomicWriteFile(flowMdPath, updated);
 
     invalidateCache();
     const response: ApiResponse<{ x: number; y: number }> = { success: true, data: { x, y } };

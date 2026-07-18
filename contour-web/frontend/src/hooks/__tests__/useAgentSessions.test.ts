@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAgentSessions } from '../useAgentSessions';
 import type { AgentSession } from '../useAgentSessions';
@@ -30,6 +30,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const mockContextItem: AIContextItem = {
@@ -39,6 +40,37 @@ const mockContextItem: AIContextItem = {
 };
 
 describe('useAgentSessions', () => {
+  describe('按项目过滤', () => {
+    it('传入 projectId 时只返回当前项目会话，不传时返回全部', () => {
+      localStorageStore['contour:agent-sessions'] = JSON.stringify([
+        { id: 's1', title: '项目 A', createdAt: 1, updatedAt: 2, contextItems: [], projectId: 'project-a' },
+        { id: 's2', title: '项目 B', createdAt: 1, updatedAt: 2, contextItems: [], projectId: 'project-b' },
+      ] satisfies AgentSession[]);
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+
+      const currentProject = renderHook(() => useAgentSessions('project-a'));
+      const allProjects = renderHook(() => useAgentSessions());
+
+      expect(currentProject.result.current.sessions.map((session) => session.id)).toEqual(['s1']);
+      expect(allProjects.result.current.sessions).toHaveLength(2);
+      currentProject.unmount();
+      allProjects.unmount();
+    });
+
+    it('hook 的 projectId 应自动写入新会话', () => {
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+      const { result } = renderHook(() => useAgentSessions('project-a'));
+
+      let created: AgentSession | undefined;
+      act(() => {
+        created = result.current.createSession([]);
+      });
+
+      expect(created?.projectId).toBe('project-a');
+      expect(result.current.sessions).toHaveLength(1);
+    });
+  });
+
   // ── 创建会话 ────────────────────────────────────────────────────────────
   describe('createSession', () => {
     it('应该创建新会话并返回 session 对象', () => {

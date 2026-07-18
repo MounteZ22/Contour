@@ -47,8 +47,9 @@ const getDocParams = Type.Object({
 async function runVaultTool(
   toolName: "getFlowDetail" | "searchFlows" | "getDoc",
   params: Record<string, unknown>,
+  projectId?: string,
 ) {
-  const result = await executeTool(toolName, params);
+  const result = await executeTool(toolName, params, projectId);
   return {
     content: [{ type: "text" as const, text: result }],
     details: {},
@@ -60,20 +61,18 @@ async function runVaultTool(
 /**
  * 追加到 system prompt 的业务工具使用引导
  *
- * 必要性：某些模型（如 kimi-coding）工具选择能力弱，默认倾向用内置 read
- * 工具去文件系统搜数据，但 Flow/Doc 存储在 Contour vault 中，read 访问不到，
- * 会陷入循环。这里明确引导模型：查 Flow/Doc 必须用业务工具。
+ * 必要性：业务工具提供结构化导航，避免模型在文件树中盲目搜索。
  */
 export const VAULT_TOOLS_PROMPT = `
 ## 工具使用说明
 
-Contour 的 Flow 和 Doc 数据存储在 Contour vault 中，不在文件系统里，内置的 read/grep/find 工具访问不到。当用户请求涉及 Flow 或 Doc 的查询、搜索、读取时，**必须**使用以下业务工具：
+Contour 的 Flow 和 Doc 通过以下业务工具提供结构化导航。用户请求涉及 Flow 或 Doc 的查询、搜索、读取时，优先使用这些工具：
 
 - searchFlows(query)：按关键词搜索 Flow（标题/摘要/标签匹配）。用户说"搜索/查找/找一下相关 flow"时用这个。
 - getFlowDetail(flowId)：按 ID 读取 Flow 完整内容（含所有章节）。用户给出 flowId 或要深入了解某 flow 时用。
 - getDoc(docId)：按 ID 读取 Doc 完整内容。用户要查看项目文档/术语表等时用。
 
-不要用 read 工具去文件系统找 Flow/Doc 数据，那会失败。
+已知明确路径时也可以使用受控 read 工具；它会在读取前执行项目路径授权检查。
 `.trim();
 
 /**
@@ -86,7 +85,8 @@ Contour 的 Flow 和 Doc 数据存储在 Contour vault 中，不在文件系统�
  * 类型上不强标 PiToolDefinition（泛型签名复杂），由 createAgentSession 的
  * customTools 参数做结构校验，tsc 会拦截不匹配。
  */
-export const contourCustomTools = [
+export function createContourCustomTools(projectId?: string) {
+  return [
   {
     name: "getFlowDetail",
     label: "Get Flow Detail",
@@ -94,7 +94,7 @@ export const contourCustomTools = [
       "读取指定研究脉络（Flow）的完整内容，包括所有章节。需要深入了解某个研究方向的详细信息时调用。",
     parameters: getFlowDetailParams,
     execute: async (_toolCallId: string, params: Static<typeof getFlowDetailParams>) =>
-      runVaultTool("getFlowDetail", params),
+      runVaultTool("getFlowDetail", params, projectId),
   },
   {
     name: "searchFlows",
@@ -103,7 +103,7 @@ export const contourCustomTools = [
       "按关键词搜索研究脉络（Flow）。在标题、摘要、标签中匹配。返回匹配的 Flow 摘要列表。需要查找相关内容但不确定具体 Flow ID 时调用。",
     parameters: searchFlowsParams,
     execute: async (_toolCallId: string, params: Static<typeof searchFlowsParams>) =>
-      runVaultTool("searchFlows", params),
+      runVaultTool("searchFlows", params, projectId),
   },
   {
     name: "getDoc",
@@ -112,6 +112,10 @@ export const contourCustomTools = [
       "读取指定文档（Doc）的完整内容。需要查看项目文档、研究计划、术语表等详细信息时调用。",
     parameters: getDocParams,
     execute: async (_toolCallId: string, params: Static<typeof getDocParams>) =>
-      runVaultTool("getDoc", params),
+      runVaultTool("getDoc", params, projectId),
   },
-];
+  ];
+}
+
+/** @deprecated 新的 Agent 请求应使用 createContourCustomTools(projectId)。 */
+export const contourCustomTools = createContourCustomTools();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { sendChatMessageStream, respondToPermission } from '../state/aiApi';
-import type { ChatMessage, PermissionRequest, ToolActivity } from '../state/aiApi';
+import { sendChatMessageStream, respondToPermission, toAgentErrorInfo } from '../state/aiApi';
+import type { AgentErrorInfo, ChatMessage, PermissionRequest, ToolActivity } from '../state/aiApi';
 import type { AIContextItem } from '../types';
 
 export type PermissionMode = "readonly" | "review" | "yolo";
@@ -13,8 +13,10 @@ export interface UseChatReturn {
   isStreaming: boolean;
   streamingContent: string;
   toolActivities: ToolActivity[];
-  error: string | null;
+  error: AgentErrorInfo | null;
   handleSend: () => Promise<void>;
+  handleRetry: () => Promise<void>;
+  handleStop: () => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
   clearMessages: () => void;
   permissionMode: PermissionMode;
@@ -99,8 +101,37 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
   let msgIndex = 0;
 
   for (const record of records) {
+    // Pi v3 最终消息：{ type: 'message', message: { role, content } }
+    if (record.type === 'message' && record.message && typeof record.message === 'object') {
+      const piMessage = record.message as Record<string, unknown>;
+      const role = piMessage.role;
+      if (role === 'user' || role === 'assistant') {
+        if (currentAssistantContent) {
+          messages.push({ id: `hist_${msgIndex++}`, role: 'assistant', content: currentAssistantContent });
+          currentAssistantContent = '';
+        }
+        const content = typeof piMessage.content === 'string'
+          ? piMessage.content
+          : Array.isArray(piMessage.content)
+            ? piMessage.content
+                .filter((block): block is Record<string, unknown> => Boolean(block) && typeof block === 'object')
+                .filter((block) => block.type === 'text' && typeof block.text === 'string')
+                .map((block) => block.text as string)
+                .join('\n')
+            : '';
+        if (content) {
+          messages.push({
+            id: (record.id as string) || `hist_${msgIndex++}`,
+            role,
+            content,
+          });
+        }
+      }
+      continue;
+    }
+
     // 会话元数据（跳过）
-    if (record.type === 'session_created') continue;
+    if (record.type === 'session' || record.type === 'session_info' || record.type === 'session_created') continue;
 
     // 用户消息
     if (record.role === 'user' && typeof record.content === 'string') {
@@ -169,10 +200,12 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AgentErrorInfo | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const failedMessageRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -224,18 +257,18 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     [sessionId],
   );
 
-  const handleSend = useCallback(async () => {
-    const trimmed = inputValue.trim();
+  const sendMessage = useCallback(async (trimmed: string, appendUserMessage: boolean) => {
     if (!trimmed || isLoading) return;
 
-    const userMessage: ChatMessage = {
-      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      role: 'user',
-      content: trimmed,
-    };
-
-    updateMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
+    if (appendUserMessage) {
+      const userMessage: ChatMessage = {
+        id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        content: trimmed,
+      };
+      updateMessages((prev) => [...prev, userMessage]);
+      setInputValue('');
+    }
     setIsLoading(true);
     setIsStreaming(true);
     setStreamingContent('');
@@ -243,6 +276,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setError(null);
 
     const currentToolActivities: ToolActivity[] = [];
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       await sendChatMessageStream(trimmed, initialContext || [], {
@@ -275,6 +310,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setPermissionRequest(request);
         },
         onComplete: (fullContent) => {
+          failedMessageRef.current = null;
           const assistantMessage: ChatMessage = {
             id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             role: 'assistant',
@@ -286,24 +322,57 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setIsStreaming(false);
           setToolActivities([]);
         },
-        onError: (errorMsg) => {
-          setError(errorMsg);
+        onAborted: (partialContent) => {
+          failedMessageRef.current = null;
+          const assistantMessage: ChatMessage = {
+            id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            role: 'assistant',
+            content: partialContent,
+            status: 'stopped',
+            toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+          };
+          updateMessages((prev) => [...prev, assistantMessage]);
+          setStreamingContent('');
+          setIsStreaming(false);
+          setToolActivities([]);
+        },
+        onError: (errorInfo) => {
+          failedMessageRef.current = trimmed;
+          setError(errorInfo);
           setIsStreaming(false);
           setStreamingContent('');
           setToolActivities([]);
         },
-      }, permissionMode, projectId);
+      }, permissionMode, projectId, sessionId, abortController.signal);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '发送失败，请重试';
-      setError(msg);
+      failedMessageRef.current = trimmed;
+      setError(toAgentErrorInfo(err));
       setIsStreaming(false);
       setStreamingContent('');
       console.error('Chat error:', err);
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [inputValue, isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId]);
+  }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId]);
+
+  const handleSend = useCallback(
+    () => sendMessage(inputValue.trim(), true),
+    [inputValue, sendMessage],
+  );
+
+  const handleRetry = useCallback(async () => {
+    const failedMessage = failedMessageRef.current;
+    if (!failedMessage) return;
+    await sendMessage(failedMessage, false);
+  }, [sendMessage]);
+
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -337,6 +406,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setIsStreaming(false);
     setToolActivities([]);
     setError(null);
+    failedMessageRef.current = null;
   }, [updateMessages]);
 
   return {
@@ -349,6 +419,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     toolActivities,
     error,
     handleSend,
+    handleRetry,
+    handleStop,
     handleKeyDown,
     clearMessages,
     permissionMode,

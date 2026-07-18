@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Claim, Flow, FlowSection, ProjectData, ProjectDoc } from '../types.js';
-import { getString, getStringArray, parseMarkdownFile } from './parser.js';
+import { getFlowLinks, getString, getStringArray, parseMarkdownFile } from './parser.js';
+
+const FLOW_SUMMARY_FILE = 'flow_summary.md';
+const LEGACY_FLOW_SUMMARY_FILE = 'context_summary.md';
 
 export async function scanAllProjects(vaultsDir: string, legacyVault: string): Promise<ProjectData[]> {
   const projects: ProjectData[] = [];
@@ -75,11 +78,24 @@ async function scanProject(projectDir: string): Promise<ProjectData | null> {
   const flows: Flow[] = [];
   const flowsDir = path.join(projectDir, 'flows');
   try {
-    const entries = await fs.readdir(flowsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const flow = await scanFlow(path.join(flowsDir, entry.name));
-      if (flow) flows.push(flow);
+    if (await isSafeDirectory(projectDir, flowsDir)) {
+      const entries = await fs.readdir(flowsDir, { withFileTypes: true });
+      const scannedIds = new Set<string>();
+      for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
+        const flowDir = path.join(flowsDir, entry.name);
+        if (!(await isSafeDirectory(flowsDir, flowDir))) continue;
+        const flow = await scanFlow(flowDir);
+        if (flow) {
+          flows.push(flow);
+          scannedIds.add(flow.flowId);
+        }
+      }
+      for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith('.md'))) {
+        const flowFile = path.join(flowsDir, entry.name);
+        if (!(await isSafeFile(flowsDir, flowFile))) continue;
+        const flow = await scanLegacyFlowFile(flowFile);
+        if (flow && !scannedIds.has(flow.flowId)) flows.push(flow);
+      }
     }
   } catch {
     // flows/ 目录不存在
@@ -115,6 +131,7 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
   const flowId = path.basename(flowDir).split('_')[0] || '';
   const flowMdPath = path.join(flowDir, 'flow.md');
 
+  if (!(await isSafeFile(flowDir, flowMdPath))) return null;
   const flowMd = await parseMarkdownFile(flowMdPath);
   if (!flowMd) {
     console.warn(`[scanner] missing flow.md in ${flowDir}, skipping`);
@@ -123,13 +140,7 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
 
   const fm = flowMd.frontmatter;
   const sectionsDir = path.join(flowDir, 'sections');
-  let hasSectionsDir = false;
-  try {
-    const stat = await fs.stat(sectionsDir);
-    hasSectionsDir = stat.isDirectory();
-  } catch {
-    hasSectionsDir = false;
-  }
+  const hasSectionsDir = await isSafeDirectory(flowDir, sectionsDir);
 
   let sections: FlowSection[] = [];
 
@@ -139,7 +150,9 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
       const files = await fs.readdir(sectionsDir);
       const mdFiles = files.filter((f) => f.endsWith('.md')).sort();
       for (const file of mdFiles) {
-        const parsed = await parseMarkdownFile(path.join(sectionsDir, file));
+        const sectionFile = path.join(sectionsDir, file);
+        if (!(await isSafeFile(sectionsDir, sectionFile))) continue;
+        const parsed = await parseMarkdownFile(sectionFile);
         if (!parsed) continue;
         const sectionId = file.replace(/\.md$/, '');
         sections.push({
@@ -164,10 +177,12 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     try {
       const files = await fs.readdir(flowDir);
       const mdFiles = files
-        .filter((f) => f.endsWith('.md') && f !== 'flow.md' && f !== 'context_summary.md')
+        .filter((f) => f.endsWith('.md') && f !== 'flow.md' && f !== FLOW_SUMMARY_FILE && f !== LEGACY_FLOW_SUMMARY_FILE)
         .sort();
       for (const file of mdFiles) {
-        const parsed = await parseMarkdownFile(path.join(flowDir, file));
+        const sectionFile = path.join(flowDir, file);
+        if (!(await isSafeFile(flowDir, sectionFile))) continue;
+        const parsed = await parseMarkdownFile(sectionFile);
         if (!parsed) continue;
         const sectionId = file.replace(/\.md$/, '');
         sections.push({
@@ -182,16 +197,25 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     }
   }
 
-  // 读取 context_summary.md，限制长度
+  // 读取新摘要文件；旧项目没有新文件时兼容读取旧名称。
   let summary = '';
-  try {
-    const summaryParsed = await parseMarkdownFile(path.join(flowDir, 'context_summary.md'));
-    if (summaryParsed) {
-      const text = summaryParsed.content.replace(/#+\s+.*\n/g, '').trim();
-      summary = text.length > 200 ? text.slice(0, 200) + '...' : text;
+  const preferredSummaryPath = path.join(flowDir, FLOW_SUMMARY_FILE);
+  const summaryFiles = await pathEntryExists(preferredSummaryPath)
+    ? [FLOW_SUMMARY_FILE]
+    : [LEGACY_FLOW_SUMMARY_FILE];
+  for (const summaryFile of summaryFiles) {
+    const summaryPath = path.join(flowDir, summaryFile);
+    if (!(await isSafeFile(flowDir, summaryPath))) continue;
+    try {
+      const summaryParsed = await parseMarkdownFile(summaryPath);
+      if (summaryParsed) {
+        const text = summaryParsed.content.replace(/#+\s+.*\n/g, '').trim();
+        summary = text.length > 200 ? text.slice(0, 200) + '...' : text;
+        break;
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   const posX = fm['position_x'];
@@ -212,8 +236,57 @@ async function scanFlow(flowDir: string): Promise<Flow | null> {
     tags: getStringArray(fm, 'tags'),
     openUncertainties: getStringArray(fm, 'open_uncertainties'),
     summary,
+    attachments: await scanAttachments(flowDir),
+    links: getFlowLinks(fm),
     sections,
     position,
+  };
+}
+
+async function scanAttachments(flowDir: string): Promise<string[]> {
+  try {
+    const attachmentsDir = path.join(flowDir, 'attachments');
+    const stats = await fs.lstat(attachmentsDir);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return [];
+    const entries = await fs.readdir(attachmentsDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
+  } catch {
+    // 旧 Flow 没有 attachments/ 时视为空列表，不主动修改磁盘。
+    return [];
+  }
+}
+
+async function scanLegacyFlowFile(filePath: string): Promise<Flow | null> {
+  if (!(await isSafeFile(path.dirname(filePath), filePath))) return null;
+  const parsed = await parseMarkdownFile(filePath);
+  if (!parsed) return null;
+
+  const fm = parsed.frontmatter;
+  const fallbackId = path.basename(filePath, '.md').split('_')[0] || '';
+  const flowId = getString(fm, 'flow_id', fallbackId);
+  return {
+    flowId,
+    title: getString(fm, 'title', parsed.title || flowId),
+    status: getString(fm, 'status', 'in_progress') as Flow['status'],
+    type: getString(fm, 'stage', 'general'),
+    created: getString(fm, 'created', ''),
+    updated: getString(fm, 'updated', ''),
+    parentFlows: getStringArray(fm, 'parent_flows'),
+    linkedClaims: getStringArray(fm, 'related_claims'),
+    tags: getStringArray(fm, 'tags'),
+    openUncertainties: getStringArray(fm, 'open_uncertainties'),
+    summary: makeSummary(parsed.content),
+    attachments: [],
+    links: getFlowLinks(fm),
+    sections: [{
+      id: 'flow',
+      title: parsed.title || flowId,
+      filename: path.basename(filePath),
+      content: parsed.content,
+    }],
   };
 }
 
@@ -244,4 +317,38 @@ function makeSummary(content: string): string {
     .filter((p) => p.length > 0);
   const first = paragraphs[0] || '';
   return first.length > 120 ? first.slice(0, 120) + '...' : first;
+}
+
+async function isSafeDirectory(parentDir: string, targetPath: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(targetPath);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return false;
+    return isWithinDirectory(await fs.realpath(parentDir), await fs.realpath(targetPath));
+  } catch {
+    return false;
+  }
+}
+
+async function isSafeFile(parentDir: string, targetPath: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(targetPath);
+    if (!stats.isFile() || stats.isSymbolicLink()) return false;
+    return isWithinDirectory(await fs.realpath(parentDir), await fs.realpath(targetPath));
+  } catch {
+    return false;
+  }
+}
+
+function isWithinDirectory(parentDir: string, targetPath: string): boolean {
+  const relative = path.relative(parentDir, targetPath);
+  return relative !== '' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+async function pathEntryExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.lstat(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }

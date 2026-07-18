@@ -16,7 +16,7 @@ router.get('/', async (_req, res) => {
   try {
     const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
     const docs = projects.flatMap((p) =>
-      p.docs.map((d) => ({ ...d, projectId: p.projectId, projectName: p.name }))
+      p.docs.map((d) => ({ ...d, projectId: p.projectId, projectName: p.title }))
     );
     const response: ApiResponse<{ docs: typeof docs }> = { success: true, data: { docs } };
     res.json(response);

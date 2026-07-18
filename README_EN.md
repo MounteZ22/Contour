@@ -30,7 +30,8 @@ Each Flow contains:
 - **User-defined sections** — such as Methods, Results, Discussion, Next Steps (structure is not fixed)
 - **Records of judgments and evidence** — what conclusions were formed, based on what evidence, with what confidence
 - **Uncertainty tracking** — unresolved questions, rejected alternatives, unexplained phenomena
-- **`context_summary.md`** — provides the most relevant working context to AI
+- **`flow_summary.md`** — provides the most relevant working context to AI (legacy `context_summary.md` remains readable)
+- **Attachments and links** — Flow directories store owned files in `attachments/`; frontmatter `links` records external file references
 
 ### Document (Background)
 
@@ -105,6 +106,7 @@ The directory is created automatically on first launch. To customize the path, e
 - **Failed paths are first-class citizens** — preserve rejected hypotheses, anomalous data, unexplained phenomena
 - **Progressive disclosure** — AI collaboration injects flow summary by default, reads details on demand
 - **Files over databases** — vault can be managed directly with Obsidian, VS Code, Git
+- **Guarded file access** — Agent file tools are limited to the current project Vault, configured paths, exact files, and the session workspace; a path in the prompt is not authorization
 
 ## License
 

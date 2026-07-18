@@ -24,6 +24,11 @@ export interface FlowSection {
   content: string;
 }
 
+export interface FlowLink {
+  path: string;
+  label: string;
+}
+
 export interface Flow {
   flowId: string;
   title: string;
@@ -36,6 +41,8 @@ export interface Flow {
   tags: string[];
   openUncertainties: string[];
   summary: string;
+  attachments: string[];
+  links: FlowLink[];
   sections: FlowSection[];
   position?: { x: number; y: number };
 }

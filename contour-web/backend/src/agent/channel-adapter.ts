@@ -19,12 +19,11 @@ import type { AgentRuntimeConfig } from "./agent-runtime.js";
 /** readonly 模式下开放的内置工具（全部只读） */
 const READONLY_BUILTIN_TOOLS = ["read", "grep", "find", "ls"];
 
-/** yolo/review 模式下开放的内置工具（含写入/执行类） */
+/** yolo/review 模式下开放的工具；write/edit 会被 Contour 同名受控工具覆盖。 */
 const FULL_BUILTIN_TOOLS = [
   "read",
   "write",
   "edit",
-  "bash",
   "grep",
   "find",
   "ls",
@@ -91,6 +90,8 @@ export function channelToAgentRuntimeConfig(
     systemPrompt?: string;
     /** 自定义工具定义数组（Pi ToolDefinition[]），透传给 PiRuntime */
     customTools?: unknown[];
+    /** 当前项目 Flow 明确链接的外部文件，仅按精确路径授权。 */
+    authorizedFiles?: string[];
     /** 权限模式，决定内置工具白名单 + 是否挂权限钩子，缺省 readonly */
     permissionMode?: "readonly" | "review" | "yolo";
     /** 项目 ID（可选），用于数据隔离。不传时回退到 projectDir 的 basename */
@@ -134,8 +135,9 @@ export function channelToAgentRuntimeConfig(
   //
   // readonly：只开只读工具（read/grep/find/ls），写工具根本不进白名单，
   //   Agent 调不到，最安全。
-  // yolo/review：开全部内置工具（含 write/edit/bash）。review 模式下由
-  //   PiRuntime 挂 tool_call 钩子拦截写操作；yolo 全放行。
+  // yolo/review：开放受路径白名单保护的 write/edit。review 模式下由
+  //   PiRuntime 挂 tool_call 钩子请求确认；yolo 不确认，但路径范围相同。
+  // bash 暂不开放，因为命令字符串无法可靠限制在项目路径内。
   const permissionMode = overrides?.permissionMode ?? "readonly";
   const builtinTools =
     permissionMode === "readonly" ? READONLY_BUILTIN_TOOLS : FULL_BUILTIN_TOOLS;
@@ -153,6 +155,7 @@ export function channelToAgentRuntimeConfig(
     provider,
     systemPrompt: overrides?.systemPrompt,
     customTools: overrides?.customTools,
+    authorizedFiles: overrides?.authorizedFiles,
     permissionMode,
     dataDir,
     projectDir,

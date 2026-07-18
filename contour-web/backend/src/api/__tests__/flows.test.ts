@@ -46,7 +46,7 @@ beforeAll(async () => {
   //         flow.md
   //         sections/
   //           flow.md
-  //         context_summary.md
+  //         flow_summary.md
   //     background/
   //     claims/
   const projectDir = path.join(vaultsDir, 'test-project');
@@ -82,8 +82,26 @@ tags:
 测试目的。
 `);
 
-  // 创建 context_summary.md
-  await fs.writeFile(path.join(flowDir, 'context_summary.md'), '# 摘要\n测试摘要内容。');
+  // 创建 flow_summary.md
+  await fs.writeFile(path.join(flowDir, 'flow_summary.md'), '# 摘要\n测试摘要内容。');
+
+  // 创建第二个项目中的同名 Flow，用于验证写操作不会跨项目猜测目标。
+  const collisionProjectDir = path.join(vaultsDir, 'collision-project');
+  const collisionFlowDir = path.join(collisionProjectDir, 'flows', 'F001_collision-flow');
+  await fs.mkdir(path.join(collisionFlowDir, 'sections'), { recursive: true });
+  await fs.mkdir(path.join(collisionProjectDir, 'background'), { recursive: true });
+  await fs.mkdir(path.join(collisionProjectDir, 'claims'), { recursive: true });
+  await fs.writeFile(path.join(collisionFlowDir, 'flow.md'), `---
+flow_id: F001
+title: 第二项目的 F001
+status: in_progress
+stage: general
+created: "2024-01-01"
+updated: "2024-01-15"
+---
+# 第二项目的 F001
+`);
+  await fs.writeFile(path.join(collisionFlowDir, 'sections', 'flow.md'), '# 第二项目的 F001\n');
 });
 
 afterAll(async () => {
@@ -103,8 +121,8 @@ describe('Flows API', () => {
 
     it('返回的 flows 应该包含已有 Flow', async () => {
       const res = await request(app).get('/api/flows');
-      const flows: Array<{ flowId: string }> = res.body.data.flows;
-      const found = flows.find((f) => f.flowId === 'F001');
+      const flows: Array<{ flowId: string; title: string; status: string }> = res.body.data.flows;
+      const found = flows.find((f) => f.flowId === 'F001' && f.title === '已有测试 Flow');
       expect(found).toBeDefined();
       expect(found!.title).toBe('已有测试 Flow');
       expect(found!.status).toBe('in_progress');
@@ -157,10 +175,17 @@ describe('Flows API', () => {
 
       // 创建后在列表中能查到（同一测试内，不依赖其他测试的数据）
       const listRes = await request(app).get('/api/flows');
-      const flows: Array<{ flowId: string }> = listRes.body.data.flows;
+      const flows: Array<{ flowId: string; title: string }> = listRes.body.data.flows;
       const found = flows.find((f) => f.flowId === 'F002');
       expect(found).toBeDefined();
       expect(found!.title).toBe('新测试流程');
+
+      const createdFlowDir = (await fs.readdir(path.join(vaultsDir, 'test-project', 'flows')))
+        .find((name) => name.startsWith('F002_'));
+      expect(createdFlowDir).toBeDefined();
+      const createdFlowPath = path.join(vaultsDir, 'test-project', 'flows', createdFlowDir!);
+      await expect(fs.access(path.join(createdFlowPath, 'flow_summary.md'))).resolves.toBeUndefined();
+      await expect(fs.access(path.join(createdFlowPath, 'context_summary.md'))).rejects.toThrow();
     });
 
     it('缺少必填字段应该返回 400', async () => {
@@ -222,7 +247,7 @@ describe('Flows API', () => {
     it('不存在的 Flow 应该返回 404', async () => {
       const res = await request(app)
         .put('/api/flows/F999')
-        .send({ status: 'completed' });
+        .send({ status: 'completed', projectId: 'test-project' });
       expect(res.status).toBe(404);
     });
   });
@@ -257,7 +282,7 @@ describe('Flows API', () => {
     });
 
     it('不存在的 Flow 应该返回 404', async () => {
-      const res = await request(app).delete('/api/flows/F999');
+      const res = await request(app).delete('/api/flows/F999').query({ projectId: 'test-project' });
       expect(res.status).toBe(404);
     });
   });
@@ -280,6 +305,106 @@ describe('Flows API', () => {
         .send({ x: 100, projectId: 'test-project' });
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('x and y coordinates');
+    });
+  });
+
+  describe('多项目同名 Flow 的写操作隔离', () => {
+    it('缺少 projectId 的所有写操作都应拒绝，而不是猜测项目', async () => {
+      const responses = await Promise.all([
+        request(app).put('/api/flows/F001').send({ status: 'completed' }),
+        request(app).delete('/api/flows/F001'),
+        request(app).delete('/api/flows/F001/sections/flow'),
+        request(app).post('/api/flows/F001/sections').send({ sectionId: 'new_section', title: '新 Section' }),
+        request(app).put('/api/flows/F001/sections/flow').send({ content: '不应写入' }),
+        request(app).put('/api/flows/F001/position').send({ x: 1, y: 2 }),
+      ]);
+
+      expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400, 400, 400]);
+    });
+
+    it('提供 projectId 时只更新或删除指定项目的同名 Flow', async () => {
+      const primaryBefore = await request(app).get('/api/flows/F001?projectId=test-project');
+      const collisionBefore = await request(app).get('/api/flows/F001?projectId=collision-project');
+      expect(primaryBefore.status).toBe(200);
+      expect(collisionBefore.status).toBe(200);
+
+      const update = await request(app)
+        .put('/api/flows/F001')
+        .send({ status: 'completed', projectId: 'collision-project' });
+      expect(update.status).toBe(200);
+
+      const primaryAfterUpdate = await request(app).get('/api/flows/F001?projectId=test-project');
+      const collisionAfterUpdate = await request(app).get('/api/flows/F001?projectId=collision-project');
+      expect(primaryAfterUpdate.body.data.status).toBe(primaryBefore.body.data.status);
+      expect(collisionAfterUpdate.body.data.status).toBe('completed');
+
+      const deleteWithoutProject = await request(app).delete('/api/flows/F001');
+      expect(deleteWithoutProject.status).toBe(400);
+
+      const deleteCollision = await request(app)
+        .delete('/api/flows/F001')
+        .query({ projectId: 'collision-project' });
+      expect(deleteCollision.status).toBe(200);
+
+      const primaryAfterDelete = await request(app).get('/api/flows/F001?projectId=test-project');
+      const collisionAfterDelete = await request(app).get('/api/flows/F001?projectId=collision-project');
+      expect(primaryAfterDelete.status).toBe(200);
+      expect(collisionAfterDelete.status).toBe(404);
+    });
+  });
+
+  describe('Section 与坏 frontmatter 的数据保护', () => {
+    it('重复创建 Section 返回 409，且主 flow Section 不能删除', async () => {
+      const first = await request(app).post('/api/flows/F001/sections').send({
+        projectId: 'test-project', sectionId: 'duplicate_guard', title: '只创建一次',
+      });
+      const second = await request(app).post('/api/flows/F001/sections').send({
+        projectId: 'test-project', sectionId: 'duplicate_guard', title: '不应覆盖',
+      });
+      const removeMain = await request(app)
+        .delete('/api/flows/F001/sections/flow')
+        .query({ projectId: 'test-project' });
+
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(409);
+      expect(removeMain.status).toBe(400);
+      await expect(fs.stat(path.join(vaultsDir, 'test-project', 'flows', 'F001_existing-flow', 'sections', 'flow.md')))
+        .resolves.toBeDefined();
+    });
+
+    it('CRLF Section 更新后仍保留 frontmatter 元数据', async () => {
+      const sectionPath = path.join(
+        vaultsDir, 'test-project', 'flows', 'F001_existing-flow', 'sections', 'crlf.md',
+      );
+      await fs.writeFile(sectionPath, '---\r\nsection_id: crlf\r\ntitle: CRLF\r\n---\r\n# old\r\n');
+
+      const response = await request(app).put('/api/flows/F001/sections/crlf').send({
+        projectId: 'test-project', content: '# new\n正文',
+      });
+      const saved = await fs.readFile(sectionPath, 'utf-8');
+
+      expect(response.status).toBe(200);
+      expect(saved).toContain('section_id: crlf');
+      expect(saved).toContain('# new');
+    });
+
+    it('坏 frontmatter 更新状态或位置时返回 422 而不伪装成功', async () => {
+      await request(app).post('/api/flows').send({
+        projectId: 'test-project', flowId: 'F_BAD_YAML', title: '坏格式保护',
+      });
+      const flowRoot = path.join(vaultsDir, 'test-project', 'flows');
+      const createdDir = (await fs.readdir(flowRoot)).find((entry) => entry.startsWith('F_BAD_YAML_'))!;
+      await fs.writeFile(path.join(flowRoot, createdDir, 'flow.md'), '---\nbroken: [\n---\n# bad\n');
+
+      const status = await request(app).put('/api/flows/F_BAD_YAML').send({
+        projectId: 'test-project', status: 'completed',
+      });
+      const position = await request(app).put('/api/flows/F_BAD_YAML/position').send({
+        projectId: 'test-project', x: 1, y: 2,
+      });
+
+      expect(status.status).toBe(422);
+      expect(position.status).toBe(422);
     });
   });
 });

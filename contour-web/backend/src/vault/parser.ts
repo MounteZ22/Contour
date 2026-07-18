@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import matter from 'gray-matter';
+import type { FlowLink } from '../types.js';
 
 export interface ParsedMarkdown {
   frontmatter: Record<string, unknown>;
@@ -39,4 +40,19 @@ export function getStringArray(data: Record<string, unknown>, key: string): stri
   const val = data[key];
   if (Array.isArray(val)) return val.filter((v): v is string => typeof v === 'string');
   return [];
+}
+
+/** 只接受完整的 { path, label } 项，避免把异常 YAML 结构带入 API。 */
+export function getFlowLinks(data: Record<string, unknown>, key = 'links'): FlowLink[] {
+  const value = data[key];
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as Record<string, unknown>;
+    if (typeof candidate.path !== 'string' || typeof candidate.label !== 'string') return [];
+    const itemPath = candidate.path.trim();
+    const label = candidate.label.trim();
+    return itemPath && label ? [{ path: itemPath, label }] : [];
+  });
 }

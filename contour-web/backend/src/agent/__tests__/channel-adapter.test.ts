@@ -113,7 +113,7 @@ describe('channelToAgentRuntimeConfig', () => {
       expect(config.customTools).toEqual(customTools);
     });
 
-    it('overrides.permissionMode 为 yolo 时应全量工具', () => {
+    it('Given yolo 模式, When 生成工具白名单, Then 开放受控写入但不开放 bash', () => {
       const channel = makeChannel();
       const config = channelToAgentRuntimeConfig(channel, {
         permissionMode: 'yolo',
@@ -121,17 +121,18 @@ describe('channelToAgentRuntimeConfig', () => {
       expect(config.permissionMode).toBe('yolo');
       expect(config.tools).toContain('write');
       expect(config.tools).toContain('edit');
-      expect(config.tools).toContain('bash');
+      expect(config.tools).not.toContain('bash');
     });
 
-    it('overrides.permissionMode 为 review 时应全量工具', () => {
+    it('Given review 模式, When 生成工具白名单, Then 开放受控写入但不开放 bash', () => {
       const channel = makeChannel();
       const config = channelToAgentRuntimeConfig(channel, {
         permissionMode: 'review',
       });
       expect(config.permissionMode).toBe('review');
       expect(config.tools).toContain('write');
-      expect(config.tools).toContain('bash');
+      expect(config.tools).toContain('edit');
+      expect(config.tools).not.toContain('bash');
     });
 
     it('overrides.projectId 应该覆盖 projectDir basename 回退', () => {

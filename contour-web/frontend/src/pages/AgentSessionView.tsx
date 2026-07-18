@@ -38,11 +38,11 @@ export function AgentSessionView() {
     <div className="h-full min-h-0 flex flex-col">
       <SessionHeader session={session} />
       <div className="flex-1 min-h-0 flex">
-        <div className={previewFile ? 'w-1/2 min-w-[360px] min-h-0' : 'flex-1 min-w-0 min-h-0'}>
+        <div className={previewFile ? 'w-1/2 min-w-0 min-h-0' : 'flex-1 min-w-0 min-h-0'}>
           <SessionChat session={session} />
         </div>
         {previewFile && (
-          <div className="flex-1 min-w-[360px] min-h-0">
+          <div className="flex-1 min-w-0 min-h-0">
             <FilePreview />
           </div>
         )}

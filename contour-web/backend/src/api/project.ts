@@ -8,6 +8,7 @@ import { validateId, ValidationError } from '../vault/validate.js';
 import { findProjectDir } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
 import { yamlSafeValue } from '../vault/yaml-utils.js';
+import { ensureProjectDir } from '../services/projectManager.js';
 
 const router = Router();
 
@@ -106,6 +107,7 @@ ${researchGoal || '待补充研究目标'}
     invalidateCache();
     // 返回目录名作为实际 projectId，与扫描器一致
     const actualProjectId = path.basename(projectDir);
+    ensureProjectDir(actualProjectId, projectDir);
     const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId: actualProjectId } };
     res.status(201).json(response);
   } catch (err) {
