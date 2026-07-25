@@ -15,7 +15,31 @@
  * - agent_end 既是会话结束信号，也是 "done" 信号
  */
 
-import type { AgentErrorPayload } from "./typed-error.js";
+// ── 错误类型 ─────────────────────────────────────────────────────────────────
+//
+// 定义在此处而非 typed-error.ts 以避免循环依赖：typed-error.ts 是实现，
+// agent-runtime.ts 是接口层，接口不应依赖实现。
+
+/** Agent 错误码枚举 */
+export type AgentErrorCode =
+  | "invalid_api_key"
+  | "rate_limited"
+  | "prompt_too_long"
+  | "network_error"
+  | "service_error"
+  | "invalid_model"
+  | "aborted"
+  | "unknown";
+
+/** 统一错误载荷，供运行时和 HTTP 层共同使用 */
+export interface AgentErrorPayload {
+  code: AgentErrorCode;
+  title: string;
+  message: string;
+  canRetry: boolean;
+  action?: "open_settings";
+  httpStatus?: number;
+}
 
 // ── 配置类型 ─────────────────────────────────────────────────────────────────
 
@@ -81,7 +105,7 @@ export interface AgentRuntimeConfig {
    * @deprecated 请使用 projectDir 替代。保留此字段是为了向后兼容，
    * 当 projectDir 未传入时作为回退。后续所有调用方迁移后删除。
    */
-  cwd: string;
+  cwd?: string;
   /** 启用的工具名称列表，默认只开放 read */
   tools?: string[];
   /**

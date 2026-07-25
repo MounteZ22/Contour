@@ -120,7 +120,7 @@ interface StreamCallbacks {
   /** 用户主动停止，返回停止前已收到的内容 */
   onAborted?: (partialContent: string) => void;
   /** 流式出错 */
-  onError: (error: AgentErrorInfo) => void;
+  onError: (error: AgentErrorInfo, partialContent?: string) => void;
 }
 
 /**
@@ -142,37 +142,70 @@ export async function sendChatMessageStream(
   if (projectId) body.projectId = projectId;
   if (sessionId) body.sessionId = sessionId;
 
+  let partialContent = '';
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  let didWatchdogTimeout = false;
+  const abortController = new AbortController();
+  const resetWatchdog = () => {
+    if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(() => {
+      didWatchdogTimeout = true;
+      abortController.abort();
+      callbacks.onError({
+        code: 'network_error',
+        title: '生成超时',
+        message: '超过 120 秒未收到生成数据，请检查网络后重试。',
+        canRetry: true,
+      }, partialContent);
+    }, 120_000);
+  };
+  const abortFromSignal = () => abortController.abort();
+  const cleanup = () => {
+    if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+    signal?.removeEventListener('abort', abortFromSignal);
+  };
+  if (signal?.aborted) {
+    abortController.abort();
+  } else {
+    signal?.addEventListener('abort', abortFromSignal, { once: true });
+  }
+  resetWatchdog();
+
   let res: Response;
   try {
     res = await fetch('/api/ai/pi-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal,
+      signal: abortController.signal,
     });
   } catch (err) {
+    cleanup();
+    if (didWatchdogTimeout) return;
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
-      callbacks.onAborted?.('');
+      callbacks.onAborted?.(partialContent);
       return;
     }
-    throw new AgentRequestError(NETWORK_ERROR);
+    callbacks.onError(toAgentErrorInfo(err), partialContent);
+    return;
   }
 
   if (!res.ok) {
     const payload = await res.json().catch(() => null) as { error?: unknown } | null;
+    cleanup();
     throw new AgentRequestError(parseAgentError(payload?.error, res.status));
   }
 
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  let fullContent = '';
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
+      resetWatchdog();
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -188,7 +221,7 @@ export async function sendChatMessageStream(
           switch (raw.type) {
             case 'text_delta':
               if (raw.delta) {
-                fullContent += raw.delta;
+                partialContent += raw.delta as string;
                 callbacks.onChunk(raw.delta as string);
               }
               break;
@@ -224,11 +257,11 @@ export async function sendChatMessageStream(
               break;
 
             case 'done':
-              callbacks.onComplete(fullContent);
+              callbacks.onComplete(partialContent);
               return;
 
             case 'error':
-              callbacks.onError(parseAgentError(raw.error ?? raw.message));
+              callbacks.onError(parseAgentError(raw.error ?? raw.message), partialContent);
               return;
 
             default:
@@ -241,15 +274,17 @@ export async function sendChatMessageStream(
         }
       }
     }
-    callbacks.onComplete(fullContent);
+    callbacks.onComplete(partialContent);
   } catch (err) {
+    if (didWatchdogTimeout) return;
     if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
-      callbacks.onAborted?.(fullContent);
+      callbacks.onAborted?.(partialContent);
     } else {
-      callbacks.onError(toAgentErrorInfo(err));
+      callbacks.onError(toAgentErrorInfo(err), partialContent);
     }
   } finally {
     reader.releaseLock();
+    cleanup();
   }
 }
 

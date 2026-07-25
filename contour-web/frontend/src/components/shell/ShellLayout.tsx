@@ -5,6 +5,7 @@ import { Menu } from 'lucide-react';
 import { LeftSidebar } from './LeftSidebar';
 import { RightSidePanel } from './RightSidePanel';
 import { Button } from '../ui/button';
+import { ErrorBoundary } from './ErrorBoundary';
 import { currentProjectIdAtom, rightPanelOpenAtom } from '../../state/shell';
 import type { ProjectData } from '../../types';
 
@@ -91,7 +92,9 @@ export function ShellLayout({
         </header>
 
         <main className="min-h-0 flex-1 overflow-hidden bg-background">
-          <Outlet context={{ onRefresh, project, projects } satisfies ShellOutletContext} />
+          <ErrorBoundary>
+            <Outlet context={{ onRefresh, project, projects } satisfies ShellOutletContext} />
+          </ErrorBoundary>
         </main>
       </div>
 

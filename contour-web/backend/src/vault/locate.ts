@@ -11,6 +11,8 @@ export async function findProjectDir(projectId: string): Promise<string | null> 
   try {
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
+      // 跳过符号链接，防止通过 symlink 绕过项目隔离
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory() && entry.name === projectId) {
         return path.join(CONFIG.VAULTS_DIR, entry.name);
       }
@@ -33,6 +35,8 @@ export async function findProjectDirForFlow(flowId: string): Promise<string | nu
   try {
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
+      // 跳过符号链接
+      if (entry.isSymbolicLink()) continue;
       if (!entry.isDirectory()) continue;
       const flowsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'flows');
       try {
@@ -86,6 +90,8 @@ export async function findProjectDirForDoc(docId: string): Promise<string | null
   try {
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
+      // 跳过符号链接
+      if (entry.isSymbolicLink()) continue;
       if (!entry.isDirectory()) continue;
       const docsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'background');
       try {
@@ -113,6 +119,8 @@ export async function findProjectDirForClaim(claimId: string): Promise<string | 
   try {
     const entries = await fs.readdir(CONFIG.VAULTS_DIR, { withFileTypes: true });
     for (const entry of entries) {
+      // 跳过符号链接
+      if (entry.isSymbolicLink()) continue;
       if (!entry.isDirectory()) continue;
       const claimsDir = path.join(CONFIG.VAULTS_DIR, entry.name, 'claims');
       try {

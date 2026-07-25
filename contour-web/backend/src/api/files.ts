@@ -57,21 +57,22 @@ async function authorizeRequestPath(
   inputPath: string,
   kind: 'file' | 'directory' | 'any' = 'any',
   flowId?: unknown,
-): Promise<string> {
+): Promise<{ authorized: string; projectDir: string }> {
   const access = await projectAccess(projectId, flowId);
-  return authorizeProjectPath(
+  const authorized = authorizeProjectPath(
     projectId,
     inputPath,
     kind,
     access.linkedFiles,
     access.projectDir ? [access.projectDir] : [],
   );
+  return { authorized, projectDir: access.projectDir ?? '' };
 }
 
 router.get('/list', async (req, res) => {
   try {
     const projectId = queryString(req.query.projectId, 'projectId');
-    const directory = await authorizeRequestPath(
+    const { authorized: directory, projectDir } = await authorizeRequestPath(
       projectId,
       queryString(req.query.path, 'path'),
       'directory',
@@ -81,11 +82,15 @@ router.get('/list', async (req, res) => {
     const data = entries
       .filter((entry) => entry.isDirectory() || entry.isFile())
       .slice(0, 500)
-      .map((entry) => ({
-        name: entry.name,
-        path: path.join(directory, entry.name),
-        kind: entry.isDirectory() ? 'directory' : 'file',
-      }))
+      .map((entry) => {
+        const absolutePath = path.join(directory, entry.name);
+        return {
+          name: entry.name,
+          // 返回相对于授权根目录的相对路径
+          path: projectDir ? path.relative(projectDir, absolutePath) : absolutePath,
+          kind: entry.isDirectory() ? 'directory' : 'file',
+        };
+      })
       .sort((left, right) => left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name));
     res.json({ success: true, data });
   } catch (error) {
@@ -96,17 +101,19 @@ router.get('/list', async (req, res) => {
 router.get('/preview', async (req, res) => {
   try {
     const projectId = queryString(req.query.projectId, 'projectId');
-    const filePath = await authorizeRequestPath(
+    const { authorized: filePath, projectDir } = await authorizeRequestPath(
       projectId,
       queryString(req.query.path, 'path'),
       'file',
       req.query.flowId,
     );
+    // 返回相对于授权根目录的相对路径
+    const displayPath = projectDir ? path.relative(projectDir, filePath) : filePath;
     const extension = path.extname(filePath).toLowerCase();
     if (TEXT_EXTENSIONS.has(extension)) {
       const data = await readFile(filePath);
       if (data.length > 2 * 1024 * 1024) throw new ValidationError('文本文件超过 2 MB，请使用系统程序打开');
-      res.json({ success: true, data: { kind: 'text', path: filePath, content: data.toString('utf-8') } });
+      res.json({ success: true, data: { kind: 'text', path: displayPath, content: data.toString('utf-8') } });
       return;
     }
     if (IMAGE_MIME[extension]) {
@@ -114,11 +121,11 @@ router.get('/preview', async (req, res) => {
       if (data.length > 10 * 1024 * 1024) throw new ValidationError('图片超过 10 MB，请使用系统程序打开');
       res.json({
         success: true,
-        data: { kind: 'image', path: filePath, dataUrl: `data:${IMAGE_MIME[extension]};base64,${data.toString('base64')}` },
+        data: { kind: 'image', path: displayPath, dataUrl: `data:${IMAGE_MIME[extension]};base64,${data.toString('base64')}` },
       });
       return;
     }
-    res.json({ success: true, data: { kind: 'external', path: filePath } });
+    res.json({ success: true, data: { kind: 'external', path: displayPath } });
   } catch (error) {
     handleError(error, res);
   }
@@ -127,7 +134,7 @@ router.get('/preview', async (req, res) => {
 router.post('/open', async (req, res) => {
   try {
     const projectId = queryString(req.body?.projectId, 'projectId');
-    const target = await authorizeRequestPath(
+    const { authorized: target } = await authorizeRequestPath(
       projectId,
       queryString(req.body?.path, 'path'),
       'any',
@@ -143,7 +150,7 @@ router.post('/open', async (req, res) => {
 router.post('/reveal', async (req, res) => {
   try {
     const projectId = queryString(req.body?.projectId, 'projectId');
-    const target = await authorizeRequestPath(
+    const { authorized: target } = await authorizeRequestPath(
       projectId,
       queryString(req.body?.path, 'path'),
       'any',

@@ -212,6 +212,7 @@ export function LeftSidebar({
                   onClick={() => handleSelectProject(project.projectId)}
                   title={project.title}
                   type="button"
+                  aria-current={active ? 'true' : undefined}
                 >
                   {displayCollapsed ? (
                     <span className="text-xs font-bold font-headline">{projectInitial(project.title)}</span>

@@ -12,10 +12,11 @@
  * - 状态清理：prompt 结束或出错时通过 cleanup 回调清理 requester
  */
 
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
+import { auditLog } from "../services/audit-log.js";
 
 // ── 类型 ───────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ function loadRules(dataDir: string, projectId: string): PermissionRule[] {
 }
 
 /**
- * 追加一条规则
+ * 追加一条规则（原子写入）
  */
 function persistRule(dataDir: string, projectId: string, rule: PermissionRule): void {
   try {
@@ -98,16 +99,33 @@ function persistRule(dataDir: string, projectId: string, rule: PermissionRule): 
     }
     const rules = loadRules(dataDir, projectId);
     rules.push(rule);
-    writeFileSync(filePath, JSON.stringify(rules, null, 2), "utf-8");
+    // 原子写入：先写临时文件再 rename
+    const tempPath = path.join(dir, `.permission-rules-${crypto.randomUUID()}.tmp`);
+    try {
+      writeFileSync(tempPath, JSON.stringify(rules, null, 2), "utf-8");
+      renameSync(tempPath, filePath);
+      // 审计日志：记录权限规则的持久化
+      auditLog('permissionRulePersisted', {
+        projectId,
+        toolName: rule.toolName,
+        action: rule.action,
+        patternLength: rule.pattern.length,
+      });
+    } catch (err) {
+      rmSync(tempPath, { force: true });
+      throw err;
+    }
   } catch (err) {
     console.warn("[PermissionExtension] 持久化规则失败:", err);
   }
 }
 
 /**
- * 简单模式匹配：在规则列表中查找第一条匹配的结果
+ * 规则匹配：对已知路径类工具做语义化匹配，避免字符串前缀误匹配。
+ *
  * - toolName 精确匹配
- * - pattern 为输入字符串的前缀匹配
+ * - 对 write / edit 工具，解析 input 中的 path 字段做目录前缀匹配
+ * - 对其他工具，回退到 pattern 为输入字符串的前缀匹配
  */
 function matchRule(
   rules: PermissionRule[],
@@ -115,6 +133,32 @@ function matchRule(
   input: unknown,
 ): PermissionRule | undefined {
   const inputStr = typeof input === "string" ? input : JSON.stringify(input ?? "");
+
+  // 对 write/edit 工具做 path 字段语义化匹配
+  if ((toolName === "write" || toolName === "edit") && typeof input === "object" && input !== null) {
+    const inputObj = input as Record<string, unknown>;
+    const filePath = typeof inputObj.path === "string" ? inputObj.path : null;
+    if (filePath) {
+      const normalizedPath = filePath.replace(/\\/g, "/");
+      return rules.find((r) => {
+        if (r.toolName !== toolName) return false;
+        // 尝试解析规则 pattern 为路径，做目录前缀匹配
+        try {
+          const rulePath = JSON.parse(r.pattern) as unknown;
+          if (typeof rulePath === "object" && rulePath !== null && "path" in rulePath) {
+            const ruleFilePath = String((rulePath as Record<string, unknown>).path).replace(/\\/g, "/");
+            return normalizedPath.startsWith(ruleFilePath) || normalizedPath === ruleFilePath;
+          }
+        } catch {
+          // pattern 不是 JSON，回退到普通前缀匹配
+        }
+        const rulePattern = r.pattern.replace(/\\/g, "/");
+        return normalizedPath.startsWith(rulePattern) || normalizedPath === rulePattern;
+      });
+    }
+  }
+
+  // 对其他工具，回退到字符串前缀匹配
   return rules.find(
     (r) => r.toolName === toolName && inputStr.startsWith(r.pattern),
   );

@@ -2,6 +2,8 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { getProjectConfig } from './projectManager.js';
 import { ValidationError } from '../vault/validate.js';
+import { isInside, comparisonKey } from '../vault/path-utils.js';
+import { auditLog } from './audit-log.js';
 
 export type AuthorizedPathKind = 'file' | 'directory' | 'any';
 
@@ -56,16 +58,6 @@ function canonicalWritablePath(inputPath: string): string {
   return path.join(canonicalAncestor, ...missingParts);
 }
 
-function isInside(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function comparisonKey(value: string): string {
-  const normalized = path.normalize(value).replace(/[\\/]+$/, '');
-  return process.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
-}
-
 /**
  * 校验一个已存在路径是否属于项目 Vault、附加目录或精确附加文件。
  * 所有路径都先 realpath，避免软链接/目录联接绕过授权范围。
@@ -107,7 +99,10 @@ export function authorizeProjectPath(
   const targetKey = comparisonKey(target);
   const allowed = directoryRoots.some((root) => isInside(root, target)) ||
     exactFiles.some((file) => comparisonKey(file) === targetKey);
-  if (!allowed) throw new PathNotAuthorizedError();
+  if (!allowed) {
+    auditLog('PathNotAuthorizedError', { projectId, target, kind, source: 'authorizeProjectPath' });
+    throw new PathNotAuthorizedError();
+  }
   return target;
 }
 
@@ -147,6 +142,9 @@ export function authorizeProjectWritePath(
   const targetKey = comparisonKey(target);
   const allowed = directoryRoots.some((root) => isInside(root, target)) ||
     exactFiles.some((file) => comparisonKey(file) === targetKey);
-  if (!allowed) throw new PathNotAuthorizedError();
+  if (!allowed) {
+    auditLog('PathNotAuthorizedError', { projectId, target, source: 'authorizeProjectWritePath' });
+    throw new PathNotAuthorizedError();
+  }
   return target;
 }

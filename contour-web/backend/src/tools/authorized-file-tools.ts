@@ -16,6 +16,7 @@ import {
 } from '../services/authorizedPaths.js';
 import { ValidationError } from '../vault/validate.js';
 import { invalidateCache } from '../vault/loader.js';
+import { isInside, comparisonKey } from '../vault/path-utils.js';
 import { generateDiffString, generateUnifiedPatch, withFileMutationQueue } from '@earendil-works/pi-coding-agent';
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
@@ -81,16 +82,6 @@ const editParams = Type.Object({
   }), { minItems: 1, maxItems: 50 }),
 });
 
-function comparisonKey(value: string): string {
-  const normalized = path.normalize(value).replace(/[\\/]+$/, '');
-  return process.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
-}
-
-function isInside(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }], details: {} };
 }
@@ -124,10 +115,20 @@ function globRegex(pattern: string): RegExp {
   return new RegExp(`^${source}$`, process.platform === 'win32' ? 'i' : '');
 }
 
+/**
+ * 简单 ReDoS 风险检测：检查正则是否包含嵌套量词，
+ * 形如 (a+)+, (a*)*, ([a-z]+)* 等可能导致指数级回溯的模式。
+ */
+function hasReDoSrisk(regex: RegExp): boolean {
+  // source 包含嵌套量词的模式
+  return /\([^)]*[+*][^)]*\)[+*]/.test(regex.source) ||
+    /\([^)]*\{[\d,]+\}[^)]*\)[+*{]/.test(regex.source);
+}
+
 function requireReadableText(buffer: Buffer, filePath: string): string {
   if (buffer.length > MAX_TEXT_BYTES) throw new ValidationError('文本文件超过 2 MB，无法在 Agent 中读取');
   if (buffer.subarray(0, Math.min(buffer.length, 8_192)).includes(0)) {
-    throw new ValidationError(`文件不是可读文本: ${filePath}`);
+    throw new ValidationError('二进制文件无法以文本格式读取');
   }
   return buffer.toString('utf-8');
 }
@@ -272,6 +273,11 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
           throw new ValidationError('搜索正则表达式无效');
         }
 
+        // ReDoS 防护：检测嵌套量词，拒绝存在指数级回溯风险的表达式
+        if (!params.literal && hasReDoSrisk(matcher)) {
+          throw new ValidationError('正则表达式存在 ReDoS 风险（嵌套量词），请简化模式后重试');
+        }
+
         const files = targetStats.isFile() ? [target] : await walkFiles(target, signal);
         const limit = normalizeLimit(params.limit);
         const context = Math.max(0, Math.min(Math.floor(params.context ?? 0), 10));
@@ -315,14 +321,20 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
         if (Buffer.byteLength(params.content, 'utf-8') > MAX_TEXT_BYTES) {
           throw new ValidationError('写入内容超过 2 MB');
         }
-        const initialTarget = authorizeWrite(params.path);
-        return withFileMutationQueue(initialTarget, async () => {
+        // 第一次授权：提前校验路径合法性，失败则不入队
+        const target = authorizeWrite(params.path);
+        // 以授权后的实际路径作为队列 key，确保锁与写入路径一致
+        return withFileMutationQueue(target, async () => {
           if (signal?.aborted) throw new Error('操作已中止');
-          await fs.mkdir(path.dirname(initialTarget), { recursive: true });
-          const target = authorizeWrite(params.path);
-          const existing = await fs.stat(target).catch(() => null);
+          // 队列内二次授权：防止在排队等待期间路径状态发生变化（如文件被外部删除或替换）
+          const confirmedTarget = authorizeWrite(params.path);
+          if (comparisonKey(confirmedTarget) !== comparisonKey(target)) {
+            throw new ValidationError('写入目标在排队期间发生变化');
+          }
+          await fs.mkdir(path.dirname(confirmedTarget), { recursive: true });
+          const existing = await fs.stat(confirmedTarget).catch(() => null);
           if (existing?.isDirectory()) throw new ValidationError('目标是文件夹，无法写入');
-          await fs.writeFile(target, params.content, 'utf-8');
+          await fs.writeFile(confirmedTarget, params.content, 'utf-8');
           invalidateCache();
           if (signal?.aborted) throw new Error('操作已中止');
           return textResult(`已写入 ${Buffer.byteLength(params.content, 'utf-8')} 字节到 ${params.path}`);
@@ -341,6 +353,11 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
         authorizeWrite(params.path);
         return withFileMutationQueue(filePath, async () => {
           if (signal?.aborted) throw new Error('操作已中止');
+          // 在 readFile 前重新校验，防止 TOCTOU（检查时间 vs 使用时间）攻击
+          const currentRealPath = realpathSync.native(filePath);
+          if (comparisonKey(currentRealPath) !== comparisonKey(filePath)) {
+            throw new ValidationError('文件在授权后被替换');
+          }
           const buffer = await fs.readFile(filePath);
           const rawContent = requireReadableText(buffer, filePath);
           const bom = rawContent.startsWith('\uFEFF') ? '\uFEFF' : '';

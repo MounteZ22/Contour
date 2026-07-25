@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addFlowLink,
   deleteFlowAttachment,
+  fetchFlowAssets,
   MAX_FLOW_ATTACHMENT_BYTES,
   removeFlowLink,
   uploadFlowAttachment,
@@ -10,6 +11,20 @@ import {
 describe('Flow 附件与链接 API', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('Given 一个 Flow, When 加载资料, Then 请求详情端点并返回附件和链接', async () => {
+    const assets = {
+      attachments: ['实验记录.pdf'],
+      links: [{ path: 'D:\\资料\\原始数据.xlsx', label: '原始数据' }],
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { ...assets, title: '忽略的 Flow 字段' },
+    }), { status: 200 }));
+
+    await expect(fetchFlowAssets('F/001', 'PRJ 001')).resolves.toEqual(assets);
+    expect(fetchMock).toHaveBeenCalledWith('/api/flows/F%2F001?projectId=PRJ+001');
   });
 
   it('Given 一个小型二进制文件, When 上传附件, Then 保留文件名和原始字节', async () => {

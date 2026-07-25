@@ -132,7 +132,7 @@ function TreeNode({
   const label = available ? node.name : `${node.name}（不可用）`;
 
   return (
-    <div>
+    <div role="treeitem" aria-expanded={isDirectory ? expanded : undefined}>
       <div className="group relative flex min-w-0 items-center" onContextMenu={handleContextMenu}>
         <button
           aria-label={label}
@@ -241,7 +241,7 @@ export function FileTree({ nodes, emptyText, projectId, loadChildren }: FileTree
   }
 
   return (
-    <div className="grid gap-0.5">
+    <div className="grid gap-0.5" role="tree">
       {nodes.map((node) => (
         <TreeNode
           key={node.id}

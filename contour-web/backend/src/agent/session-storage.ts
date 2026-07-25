@@ -11,9 +11,22 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 
+// 模块级互斥锁，防止 registry.json 的读-改-写竞态
+let registryLock: Promise<void> = Promise.resolve();
+function withRegistryLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const prev = registryLock;
+  let release: () => void;
+  registryLock = new Promise<void>((resolve) => { release = resolve; });
+  return prev.then(async () => {
+    try { return await fn(); }
+    finally { release!(); }
+  });
+}
+
 export interface ProductSessionMeta {
   id: string;
   title: string;
+  lastMessage?: string;
   createdAt: number;
   updatedAt: number;
   sdkSessionId?: string;
@@ -94,38 +107,42 @@ export function ensureProductSession(
   projectId: string,
   sessionId: string,
   title?: string,
-): { meta: ProductSessionMeta; created: boolean } {
-  const workspaceDir = getSessionWorkspaceDir(dataDir, projectId, sessionId);
-  mkdirSync(workspaceDir, { recursive: true });
+): Promise<{ meta: ProductSessionMeta; created: boolean }> {
+  return withRegistryLock(() => {
+    const workspaceDir = getSessionWorkspaceDir(dataDir, projectId, sessionId);
+    mkdirSync(workspaceDir, { recursive: true });
 
-  const sessions = readRegistry(dataDir, projectId);
-  const existing = sessions.find((session) => session.id === sessionId);
-  if (existing) return { meta: existing, created: false };
+    const sessions = readRegistry(dataDir, projectId);
+    const existing = sessions.find((session) => session.id === sessionId);
+    if (existing) return { meta: existing, created: false };
 
-  const now = Date.now();
-  const meta: ProductSessionMeta = {
-    id: sessionId,
-    title: title?.trim() || `会话 ${sessionId.slice(0, 8)}`,
-    createdAt: now,
-    updatedAt: now,
-  };
-  writeRegistry(dataDir, projectId, [...sessions, meta]);
-  return { meta, created: true };
+    const now = Date.now();
+    const meta: ProductSessionMeta = {
+      id: sessionId,
+      title: title?.trim() || `会话 ${sessionId.slice(0, 8)}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    writeRegistry(dataDir, projectId, [...sessions, meta]);
+    return { meta, created: true };
+  });
 }
 
-function updateProductSession(
+export function updateProductSession(
   dataDir: string,
   projectId: string,
   sessionId: string,
   patch: Partial<Omit<ProductSessionMeta, 'id' | 'createdAt'>>,
-): ProductSessionMeta {
-  const sessions = readRegistry(dataDir, projectId);
-  const index = sessions.findIndex((session) => session.id === sessionId);
-  if (index < 0) throw new Error(`产品会话不存在: ${sessionId}`);
-  const next = { ...sessions[index], ...patch, updatedAt: Date.now() };
-  sessions[index] = next;
-  writeRegistry(dataDir, projectId, sessions);
-  return next;
+): Promise<ProductSessionMeta> {
+  return withRegistryLock(() => {
+    const sessions = readRegistry(dataDir, projectId);
+    const index = sessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) throw new Error(`产品会话不存在: ${sessionId}`);
+    const next = { ...sessions[index], ...patch, updatedAt: Date.now() };
+    sessions[index] = next;
+    writeRegistry(dataDir, projectId, sessions);
+    return next;
+  });
 }
 
 function readSdkSessionId(filePath: string): string | null {
@@ -142,9 +159,16 @@ function listJsonlFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(dir, entry.name);
+    // 跳过符号链接，防止循环
+    if (entry.isSymbolicLink()) return [];
     if (entry.isDirectory()) return listJsonlFiles(entryPath);
     return entry.isFile() && entry.name.endsWith('.jsonl') ? [entryPath] : [];
   });
+}
+
+/** 在会话目录中查找已有的 JSONL 文件 */
+export function findExistingPiFile(sessionDir: string): string | null {
+  return listJsonlFiles(sessionDir)[0] ?? null;
 }
 
 export function findPiSessionFile(
@@ -160,28 +184,50 @@ export function findPiSessionFile(
   ) ?? null;
 }
 
-export function createOrResumePiSession(
+export async function createOrResumePiSession(
   dataDir: string,
   projectId: string,
   productSessionId: string,
   title?: string,
-): PiSessionHandle {
-  const { meta } = ensureProductSession(dataDir, projectId, productSessionId, title);
+): Promise<PiSessionHandle> {
+  const { meta } = await ensureProductSession(dataDir, projectId, productSessionId, title);
   const workspaceDir = getSessionWorkspaceDir(dataDir, projectId, productSessionId);
   const existingFile = findPiSessionFile(dataDir, projectId, productSessionId);
   if (existingFile) {
-    return {
-      manager: SessionManager.open(existingFile, workspaceDir, workspaceDir),
-      productSession: meta,
-      workspaceDir,
-      filePath: existingFile,
-      created: false,
-    };
+    try {
+      return {
+        manager: SessionManager.open(existingFile, workspaceDir, workspaceDir),
+        productSession: meta,
+        workspaceDir,
+        filePath: existingFile,
+        created: false,
+      };
+    } catch (err) {
+      console.warn("[SessionStorage] 会话文件损坏，将创建新会话:", existingFile, err);
+      // fall through to create new session
+    }
+  }
+
+  // 直接查找工作区中已有的 JSONL 文件（回退逻辑）
+  const legacyFile = findExistingPiFile(workspaceDir);
+  if (legacyFile) {
+    try {
+      return {
+        manager: SessionManager.open(legacyFile, workspaceDir, workspaceDir),
+        productSession: meta,
+        workspaceDir,
+        filePath: legacyFile,
+        created: false,
+      };
+    } catch (err) {
+      console.warn("[SessionStorage] 遗留会话文件损坏，将创建新会话:", legacyFile, err);
+      // fall through to create new session
+    }
   }
 
   const manager = SessionManager.create(workspaceDir, workspaceDir);
   manager.appendSessionInfo(meta.title);
-  const updated = updateProductSession(dataDir, projectId, productSessionId, {
+  const updated = await updateProductSession(dataDir, projectId, productSessionId, {
     sdkSessionId: manager.getSessionId(),
   });
   return {
@@ -210,4 +256,27 @@ export function deleteProductSession(
     force: true,
   });
   return true;
+}
+
+/**
+ * 获取会话摘要（title 和 messageCount），用于列表页快速展示。
+ * 封装 Pi SDK 的 SessionManager.open() 调用，避免调用方直接依赖 Pi SDK。
+ */
+export function getSessionSummary(
+  dataDir: string,
+  projectId: string,
+  sessionId: string,
+): { title: string; messageCount: number } | null {
+  const filePath = findPiSessionFile(dataDir, projectId, sessionId);
+  if (!filePath) return null;
+  try {
+    const manager = SessionManager.open(filePath, path.dirname(filePath));
+    return {
+      title: manager.getSessionName()?.trim() || `会话 ${sessionId.slice(0, 8)}`,
+      messageCount: manager.getEntries().filter((entry) => entry.type === 'message').length,
+    };
+  } catch (error) {
+    console.warn(`[SessionStorage] 无法读取会话摘要: ${filePath}`, error);
+    return null;
+  }
 }

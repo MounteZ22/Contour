@@ -1,12 +1,11 @@
-import { useAtom } from 'jotai';
 import { FilePlus2, Link2, Loader2, Paperclip, Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { showToast } from '../Toast';
 import { Button } from '../ui/button';
 import {
   addFlowLink,
   deleteFlowAttachment,
-  getFlowAssetsAtom,
+  fetchFlowAssets,
   removeFlowLink,
   uploadFlowAttachment,
 } from '../../state/flowAssets';
@@ -27,8 +26,7 @@ export function FlowAssetsPanel({
   links,
   onRefresh,
 }: FlowAssetsPanelProps) {
-  const assetsAtom = useMemo(() => getFlowAssetsAtom(projectId, flowId), [flowId, projectId]);
-  const [assets, setAssets] = useAtom(assetsAtom);
+  const [assets, setAssets] = useState({ attachments, links });
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [linkLabel, setLinkLabel] = useState('');
@@ -36,8 +34,20 @@ export function FlowAssetsPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setAssets({ attachments, links });
-  }, [attachments, links, setAssets]);
+    void fetchFlowAssets(flowId, projectId)
+      .then((nextAssets) => {
+        if (!cancelled) setAssets(nextAssets);
+      })
+      .catch((error) => {
+        // 父级传入的数据可作为请求失败时的降级展示。
+        console.warn('[FlowAssets] 加载 Flow 资料失败:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachments, flowId, links, projectId]);
 
   const runMutation = async (action: string, operation: () => Promise<void>, successMessage: string) => {
     setBusyAction(action);

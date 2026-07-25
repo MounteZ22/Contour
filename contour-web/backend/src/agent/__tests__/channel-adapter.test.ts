@@ -50,7 +50,7 @@ describe('channelToAgentRuntimeConfig', () => {
       const channel = makeChannel();
       const config = channelToAgentRuntimeConfig(channel);
       expect(typeof config.cwd).toBe('string');
-      expect(config.cwd.length).toBeGreaterThan(0);
+      expect(config.cwd!.length).toBeGreaterThan(0);
     });
 
     it('默认权限模式为 readonly，tools 应仅含只读工具', () => {

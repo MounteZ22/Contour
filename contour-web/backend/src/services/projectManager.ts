@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { PROJECTS_DIR } from "../config.js";
 import { ValidationError } from "../vault/validate.js";
+import { isInside, comparisonKey } from "../vault/path-utils.js";
 
 export interface ProjectConfig {
   /** D 盘项目目录绝对路径（如 D:/Contour-dev/示例研究项目） */
@@ -95,11 +96,6 @@ function normalizedAbsolutePath(value: string): string {
   return path.normalize(path.resolve(trimmed));
 }
 
-function comparisonKey(value: string): string {
-  const normalized = path.normalize(value).replace(/[\\/]+$/, "");
-  return process.platform === "win32" ? normalized.toLocaleLowerCase("en-US") : normalized;
-}
-
 function normalizeStoredPaths(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -114,11 +110,6 @@ function normalizeStoredPaths(value: unknown): string[] {
     }
   }
   return paths;
-}
-
-function isInside(parent: string, candidate: string): boolean {
-  const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function validateAttachmentTarget(inputPath: string, kind: AttachmentKind): string {

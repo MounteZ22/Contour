@@ -130,12 +130,15 @@ export class PiRuntime implements AgentRuntime {
     // dataDir/projects/{projectName}/sessions/{sessionId}/
     // Pi SDK 的 createAgentSession() 在收到已存有数据的 SessionManager 时，
     // 会自动从会话中恢复消息列表、模型和 thinkingLevel。
-    const projectId = config.projectId ?? path.basename(config.projectDir ?? config.cwd);
+    const projectId = config.projectId ?? path.basename(config.projectDir);
     const sessionId = config.sessionId;
     if (!sessionId) {
-      throw new Error("[PiRuntime] 缺少产品 sessionId，无法保证会话连续性");
+      throw typedAgentError("unknown", {
+        title: "会话配置缺失",
+        message: "缺少产品 sessionId，无法保证会话连续性",
+      });
     }
-    const sessionHandle = createOrResumePiSession(config.dataDir, projectId, sessionId);
+    const sessionHandle = await createOrResumePiSession(config.dataDir, projectId, sessionId);
     const sessionManager: SessionManager = sessionHandle.manager;
     const effectiveCwd = sessionHandle.workspaceDir;
     console.log(`[PiRuntime] ${sessionHandle.created ? "创建" : "恢复"}产品会话: ${sessionId}`);
@@ -361,12 +364,14 @@ export class PiRuntime implements AgentRuntime {
 
   /** 清理上一次 prompt 的订阅状态 */
   private cleanupActivePrompt(): void {
-    if (this.activePrompt) {
+    if (!this.activePrompt) return;
+    try {
       this.activePrompt.unsubscribe();
       // 如果消费者还在等待，发送 done 信号避免永久挂起
       if (this.activePrompt.waitingResolve && !this.activePrompt.done) {
         this.activePrompt.waitingResolve({ value: undefined, done: true });
       }
+    } finally {
       this.activePrompt = null;
     }
   }

@@ -385,6 +385,44 @@ describe('useChat', () => {
       expect(result.current.messages.filter((message) => message.role === 'user')).toHaveLength(1);
       expect(result.current.messages.at(-1)?.content).toBe('重试成功');
     });
+
+    it('重试会携带流错误前已生成的内容，以便模型继续回答', async () => {
+      const { result } = renderHook(() => useChat());
+      const errorInfo = {
+        code: 'service_error' as const,
+        title: '服务中断',
+        message: '请重试。',
+        canRetry: true,
+      };
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: {
+          onError: (error: typeof errorInfo, partialContent?: string) => void;
+        }) => {
+          callbacks.onError(errorInfo, '第一部分已经完成。');
+        },
+      );
+      act(() => result.current.setInputValue('请写一份摘要'));
+      await act(async () => result.current.handleSend());
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: { onComplete: (content: string) => void }) => {
+          callbacks.onComplete('续写完成');
+        },
+      );
+      await act(async () => result.current.handleRetry());
+
+      expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
+        2,
+        '请写一份摘要\n\n上次回答在生成中断。请从以下已生成内容继续，不要重复已有内容：\n第一部分已经完成。',
+        expect.any(Array),
+        expect.any(Object),
+        expect.any(String),
+        undefined,
+        undefined,
+        expect.any(AbortSignal),
+      );
+    });
   });
 
   // ── 清空消息 ────────────────────────────────────────────────────────────

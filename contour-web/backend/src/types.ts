@@ -78,7 +78,7 @@ export interface ChatRequestBody {
 export interface AIContextItem {
   id: string;
   title: string;
-  type: 'flow' | 'doc';
+  type: 'flow' | 'doc' | 'claim';
 }
 
 // AI 聊天响应

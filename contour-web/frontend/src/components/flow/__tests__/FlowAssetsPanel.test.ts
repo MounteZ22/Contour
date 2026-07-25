@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiMocks = vi.hoisted(() => ({
   addLink: vi.fn(),
   deleteAttachment: vi.fn(),
+  fetchAssets: vi.fn(),
   removeLink: vi.fn(),
   uploadAttachment: vi.fn(),
 }));
@@ -15,6 +16,7 @@ vi.mock('../../../state/flowAssets', async () => {
     ...actual,
     addFlowLink: apiMocks.addLink,
     deleteFlowAttachment: apiMocks.deleteAttachment,
+    fetchFlowAssets: apiMocks.fetchAssets,
     removeFlowLink: apiMocks.removeLink,
     uploadFlowAttachment: apiMocks.uploadAttachment,
   };
@@ -27,6 +29,7 @@ import { FlowAssetsPanel } from '../FlowAssetsPanel';
 describe('Flow 资料区', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.fetchAssets.mockImplementation(() => new Promise(() => {}));
   });
 
   it('Given Flow 已有关联资料, When 打开详情页, Then 显示附件和链接', async () => {

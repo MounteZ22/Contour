@@ -1,30 +1,16 @@
-export type AgentErrorCode =
-  | "invalid_api_key"
-  | "rate_limited"
-  | "prompt_too_long"
-  | "network_error"
-  | "service_error"
-  | "invalid_model"
-  | "aborted"
-  | "unknown";
+import type { AgentErrorCode, AgentErrorPayload } from "./agent-runtime.js";
 
-export interface AgentErrorPayload {
-  code: AgentErrorCode;
-  title: string;
-  message: string;
-  canRetry: boolean;
-  action?: "open_settings";
-}
+export type { AgentErrorCode, AgentErrorPayload };
 
 const ERROR_DEFAULTS: Record<AgentErrorCode, AgentErrorPayload> = {
-  invalid_api_key: { code: "invalid_api_key", title: "API Key 无效", message: "当前渠道的 API Key 无效或已过期，请在设置中更新后重试。", canRetry: false, action: "open_settings" },
-  rate_limited: { code: "rate_limited", title: "请求过于频繁", message: "模型服务暂时限制了请求频率，请稍等片刻后重试。", canRetry: true },
-  prompt_too_long: { code: "prompt_too_long", title: "对话内容过长", message: "当前对话超出了模型可处理的长度，请减少上下文或新建会话。", canRetry: false },
-  network_error: { code: "network_error", title: "网络连接失败", message: "Contour 暂时无法连接模型服务，请检查网络后重试。", canRetry: true },
-  service_error: { code: "service_error", title: "模型服务暂时不可用", message: "模型服务遇到了临时问题，请稍后重试。", canRetry: true },
-  invalid_model: { code: "invalid_model", title: "模型不可用", message: "当前渠道找不到所选模型，请在设置中检查模型名称。", canRetry: false, action: "open_settings" },
-  aborted: { code: "aborted", title: "生成已停止", message: "本次生成已停止，可以继续发送新消息。", canRetry: true },
-  unknown: { code: "unknown", title: "生成失败", message: "发生了未能识别的问题，请重试；若仍然失败，请检查渠道设置。", canRetry: true },
+  invalid_api_key: { code: "invalid_api_key", title: "API Key 无效", message: "当前渠道的 API Key 无效或已过期，请在设置中更新后重试。", canRetry: false, action: "open_settings", httpStatus: 401 },
+  rate_limited: { code: "rate_limited", title: "请求过于频繁", message: "模型服务暂时限制了请求频率，请稍等片刻后重试。", canRetry: true, httpStatus: 429 },
+  prompt_too_long: { code: "prompt_too_long", title: "对话内容过长", message: "当前对话超出了模型可处理的长度，请减少上下文或新建会话。", canRetry: false, httpStatus: 413 },
+  network_error: { code: "network_error", title: "网络连接失败", message: "Contour 暂时无法连接模型服务，请检查网络后重试。", canRetry: true, httpStatus: 503 },
+  service_error: { code: "service_error", title: "模型服务暂时不可用", message: "模型服务遇到了临时问题，请稍后重试。", canRetry: true, httpStatus: 502 },
+  invalid_model: { code: "invalid_model", title: "模型不可用", message: "当前渠道找不到所选模型，请在设置中检查模型名称。", canRetry: false, action: "open_settings", httpStatus: 400 },
+  aborted: { code: "aborted", title: "生成已停止", message: "本次生成已停止，可以继续发送新消息。", canRetry: true, httpStatus: 499 },
+  unknown: { code: "unknown", title: "生成失败", message: "发生了未能识别的问题，请重试；若仍然失败，请检查渠道设置。", canRetry: true, httpStatus: 500 },
 };
 
 /** 带有稳定错误类型的异常，供运行时和 HTTP 层共同使用。 */
@@ -39,10 +25,11 @@ export class TypedAgentError extends Error {
   }
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, depth: number = 0): string {
+  if (depth >= 5) return "..."; // 防止深层 cause 链产生超长错误字符串
   if (error instanceof Error) {
     const cause = (error as Error & { cause?: unknown }).cause;
-    return `${error.name} ${error.message} ${cause ? getErrorMessage(cause) : ""}`.trim();
+    return `${error.name} ${error.message} ${cause ? getErrorMessage(cause, depth + 1) : ""}`.trim();
   }
   if (typeof error === "string") return error;
   try {
@@ -108,14 +95,5 @@ export function typedAgentError(code: AgentErrorCode, overrides: Partial<Omit<Ag
 }
 
 export function agentErrorHttpStatus(error: AgentErrorPayload): number {
-  switch (error.code) {
-    case "invalid_api_key": return 401;
-    case "rate_limited": return 429;
-    case "prompt_too_long": return 413;
-    case "invalid_model": return 400;
-    case "aborted": return 499;
-    case "network_error": return 503;
-    case "service_error": return 502;
-    default: return 500;
-  }
+  return error.httpStatus ?? ERROR_DEFAULTS[error.code].httpStatus ?? 500;
 }

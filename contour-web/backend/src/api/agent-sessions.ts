@@ -8,13 +8,13 @@
 import { Router } from 'express';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
 import {
   deleteProductSession,
   ensureProductSession,
   findPiSessionFile,
+  getSessionSummary,
   listProductSessions,
 } from '../agent/session-storage.js';
 
@@ -28,6 +28,8 @@ interface SessionSummary {
   messageCount: number;
 }
 
+// ── 辅助函数（N+1 优化后仅用于回退路径） ──
+
 async function parseJsonlFile(filePath: string): Promise<Record<string, unknown>[]> {
   const content = await readFile(filePath, 'utf-8');
   const records: Record<string, unknown>[] = [];
@@ -36,7 +38,7 @@ async function parseJsonlFile(filePath: string): Promise<Record<string, unknown>
     try {
       records.push(JSON.parse(line));
     } catch {
-      // 保留其他有效记录，让部分损坏的会话仍可检查和导出。
+      // 部分损坏的会话仍可检查和导出
     }
   }
   return records;
@@ -60,53 +62,69 @@ function extractLastMessage(records: Record<string, unknown>[]): string {
       const text = textFromContent(message.content).trim();
       if (text) return text.slice(0, 100);
     }
-
-    // 兼容 Contour 早期记录格式。
+    // 兼容 Contour 早期记录格式
     const legacyText = textFromContent(record.content).trim();
     if (legacyText) return legacyText.slice(0, 100);
   }
   return '空会话';
 }
 
-function getSessionTitle(manager: SessionManager, sessionId: string): string {
-  return manager.getSessionName()?.trim() || `会话 ${sessionId.slice(0, 8)}`;
-}
+// ── 路由 ──
 
 router.get('/:projectId', async (req, res) => {
   try {
     const productSessions = listProductSessions(CONFIG.DATA_DIR, req.params.projectId);
+    // 优先从 registry 读取 lastMessage（O(1)），未缓存时回退到解析 JSONL
     const summaries = await Promise.all(productSessions.map(async (meta): Promise<SessionSummary> => {
-      const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, meta.id);
-      if (!filePath) {
+      // 尝试通过 getSessionSummary（封装 Pi SDK）获取 title 和 messageCount
+      const summary = getSessionSummary(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+
+      if (!summary) {
+        // 无 Pi 会话文件，使用 registry 中的数据
         return {
           id: meta.id,
           title: meta.title,
-          lastMessage: '空会话',
+          lastMessage: meta.lastMessage || '空会话',
           updatedAt: meta.updatedAt,
           messageCount: 0,
         };
       }
+
+      // O(1) 路径：优先从 registry 读取 lastMessage
+      let lastMessage = meta.lastMessage;
+      if (!lastMessage) {
+        // 回退：从 JSONL 解析最后一条消息（兼容旧数据）
+        const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+        if (filePath) {
+          try {
+            const records = await parseJsonlFile(filePath);
+            lastMessage = extractLastMessage(records);
+          } catch {
+            lastMessage = '历史暂不可用';
+          }
+        } else {
+          lastMessage = '空会话';
+        }
+      }
+
+      let updatedAt = meta.updatedAt;
       try {
-        const manager = SessionManager.open(filePath, path.dirname(filePath));
-        const records = await parseJsonlFile(filePath);
-        const fileStat = await stat(filePath);
-        return {
-          id: meta.id,
-          title: meta.title || getSessionTitle(manager, meta.id),
-          lastMessage: extractLastMessage(records),
-          updatedAt: fileStat.mtimeMs,
-          messageCount: manager.getEntries().filter((entry) => entry.type === 'message').length,
-        };
-      } catch (error) {
-        console.warn(`[AgentSessions] Pi 历史不可用，保留产品会话: ${filePath}`, error);
-        return {
-          id: meta.id,
-          title: meta.title,
-          lastMessage: '历史暂不可用',
-          updatedAt: meta.updatedAt,
-          messageCount: 0,
-        };
+        const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+        if (filePath) {
+          const fileStat = await stat(filePath);
+          updatedAt = fileStat.mtimeMs;
+        }
+      } catch {
+        // 使用 registry 中的 updatedAt
       }
+
+      return {
+        id: meta.id,
+        title: meta.title || summary.title,
+        lastMessage,
+        updatedAt,
+        messageCount: summary.messageCount,
+      };
     }));
 
     const data = summaries
@@ -127,7 +145,7 @@ router.post('/:projectId', async (req, res) => {
       return;
     }
 
-    const handle = ensureProductSession(CONFIG.DATA_DIR, req.params.projectId, sessionId, title);
+    const handle = await ensureProductSession(CONFIG.DATA_DIR, req.params.projectId, sessionId, title);
     const data: SessionSummary = {
       id: handle.meta.id,
       title: handle.meta.title,

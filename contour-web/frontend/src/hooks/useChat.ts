@@ -35,6 +35,7 @@ interface UseChatOptions {
 // ── localStorage 读写 ───────────────────────────────────────────────────────────
 
 function readStoredMessages(sessionId: string | undefined): ChatMessage[] {
+  // 防止新建但尚未保存的会话因共享 undefined key 而互相污染。
   if (!sessionId) return [];
   try {
     const raw = localStorage.getItem(`contour:chat:${sessionId}`);
@@ -205,7 +206,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const failedMessageRef = useRef<string | null>(null);
+  const failedMessageRef = useRef<{ message: string; partialContent: string } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -336,8 +337,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setIsStreaming(false);
           setToolActivities([]);
         },
-        onError: (errorInfo) => {
-          failedMessageRef.current = trimmed;
+        onError: (errorInfo, partialContent = '') => {
+          failedMessageRef.current = { message: trimmed, partialContent };
           setError(errorInfo);
           setIsStreaming(false);
           setStreamingContent('');
@@ -345,7 +346,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         },
       }, permissionMode, projectId, sessionId, abortController.signal);
     } catch (err) {
-      failedMessageRef.current = trimmed;
+      failedMessageRef.current = { message: trimmed, partialContent: '' };
       setError(toAgentErrorInfo(err));
       setIsStreaming(false);
       setStreamingContent('');
@@ -367,7 +368,10 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const handleRetry = useCallback(async () => {
     const failedMessage = failedMessageRef.current;
     if (!failedMessage) return;
-    await sendMessage(failedMessage, false);
+    const retryMessage = failedMessage.partialContent
+      ? `${failedMessage.message}\n\n上次回答在生成中断。请从以下已生成内容继续，不要重复已有内容：\n${failedMessage.partialContent}`
+      : failedMessage.message;
+    await sendMessage(retryMessage, false);
   }, [sendMessage]);
 
   const handleStop = useCallback(() => {

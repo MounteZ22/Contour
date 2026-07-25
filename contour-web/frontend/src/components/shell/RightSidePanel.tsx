@@ -278,6 +278,10 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
       <div className="p-3 border-b border-border">
         <div className="grid grid-cols-2 gap-1 rounded-[6px] bg-surface-sunken p-1">
           <button
+            role="tab"
+            aria-selected={tab === 'session'}
+            id="right-panel-tab-session"
+            aria-controls="right-panel-tabpanel"
             className={`h-8 rounded-[4px] text-xs font-medium transition-colors ${
               tab === 'session' ? 'bg-surface-raised text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
             }`}
@@ -287,6 +291,10 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
             会话文件
           </button>
           <button
+            role="tab"
+            aria-selected={tab === 'project'}
+            id="right-panel-tab-project"
+            aria-controls="right-panel-tabpanel"
             className={`h-8 rounded-[4px] text-xs font-medium transition-colors ${
               tab === 'project' ? 'bg-surface-raised text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
             }`}
@@ -298,7 +306,7 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3" role="tabpanel" id="right-panel-tabpanel" aria-labelledby={tab === 'session' ? 'right-panel-tab-session' : 'right-panel-tab-project'}>
         {!config && !configError && (
           <div className="flex items-center justify-center gap-2 py-8 text-xs text-text-secondary">
             <Loader2 size={14} className="animate-spin" />

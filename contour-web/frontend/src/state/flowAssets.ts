@@ -1,4 +1,3 @@
-import { atom, type PrimitiveAtom } from 'jotai';
 import type { FlowLink } from '../types';
 
 export const MAX_FLOW_ATTACHMENT_BYTES = 3 * 1024 * 1024;
@@ -14,24 +13,22 @@ interface ApiResponse<T> {
   error?: string;
 }
 
-const assetAtoms = new Map<string, PrimitiveAtom<FlowAssetsState>>();
-
-export function getFlowAssetsAtom(projectId: string, flowId: string): PrimitiveAtom<FlowAssetsState> {
-  const key = `${projectId}:${flowId}`;
-  let assetAtom = assetAtoms.get(key);
-  if (!assetAtom) {
-    assetAtom = atom<FlowAssetsState>({ attachments: [], links: [] });
-    assetAtoms.set(key, assetAtom);
-  }
-  return assetAtom;
-}
-
 async function readResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
   const result = await response.json() as ApiResponse<T>;
   if (!response.ok || !result.success || result.data === undefined) {
     throw new Error(result.error || fallbackMessage);
   }
   return result.data;
+}
+
+export async function fetchFlowAssets(flowId: string, projectId: string): Promise<FlowAssetsState> {
+  const query = new URLSearchParams({ projectId });
+  const response = await fetch(`/api/flows/${encodeURIComponent(flowId)}?${query.toString()}`);
+  const data = await readResponse<FlowAssetsState>(response, '加载 Flow 资料失败');
+  return {
+    attachments: data.attachments,
+    links: data.links,
+  };
 }
 
 async function fileToBase64(file: File): Promise<string> {

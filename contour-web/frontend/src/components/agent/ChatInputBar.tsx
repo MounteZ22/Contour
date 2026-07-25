@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   ArrowUp,
   Check,
@@ -60,10 +60,7 @@ export function ChatInputBar({
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
-  // inputValue 程序化清空（如发送后）时重置高度，避免 textarea 保持展开
-  useEffect(() => {
-    autoResize();
-  }, [inputValue, autoResize]);
+  // autoResize 在 handleInput 中即时调用，无需额外的 effect 调度
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
