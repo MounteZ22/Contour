@@ -30,7 +30,8 @@ Contour 帮助你将工作过程中的判断、证据、不确定性与失败路
 - **用户自定义的 sections** — 如方法、结果、讨论、下一步（不限定结构）
 - **判断与证据的记录** — 形成什么结论、基于什么证据、置信度如何
 - **不确定性追踪** — 未解问题、被排除的方案、无法解释的现象
-- **`context_summary.md`** — 向 AI 提供当前最相关的工作上下文
+- **`flow_summary.md`** — 向 AI 提供当前最相关的工作上下文（旧版 `context_summary.md` 仍可读取）
+- **附件与链接** — Flow 目录中的 `attachments/` 保存专属附件，frontmatter 的 `links` 保存外部文件链接
 
 ### Document（背景文档）
 
@@ -98,6 +99,8 @@ npm run dev
 | 数据 | Markdown + YAML frontmatter + 文件系统（无数据库） |
 | Markdown | react-markdown + remark-gfm |
 
+Agent 会话采用双层身份：前端和 API 始终使用稳定的 Contour `sessionId`，Pi SDK 自己的 `sdkSessionId` 只保存在后端 registry 中用于恢复模型上下文。每个会话拥有独立的本地工作目录 `~/.contour[-dev]/projects/{project}/sessions/{sessionId}/`，不会直接把项目 Vault 作为 Agent cwd。
+
 ## 核心设计原则
 
 - **以知识结构为中心**，不是以 AI 为中心
@@ -105,6 +108,8 @@ npm run dev
 - **失败路径是一等公民** — 保存被排除方案、异常数据、无法解释的现象
 - **渐进式披露** — AI 协作默认注入 flow summary，细节按需读取
 - **文件优先于数据库** — vault 可直接用 Obsidian、VS Code、Git 管理
+- **受控文件访问** — Agent 文件工具只允许当前项目 Vault、附加路径、精确文件和会话工作目录；Prompt 中出现路径不等于获得权限
+- **产品状态与 Agent 内核解耦** — Contour 会话不会依赖 Pi 私有 ID 或手写其 JSONL 格式
 
 ## License
 

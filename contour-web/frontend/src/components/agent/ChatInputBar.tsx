@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   ArrowUp,
   Check,
   ChevronDown,
   Eye,
-  Loader2,
+  Square,
   ShieldCheck,
   Trash2,
   Zap,
@@ -23,6 +23,7 @@ interface ChatInputBarProps {
   onInputChange: (value: string) => void;
   isLoading: boolean;
   onSend: () => Promise<void>;
+  onStop: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onClear: () => void;
   hasMessages: boolean;
@@ -34,7 +35,7 @@ interface ChatInputBarProps {
 const PERMISSION_OPTIONS: { value: PermissionMode; label: string; icon: typeof Eye; description: string }[] = [
   { value: 'readonly', label: '只读', icon: Eye, description: '仅允许读取文件' },
   { value: 'review', label: '审查', icon: ShieldCheck, description: '写操作需弹窗确认' },
-  { value: 'yolo', label: '自动', icon: Zap, description: '允许所有操作' },
+  { value: 'yolo', label: '自动', icon: Zap, description: '在项目范围内自动写入' },
 ];
 
 export function ChatInputBar({
@@ -42,6 +43,7 @@ export function ChatInputBar({
   onInputChange,
   isLoading,
   onSend,
+  onStop,
   onKeyDown,
   onClear,
   hasMessages,
@@ -58,10 +60,7 @@ export function ChatInputBar({
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
-  // inputValue 程序化清空（如发送后）时重置高度，避免 textarea 保持展开
-  useEffect(() => {
-    autoResize();
-  }, [inputValue, autoResize]);
+  // autoResize 在 handleInput 中即时调用，无需额外的 effect 调度
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -164,17 +163,17 @@ export function ChatInputBar({
 
               <button
                 type="button"
-                onClick={onSend}
-                disabled={isLoading || !inputValue.trim()}
-                title="发送 (Enter)"
-                aria-label={isLoading ? '正在发送...' : '发送消息'}
+                onClick={isLoading ? onStop : onSend}
+                disabled={!isLoading && !inputValue.trim()}
+                title={isLoading ? '停止生成' : '发送 (Enter)'}
+                aria-label={isLoading ? '停止生成' : '发送消息'}
                 className="w-[30px] h-[30px] rounded-full bg-accent-strong text-accent-on
                   hover:bg-accent-hover active:scale-[0.92] transition-all duration-150
                   flex items-center justify-center shrink-0
                   disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isLoading ? (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Square size={12} fill="currentColor" />
                 ) : (
                   <ArrowUp size={14} strokeWidth={2.5} />
                 )}

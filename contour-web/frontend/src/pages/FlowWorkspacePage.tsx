@@ -4,6 +4,7 @@ import { showToast } from '../components/Toast';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import { StatusBadge } from '../components/StatusBadge';
+import { FlowAssetsPanel } from '../components/flow/FlowAssetsPanel';
 import { useOptimisticMutation } from '../hooks/useOptimisticMutation';
 import type { FlowStatus, ProjectData } from '../types';
 
@@ -187,7 +188,7 @@ export function FlowWorkspacePage() {
   };
 
   return (
-    <div className="grid gap-6">
+    <div className="grid h-full w-full min-w-0 max-w-full gap-6 overflow-x-hidden overflow-y-auto p-4 md:p-6">
       <div className="flex items-center gap-2.5 text-body text-text-secondary">
         <Link className="inline-flex items-center gap-1.5 text-accent-strong transition-colors hover:text-accent-strong" to="/contour">
           <ArrowLeft size={16} />
@@ -261,8 +262,16 @@ export function FlowWorkspacePage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-[260px_1fr] gap-4 items-start max-xl:grid-cols-1">
-        <aside className="border border-border bg-surface-sunken rounded-xl p-6 sticky top-[122px] max-xl:static">
+      <FlowAssetsPanel
+        attachments={initialFlow.attachments}
+        flowId={initialFlow.flowId}
+        links={initialFlow.links}
+        onRefresh={onRefresh}
+        projectId={project.projectId}
+      />
+
+      <div className="grid min-w-0 grid-cols-1 gap-4 items-start xl:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="min-w-0 border border-border bg-surface-sunken rounded-xl p-6 xl:sticky xl:top-[122px]">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Files size={18} />
@@ -337,7 +346,7 @@ export function FlowWorkspacePage() {
           </div>
         </aside>
 
-        <section className="border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
+        <section className="min-w-0 border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
               <Sparkles size={18} />

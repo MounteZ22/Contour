@@ -13,7 +13,6 @@
  * - 所有配置通过 init() 参数传入，不读环境变量
  */
 
-import { readdirSync, mkdirSync } from "fs";
 import path from "path";
 import {
   createAgentSession,
@@ -32,8 +31,12 @@ import type {
   PromptOptions,
 } from "./agent-runtime.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { createOrResumePiSession } from "./session-storage.js";
 import { createPermissionExtensionFactory, createPermissionRequest, rejectAllPendingRequests } from "./permission-extension.js";
 import type { PermissionRequesterFn } from "./permission-extension.js";
+import { classifyAgentError, typedAgentError } from "./typed-error.js";
+import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
+import { applyAgentToolPolicy } from "./tool-policy.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -101,9 +104,7 @@ export class PiRuntime implements AgentRuntime {
     // ── 查找模型 ──────────────────────────────────────────────────────────
     const model = modelRegistry.find(provider, config.model);
     if (!model) {
-      throw new Error(
-        `[PiRuntime] 未找到模型: ${provider}/${config.model}，请确认模型 ID 正确`,
-      );
+      throw typedAgentError("invalid_model");
     }
     this.model = model;
 
@@ -123,39 +124,44 @@ export class PiRuntime implements AgentRuntime {
     //   agent-session.js 的 isAllowedTool() 过滤掉，根本不注册进 Agent 工具集
     //   （源码 agent-session.js:1864-1868）。所以这里把 customTools 的 name
     //   自动合并进 tools，让业务工具 always-on，调用方不用同时维护两份名单。
-    const customToolNames = (config.customTools as Array<{ name: string }> | undefined)
-      ?.map((t) => t.name) ?? [];
-    const tools = Array.from(
-      new Set([...(config.tools ?? ["read"]), ...customToolNames]),
-    );
-
     // ══ SessionManager: 持久化会话 ══════════════════════════════════════════════
     //
-    // 会话数据存储在 dataDir/projects/{projectName}/sessions/ 目录下。
-    // - 新会话：通过 SessionManager.create() 自动创建文件
-    // - 恢复会话：通过 sessionId 在 sessions/ 中查找已有文件并打开
+    // 每个会话拥有独立 workspace，并由 Pi SessionManager 写入合法 JSONL：
+    // dataDir/projects/{projectName}/sessions/{sessionId}/
     // Pi SDK 的 createAgentSession() 在收到已存有数据的 SessionManager 时，
     // 会自动从会话中恢复消息列表、模型和 thinkingLevel。
-    const projectId = config.projectId ?? path.basename(config.projectDir ?? config.cwd);
-    const sessionDir = path.join(config.dataDir, "projects", projectId, "sessions");
-    mkdirSync(sessionDir, { recursive: true });
-    const effectiveCwd = config.projectDir ?? config.cwd;
-
-    let sessionManager: SessionManager;
-    if (config.sessionId) {
-      const sessionFile = findSessionFileById(sessionDir, config.sessionId);
-      if (sessionFile) {
-        sessionManager = SessionManager.open(sessionFile, sessionDir, effectiveCwd);
-        console.log(`[PiRuntime] 恢复会话: ${config.sessionId}`);
-      } else {
-        console.warn(
-          `[PiRuntime] 会话 ${config.sessionId} 未找到，创建新会话`,
-        );
-        sessionManager = SessionManager.create(effectiveCwd, sessionDir);
-      }
-    } else {
-      sessionManager = SessionManager.create(effectiveCwd, sessionDir);
+    const projectId = config.projectId ?? path.basename(config.projectDir);
+    const sessionId = config.sessionId;
+    if (!sessionId) {
+      throw typedAgentError("unknown", {
+        title: "会话配置缺失",
+        message: "缺少产品 sessionId，无法保证会话连续性",
+      });
     }
+    const sessionHandle = await createOrResumePiSession(config.dataDir, projectId, sessionId);
+    const sessionManager: SessionManager = sessionHandle.manager;
+    const effectiveCwd = sessionHandle.workspaceDir;
+    console.log(`[PiRuntime] ${sessionHandle.created ? "创建" : "恢复"}产品会话: ${sessionId}`);
+
+    // 用同名受控工具覆盖 Pi 内置 read/grep/find/ls/write/edit。路径在每次执行前由后端
+    // 白名单校验，Prompt 只负责解释范围，不承担授权职责。
+    const permissionMode = config.permissionMode ?? "readonly";
+    if (!["readonly", "review", "yolo"].includes(permissionMode)) {
+      throw new Error("[PiRuntime] 权限模式无效");
+    }
+    const allowWrite = permissionMode === "review" || permissionMode === "yolo";
+    const contourFileTools = createAuthorizedFileTools({
+        projectId,
+        workspaceDir: effectiveCwd,
+        additionalFiles: config.authorizedFiles,
+        allowWrite,
+      }) as Array<{ name: string }>;
+    const toolPolicy = applyAgentToolPolicy({
+      requestedTools: config.tools,
+      customTools: config.customTools,
+      contourFileTools,
+      allowWrite,
+    });
 
     const { session } = await createAgentSession({
       cwd: effectiveCwd,
@@ -164,9 +170,9 @@ export class PiRuntime implements AgentRuntime {
       thinkingLevel: "off",
       authStorage,
       modelRegistry: this.modelRegistry,
-      tools,
-      customTools: config.customTools as any,
-      resourceLoader: await this.createResourceLoader(config, authStorage),
+      tools: toolPolicy.tools,
+      customTools: toolPolicy.customTools as any,
+      resourceLoader: await this.createResourceLoader(config, authStorage, effectiveCwd),
       sessionManager,
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
@@ -228,14 +234,13 @@ export class PiRuntime implements AgentRuntime {
     promptState.unsubscribe = this.session.subscribe(
       (event: AgentSessionEvent) => {
         const mapped = this.mapEvent(event);
-        if (!mapped) return;
-
-        if (mapped.type === "agent_end") {
-          pushEvent(mapped);
+        if (event.type === "agent_end") {
+          if (mapped) pushEvent(mapped);
           signalDone();
           return;
         }
 
+        if (!mapped) return;
         pushEvent(mapped);
       },
     );
@@ -287,7 +292,7 @@ export class PiRuntime implements AgentRuntime {
       .catch((err: unknown) => {
         pushEvent({
           type: "error",
-          message: err instanceof Error ? err.message : String(err),
+          error: classifyAgentError(err),
         });
         signalDone();
       });
@@ -334,7 +339,7 @@ export class PiRuntime implements AgentRuntime {
     const provider = this.config.provider ?? "anthropic";
     const model = this.modelRegistry.find(provider, modelId);
     if (!model) {
-      throw new Error(`[PiRuntime] 未找到模型: ${provider}/${modelId}`);
+      throw typedAgentError("invalid_model");
     }
     this.model = model;
     if (this.session) {
@@ -359,12 +364,14 @@ export class PiRuntime implements AgentRuntime {
 
   /** 清理上一次 prompt 的订阅状态 */
   private cleanupActivePrompt(): void {
-    if (this.activePrompt) {
+    if (!this.activePrompt) return;
+    try {
       this.activePrompt.unsubscribe();
       // 如果消费者还在等待，发送 done 信号避免永久挂起
       if (this.activePrompt.waitingResolve && !this.activePrompt.done) {
         this.activePrompt.waitingResolve({ value: undefined, done: true });
       }
+    } finally {
       this.activePrompt = null;
     }
   }
@@ -389,8 +396,19 @@ export class PiRuntime implements AgentRuntime {
       case "agent_start":
         return { type: "agent_start" };
 
-      case "agent_end":
+      case "agent_end": {
+        const messages = (event as unknown as {
+          messages?: Array<{ role?: string; stopReason?: string; errorMessage?: string }>;
+        }).messages ?? [];
+        const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+        if (lastAssistant?.stopReason === "error") {
+          return { type: "error", error: classifyAgentError(lastAssistant.errorMessage) };
+        }
+        if (lastAssistant?.stopReason === "aborted") {
+          return { type: "error", error: classifyAgentError("aborted") };
+        }
         return { type: "agent_end" };
+      }
 
       case "turn_start":
         return { type: "turn_start" };
@@ -434,6 +452,7 @@ export class PiRuntime implements AgentRuntime {
   private async createResourceLoader(
     config: AgentRuntimeConfig,
     _authStorage: AuthStorage,
+    effectiveCwd: string,
   ): Promise<DefaultResourceLoader> {
     // systemPromptOverride 注入业务上下文（如 Flow/Doc）到 Agent 的 system prompt。
     // 文档第五节已记录：systemPromptOverride 实际是 DefaultResourceLoader 的构造
@@ -452,7 +471,6 @@ export class PiRuntime implements AgentRuntime {
     // 调研确认：extensionFactories 通过 DefaultResourceLoader 注入（不是
     // createAgentSession 直接参数），且和 customTools 能共存。
     const permissionMode = config.permissionMode ?? "readonly";
-    const effectiveCwd = config.projectDir ?? config.cwd;
     const projectId = config.projectId ?? path.basename(effectiveCwd);
     const extensionFactories =
       permissionMode === "review"
@@ -471,34 +489,5 @@ export class PiRuntime implements AgentRuntime {
     });
     await loader.reload();
     return loader;
-  }
-}
-
-// ── 辅助函数 ──────────────────────────────────────────────────────────────────
-
-/**
- * 在 sessionDir 中查找指定 sessionId 对应的会话文件
- *
- * 会话文件命名格式：{timestamp}_{sessionId}.jsonl（由 SessionManager 生成）。
- * 通过文件名后缀匹配，避免读取文件内容。
- *
- * @param sessionDir - sessions/ 目录路径
- * @param sessionId  - 要查找的会话 ID
- * @returns 完整的文件路径，未找到则返回 null
- */
-function findSessionFileById(
-  sessionDir: string,
-  sessionId: string,
-): string | null {
-  try {
-    const files = readdirSync(sessionDir);
-    const match = files.find((f) => {
-      const parsed = f.match(/^\d+_(.+)\.jsonl$/);
-      return parsed?.[1] === sessionId;
-    });
-    return match ? path.join(sessionDir, match) : null;
-  } catch {
-    // 目录不存在或无权读取 → session 不存在
-    return null;
   }
 }

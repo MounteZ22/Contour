@@ -8,6 +8,7 @@ import { validateId, ValidationError } from '../vault/validate.js';
 import { findProjectDir } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
 import { yamlSafeValue } from '../vault/yaml-utils.js';
+import { ensureProjectDir } from '../services/projectManager.js';
 
 const router = Router();
 
@@ -40,6 +41,8 @@ async function moveToTrash(projectDir: string, projectName: string): Promise<voi
   console.log(`项目已移至回收站: ${trashPath}`);
 }
 
+// ── API ──
+
 // GET /api/project - 返回所有项目
 router.get('/', async (req, res) => {
   try {
@@ -56,7 +59,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/projects - 创建新项目
+// POST /api/project - 创建新项目
 router.post('/', async (req, res) => {
   try {
     const { projectId, title, researchGoal } = req.body as {
@@ -76,7 +79,9 @@ router.post('/', async (req, res) => {
     const safeTitle = yamlSafeValue(title);
     const safeGoal = yamlSafeValue(researchGoal || '');
     // 过滤 title 中的路径穿越字符，防止目录逃逸
-    const safePathTitle = sanitizePathSegment(title.replace(/\s+/g, '_').toLowerCase());
+    const rawPathTitle = sanitizePathSegment(title.replace(/\s+/g, '_').toLowerCase());
+    // 限制目录名长度，防止文件系统路径过长
+    const safePathTitle = rawPathTitle.slice(0, 100);
     const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${safePathTitle}`);
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'background'), { recursive: true });
@@ -106,6 +111,7 @@ ${researchGoal || '待补充研究目标'}
     invalidateCache();
     // 返回目录名作为实际 projectId，与扫描器一致
     const actualProjectId = path.basename(projectDir);
+    ensureProjectDir(actualProjectId, projectDir);
     const response: ApiResponse<{ projectId: string }> = { success: true, data: { projectId: actualProjectId } };
     res.status(201).json(response);
   } catch (err) {

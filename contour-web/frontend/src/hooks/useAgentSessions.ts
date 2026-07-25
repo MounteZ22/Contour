@@ -34,6 +34,10 @@ function writeSessions(sessions: AgentSession[]) {
   window.dispatchEvent(new Event(SESSIONS_UPDATED_EVENT));
 }
 
+function filterSessionsByProject(sessions: AgentSession[], projectId?: string): AgentSession[] {
+  return projectId ? sessions.filter((session) => session.projectId === projectId) : sessions;
+}
+
 // ── 后端 API 类型 ───────────────────────────────────────────────────────────────
 
 /** 后端返回的会话摘要 */
@@ -128,11 +132,13 @@ function mergeSessions(
  *                    并合并到 localStorage 中；不传则仅使用 localStorage
  */
 export function useAgentSessions(projectId?: string) {
-  const [sessions, setSessions] = useState<AgentSession[]>(() => readSessions());
+  const [sessions, setSessions] = useState<AgentSession[]>(() =>
+    filterSessionsByProject(readSessions(), projectId),
+  );
 
   const refresh = useCallback(() => {
-    setSessions(readSessions());
-  }, []);
+    setSessions(filterSessionsByProject(readSessions(), projectId));
+  }, [projectId]);
 
   // ── 初始化 & projectId 变化时从后端加载 ──────────────────────────────────
   useEffect(() => {
@@ -144,17 +150,25 @@ export function useAgentSessions(projectId?: string) {
 
     let cancelled = false;
 
+    // 一次性迁移：清理无 projectId 的旧会话记录
+    const allSessions = readSessions();
+    const orphaned = allSessions.filter((s) => !s.projectId);
+    if (orphaned.length > 0) {
+      const cleaned = allSessions.filter((s) => s.projectId);
+      writeSessions(cleaned);
+    }
+
     fetchBackendSessions(projectId).then((backendSessions) => {
       if (cancelled) return;
       if (backendSessions) {
         const localSessions = readSessions();
         const merged = mergeSessions(backendSessions, localSessions, projectId);
-        setSessions(merged);
+        setSessions(filterSessionsByProject(merged, projectId));
         // 同步合并后的列表到 localStorage，保持离线缓存最新
         writeSessions(merged);
       } else {
         // 后端不可用 → 降级到 localStorage
-        setSessions(readSessions());
+        setSessions(filterSessionsByProject(readSessions(), projectId));
       }
     });
 
@@ -183,11 +197,11 @@ export function useAgentSessions(projectId?: string) {
         createdAt: now,
         updatedAt: now,
         contextItems,
-        projectId: sessionProjectId,
+        projectId: sessionProjectId || projectId,
       };
       const next = [session, ...readSessions()];
       writeSessions(next);
-      setSessions(next);
+      setSessions(filterSessionsByProject(next, projectId));
 
       // 异步通知后端创建会话文件（静默失败，localStorage 已更新）
       const effectiveProjectId = sessionProjectId || projectId;
@@ -213,9 +227,9 @@ export function useAgentSessions(projectId?: string) {
         session.id === sessionId ? { ...session, ...patch, updatedAt: Date.now() } : session,
       );
       writeSessions(next);
-      setSessions(next);
+      setSessions(filterSessionsByProject(next, projectId));
     },
-    [],
+    [projectId],
   );
 
   // ── 删除会话 ──────────────────────────────────────────────────────────────
@@ -236,8 +250,8 @@ export function useAgentSessions(projectId?: string) {
     const next = allSessions.filter((session) => session.id !== sessionId);
     localStorage.removeItem(`contour:chat:${sessionId}`);
     writeSessions(next);
-    setSessions(next);
-  }, []);
+    setSessions(filterSessionsByProject(next, projectId));
+  }, [projectId]);
 
   // ── 获取单个会话 ──────────────────────────────────────────────────────────
   const getSession = useCallback((sessionId: string | undefined) => {

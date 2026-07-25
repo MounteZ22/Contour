@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bot, Loader2 } from 'lucide-react';
 import { ChatMessageItem } from '../ChatMessage';
 import { ChatInputBar } from './ChatInputBar';
@@ -7,8 +8,10 @@ import { useSmoothStream } from '../../hooks/useSmoothStream';
 import { useAgentSessions, type AgentSession } from '../../hooks/useAgentSessions';
 import { PermissionDialog } from './PermissionDialog';
 import type { ChatMessage } from '../../state/aiApi';
+import { AgentErrorNotice } from './AgentErrorNotice';
 
 export function SessionChat({ session }: { session: AgentSession }) {
+  const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const { updateSession } = useAgentSessions();
@@ -23,6 +26,8 @@ export function SessionChat({ session }: { session: AgentSession }) {
     toolActivities,
     error,
     handleSend,
+    handleRetry,
+    handleStop,
     handleKeyDown,
     clearMessages,
     permissionMode,
@@ -106,9 +111,11 @@ export function SessionChat({ session }: { session: AgentSession }) {
               )}
 
               {error && (
-                <div className="rounded-lg p-3 bg-danger-subtle-bg border border-danger/20 text-danger text-xs mx-2">
-                  {error}
-                </div>
+                <AgentErrorNotice
+                  error={error}
+                  onRetry={() => { void handleRetry(); }}
+                  onOpenSettings={() => navigate('/settings')}
+                />
               )}
             </>
           )}
@@ -121,6 +128,7 @@ export function SessionChat({ session }: { session: AgentSession }) {
         onInputChange={setInputValue}
         isLoading={isLoading}
         onSend={handleSend}
+        onStop={handleStop}
         onKeyDown={handleKeyDown}
         onClear={clearMessages}
         hasMessages={messages.length > 0}

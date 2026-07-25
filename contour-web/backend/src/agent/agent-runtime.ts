@@ -15,6 +15,32 @@
  * - agent_end 既是会话结束信号，也是 "done" 信号
  */
 
+// ── 错误类型 ─────────────────────────────────────────────────────────────────
+//
+// 定义在此处而非 typed-error.ts 以避免循环依赖：typed-error.ts 是实现，
+// agent-runtime.ts 是接口层，接口不应依赖实现。
+
+/** Agent 错误码枚举 */
+export type AgentErrorCode =
+  | "invalid_api_key"
+  | "rate_limited"
+  | "prompt_too_long"
+  | "network_error"
+  | "service_error"
+  | "invalid_model"
+  | "aborted"
+  | "unknown";
+
+/** 统一错误载荷，供运行时和 HTTP 层共同使用 */
+export interface AgentErrorPayload {
+  code: AgentErrorCode;
+  title: string;
+  message: string;
+  canRetry: boolean;
+  action?: "open_settings";
+  httpStatus?: number;
+}
+
 // ── 配置类型 ─────────────────────────────────────────────────────────────────
 
 /** Agent 运行时初始化配置 */
@@ -47,14 +73,16 @@ export interface AgentRuntimeConfig {
    * 校验。调用方（如 api/ai.ts）负责组装工具数组并传入。
    */
   customTools?: unknown[];
+  /** 当前项目明确链接、可由受控只读工具精确访问的额外文件。 */
+  authorizedFiles?: string[];
   /**
    * 权限模式（可选，缺省 "readonly"）
    *
    * - "readonly"：只开放只读工具（read/grep/find/ls + 业务只读），写工具不进
    *   白名单，Agent 调不到。最安全，默认值。
-   * - "yolo"：所有工具（含 write/edit/bash）开放，不拦截。
-   * - "review"：所有工具开放，但通过 extensionFactories 挂 tool_call 钩子拦截
-   *   写操作，等待用户通过 PermissionDialog 确认后放行或拒绝。
+   * - "yolo"：开放受路径白名单保护的 write/edit，不逐次确认。
+   * - "review"：开放同样的受控 write/edit，并在执行前等待用户确认。
+   * - bash 暂不开放，避免命令行绕过项目路径白名单。
    */
   permissionMode?: "readonly" | "review" | "yolo";
   /**
@@ -67,9 +95,8 @@ export interface AgentRuntimeConfig {
   /**
    * 项目内容目录
    *
-   * Agent 的工作目录和工具执行基准路径。例如 D:/Contour 或 D:/Contour-dev。
-   * 同时也决定了项目名称（取其 basename）。
-   * 新代码应使用此字段替代 cwd。
+   * 项目 Vault 路径，仅用于业务上下文和项目定位。Agent 的 cwd 由运行时根据
+   * projectId/sessionId 创建在应用数据目录中，不应直接指向 Vault。
    */
   projectDir: string;
   /**
@@ -78,7 +105,7 @@ export interface AgentRuntimeConfig {
    * @deprecated 请使用 projectDir 替代。保留此字段是为了向后兼容，
    * 当 projectDir 未传入时作为回退。后续所有调用方迁移后删除。
    */
-  cwd: string;
+  cwd?: string;
   /** 启用的工具名称列表，默认只开放 read */
   tools?: string[];
   /**
@@ -93,7 +120,8 @@ export interface AgentRuntimeConfig {
    * 会话 ID（可选）
    *
    * 传此值可恢复已有会话的对话历史，Agent 会加载之前的消息作为上下文。
-   * 不传或传空则创建新会话。持久化文件存储在 dataDir/projects/{projectId}/sessions/ 目录下。
+   * 不传或传空则创建新会话。每个会话存储在
+   * dataDir/projects/{projectId}/sessions/{sessionId}/ 目录下。
    */
   sessionId?: string;
 }
@@ -118,7 +146,7 @@ export type AgentStreamEvent =
   | { type: "thinking_delta"; delta: string }
   | { type: "tool_call_start"; toolName: string }
   | { type: "tool_call_end"; toolName: string; isError: boolean }
-  | { type: "error"; message: string }
+  | { type: "error"; error: AgentErrorPayload }
   /** 权限确认请求：通知前端弹出确认框，等待用户决策后放行/拒绝 */
   | {
       type: "permission_request";

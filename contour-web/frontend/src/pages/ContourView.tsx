@@ -257,7 +257,7 @@ export function ContourView() {
       return;
     }
     setChatContextItems(contextItems);
-    const session = createSession(contextItems);
+    const session = createSession(contextItems, project.projectId);
     navigate(`/agent/${session.id}`);
   };
 

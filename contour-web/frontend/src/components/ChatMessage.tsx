@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Bot, ChevronRight, Loader2, Check, XCircle, Wrench } from 'lucide-react';
+import { User, Bot, ChevronRight, Loader2, Check, XCircle, Wrench, Square } from 'lucide-react';
 import type { ChatMessage, ToolActivity } from '../state/aiApi';
 import { toolPhrase } from '../lib/toolPhrase';
 
@@ -119,6 +119,12 @@ export function ChatMessageItem({ message, isStreaming = false }: ChatMessagePro
             </div>
           )}
         </div>
+        {!isUser && message.status === 'stopped' && (
+          <span className="inline-flex items-center gap-1 px-1 text-[11px] text-text-tertiary">
+            <Square size={9} fill="currentColor" />
+            已停止
+          </span>
+        )}
       </div>
     </div>
   );

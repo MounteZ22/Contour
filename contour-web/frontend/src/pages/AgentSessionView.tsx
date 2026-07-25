@@ -6,6 +6,7 @@ import { FilePreview } from '../components/agent/FilePreview';
 import { SessionChat } from '../components/agent/SessionChat';
 import { SessionHeader } from '../components/agent/SessionHeader';
 import { previewFileAtom } from '../state/chat';
+import { currentProjectIdAtom } from '../state/shell';
 import { useAgentSessions } from '../hooks/useAgentSessions';
 
 export function AgentSessionView() {
@@ -14,7 +15,15 @@ export function AgentSessionView() {
   const { getSession } = useAgentSessions();
   const previewFile = useAtomValue(previewFileAtom);
   const setPreviewFile = useSetAtom(previewFileAtom);
+  const setCurrentProjectId = useSetAtom(currentProjectIdAtom);
   const session = getSession(sessionId);
+
+  // 同步左侧栏高亮到会话所属项目
+  useEffect(() => {
+    if (session?.projectId) {
+      setCurrentProjectId(session.projectId);
+    }
+  }, [session?.projectId, setCurrentProjectId]);
 
   useEffect(() => {
     setPreviewFile(null);
@@ -38,11 +47,11 @@ export function AgentSessionView() {
     <div className="h-full min-h-0 flex flex-col">
       <SessionHeader session={session} />
       <div className="flex-1 min-h-0 flex">
-        <div className={previewFile ? 'w-1/2 min-w-[360px] min-h-0' : 'flex-1 min-w-0 min-h-0'}>
+        <div className={previewFile ? 'w-1/2 min-w-0 min-h-0' : 'flex-1 min-w-0 min-h-0'}>
           <SessionChat session={session} />
         </div>
         {previewFile && (
-          <div className="flex-1 min-w-[360px] min-h-0">
+          <div className="flex-1 min-w-0 min-h-0">
             <FilePreview />
           </div>
         )}

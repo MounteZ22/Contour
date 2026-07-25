@@ -3,11 +3,16 @@ import { loadProjects } from '../vault/loader.js';
 import { validateId } from '../vault/validate.js';
 import type { Flow, ProjectDoc } from '../types.js';
 
+async function scopedProjects(projectId?: string) {
+  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  return projectId ? projects.filter((project) => project.projectId === projectId) : projects;
+}
+
 /** 读取指定 Flow 的完整内容 */
-export async function getFlowDetail(flowId: string): Promise<string> {
+export async function getFlowDetail(flowId: string, projectId?: string): Promise<string> {
   validateId(flowId, 'flowId');
 
-  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  const projects = await scopedProjects(projectId);
   const flow = projects.flatMap((p) => p.flows).find((f) => f.flowId === flowId);
 
   if (!flow) {
@@ -18,12 +23,12 @@ export async function getFlowDetail(flowId: string): Promise<string> {
 }
 
 /** 按关键词搜索 Flow */
-export async function searchFlows(query: string): Promise<string> {
+export async function searchFlows(query: string, projectId?: string): Promise<string> {
   if (!query || typeof query !== 'string') {
     return JSON.stringify({ error: '搜索关键词不能为空' });
   }
 
-  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  const projects = await scopedProjects(projectId);
   const allFlows = projects.flatMap((p) => p.flows);
   const q = query.toLowerCase();
 
@@ -54,10 +59,10 @@ export async function searchFlows(query: string): Promise<string> {
 }
 
 /** 读取指定 Doc 的完整内容 */
-export async function getDoc(docId: string): Promise<string> {
+export async function getDoc(docId: string, projectId?: string): Promise<string> {
   validateId(docId, 'docId');
 
-  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  const projects = await scopedProjects(projectId);
   const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
 
   if (!doc) {
@@ -73,6 +78,8 @@ function formatFlow(flow: Flow): string {
   result += `- 摘要：${flow.summary}\n`;
   result += `- 标签：${flow.tags.join(', ') || '无'}\n`;
   result += `- 未解决问题：${flow.openUncertainties.join(', ') || '无'}\n\n`;
+  result += `- 附件：${flow.attachments.join(', ') || '无'}\n`;
+  result += `- 外部链接：${flow.links.map((link) => `${link.label} (${link.path})`).join(', ') || '无'}\n\n`;
 
   for (const section of flow.sections) {
     result += `## ${section.title}\n${section.content}\n\n`;

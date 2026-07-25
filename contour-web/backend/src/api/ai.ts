@@ -1,19 +1,26 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { testLLMConnection } from '../services/aiService.js';
-import { buildSystemPrompt } from '../services/promptBuilder.js';
+import { buildAgentPrompt } from '../services/promptBuilder.js';
 import type { AIContextItem } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
 import { channelToAgentRuntimeConfig, findDefaultAgentChannel } from '../agent/channel-adapter.js';
 import { PiRuntime } from '../agent/pi-runtime.js';
 import { CONFIG } from '../config.js';
-import { contourCustomTools, VAULT_TOOLS_PROMPT } from '../tools/pi-vault-tools.js';
+import { createContourCustomTools } from '../tools/pi-vault-tools.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
 import { findProjectDir } from '../vault/locate.js';
 import { ensureProjectDir } from '../services/projectManager.js';
 import path from 'node:path';
+import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '../agent/typed-error.js';
+import { loadProjects } from '../vault/loader.js';
 
 
 const router = Router();
+
+function sendAgentHttpError(res: Response, error: unknown, status?: number): void {
+  const payload = classifyAgentError(error);
+  res.status(status ?? agentErrorHttpStatus(payload)).json({ success: false, error: payload });
+}
 
 // ── Pi Agent 路由请求体（本地类型，不放入 types.ts） ──────────────────────────
 
@@ -30,8 +37,8 @@ interface PiChatRequestBody {
   /**
    * 业务上下文项（可选）
    *
-   * 前端选中的 Flow/Doc 引用，通过 buildSystemPrompt() 注入到 Agent 的
-   * system prompt，让 Agent 感知当前业务上下文。
+   * 前端选中的 Flow/Doc 引用，每轮通过 buildAgentPrompt() 重新读取并注入，
+   * 让 Agent 感知当前业务上下文。
    */
   contextItems?: AIContextItem[];
   /**
@@ -89,7 +96,27 @@ router.post('/pi-chat', async (req, res) => {
     // 1. 解析请求参数
     const body = req.body as PiChatRequestBody;
     if (!body.message || typeof body.message !== 'string') {
-      res.status(400).json({ success: false, error: '消息不能为空' });
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '消息不能为空',
+        message: '请输入内容后再发送。',
+        canRetry: false,
+      }), 400);
+      return;
+    }
+    if (!body.projectId || !body.sessionId) {
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '会话信息不完整',
+        message: '当前请求缺少项目或会话标识，请重新打开这个 Agent 会话后再试。',
+        canRetry: false,
+      }), 400);
+      return;
+    }
+    if (body.permissionMode !== undefined && !['readonly', 'review', 'yolo'].includes(body.permissionMode)) {
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '权限模式无效',
+        message: '请选择只读、审查或自动模式后重试。',
+        canRetry: false,
+      }), 400);
       return;
     }
 
@@ -101,7 +128,12 @@ router.post('/pi-chat', async (req, res) => {
       const hint = body.channelId
         ? `渠道不存在: ${body.channelId}`
         : '没有已启用的 Agent 兼容渠道，请先在渠道设置中配置一个 Anthropic 兼容渠道';
-      res.status(400).json({ success: false, error: hint });
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '还不能开始对话',
+        message: hint,
+        canRetry: false,
+        action: 'open_settings',
+      }), 400);
       return;
     }
 
@@ -109,23 +141,18 @@ router.post('/pi-chat', async (req, res) => {
     //    - 如果前端传了 projectId，用 findProjectDir 解析实际项目子目录
     //    - 不传则回退到 VAULTS_DIR 根（单项目兼容模式）
     //    - 存储名用目录的 basename（如 "PRJ_001_示例研究项目"），和文件系统一致
-    let projectDir = CONFIG.VAULTS_DIR;
-    let projectName = "default";
-    if (body.projectId) {
-      const found = await findProjectDir(body.projectId);
-      if (found) {
-        projectDir = found;
-        projectName = path.basename(projectDir);
-        console.log(`[Pi-chat] 项目目录: ${projectDir}`);
-        // 编码验证：输出每个字符的 Unicode 码点，用于排查 UTF-8 路径在
-        // Node.js 文件系统链路中是否被破坏（如遇到乱码目录名可与之对比）。
-        console.log(`[Pi-chat] 项目名编码验证:`,
-          Array.from(projectName).map(c => `U+${c.codePointAt(0)!.toString(16).toUpperCase()}`).join(' '));
-      } else {
-        console.warn(`[Pi-chat] 项目 ${body.projectId} 未找到，回退到 VAULTS_DIR`);
-        projectName = body.projectId; // 前端传了但目录没了，仍用原名隔离
-      }
+    const found = await findProjectDir(body.projectId);
+    if (!found) {
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '项目不存在',
+        message: '当前项目目录已不存在或无法访问，请返回项目列表后重新选择。',
+        canRetry: false,
+      }), 404);
+      return;
     }
+    const projectDir = found;
+    let projectName = path.basename(projectDir);
+    console.log(`[Pi-chat] 项目目录: ${projectDir}`);
 
     // 过滤文件系统非法字符，防止 mkdirSync 抛异常
     projectName = projectName.replace(/[<>:"/\\|?*]/g, '_').replace(/\.\./g, '_');
@@ -136,18 +163,32 @@ router.post('/pi-chat', async (req, res) => {
     // 必须确保 config.json 被写入。
     ensureProjectDir(projectName, projectDir);
 
-    // 4. 构建业务上下文 system prompt（Flow/Doc 注入）+ 业务工具使用引导
-    const systemPrompt =
-      (await buildSystemPrompt(body.contextItems || [])) +
-      "\n\n" +
-      VAULT_TOOLS_PROMPT;
+    const currentProject = (await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT))
+      .find((project) => project.projectId === projectName || project.projectId === body.projectId);
+    const selectedFlowIds = new Set((Array.isArray(body.contextItems) ? body.contextItems : [])
+      .filter((item): item is AIContextItem => Boolean(item) && item.type === 'flow' && typeof item.id === 'string')
+      .map((item) => item.id));
+    const authorizedFiles = currentProject?.flows
+      .filter((flow) => selectedFlowIds.has(flow.flowId))
+      .flatMap((flow) => flow.links.map((link) => link.path)) ?? [];
+
+    // 4. 固定产品规则与本轮实时上下文分层构建。
+    const systemPrompt = await buildAgentPrompt({
+      contextItems: body.contextItems,
+      projectId: body.projectId,
+      projectStorageId: projectName,
+      projectDir,
+      sessionId: body.sessionId,
+      dataDir: CONFIG.DATA_DIR,
+    });
 
     // 5. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
     let agentConfig;
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
         systemPrompt,
-        customTools: contourCustomTools,
+        customTools: createContourCustomTools(currentProject?.projectId ?? projectName),
+        authorizedFiles,
         permissionMode: body.permissionMode,
         sessionId: body.sessionId,
         dataDir: CONFIG.DATA_DIR,
@@ -156,7 +197,12 @@ router.post('/pi-chat', async (req, res) => {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      res.status(400).json({ success: false, error: `渠道配置转换失败: ${msg}` });
+      sendAgentHttpError(res, typedAgentError('unknown', {
+        title: '渠道配置有误',
+        message: `请在设置中检查当前 Agent 渠道：${msg}`,
+        canRetry: false,
+        action: 'open_settings',
+      }), 400);
       return;
     }
 
@@ -178,11 +224,13 @@ router.post('/pi-chat', async (req, res) => {
 
     try {
       // 9. 消费 PiRuntime.prompt() 事件流 → SSE 输出
+      let streamFailed = false;
       for await (const event of runtime.prompt(body.message)) {
         if (aborted) break;
+        if (event.type === 'error') streamFailed = true;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
-      if (!aborted) {
+      if (!aborted && !streamFailed) {
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
       }
     } finally {
@@ -190,13 +238,13 @@ router.post('/pi-chat', async (req, res) => {
       req.off('close', onClose);
     }
   } catch (error) {
+    const payload = classifyAgentError(error);
+    console.error(`[Pi-chat] ${payload.code}: ${payload.message}`);
     if (!res.headersSent) {
-      const msg = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ success: false, error: msg });
+      sendAgentHttpError(res, error);
     } else {
-      const msg = error instanceof Error ? error.message : String(error);
       try {
-        res.write(`data: ${JSON.stringify({ type: 'error', error: msg })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'error', error: payload })}\n\n`);
       } catch {
         // res.write 失败则静默
       }

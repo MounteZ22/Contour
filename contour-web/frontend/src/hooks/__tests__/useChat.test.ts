@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 
 // ── 用 vi.hoisted 定义 mock 变量，确保 vi.mock 工厂能访问 ─────────────────
@@ -8,7 +8,8 @@ const { mockSendChatMessageStream, mockRespondToPermission } = vi.hoisted(() => 
   mockRespondToPermission: vi.fn(),
 }));
 
-vi.mock('../../state/aiApi', () => ({
+vi.mock('../../state/aiApi', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../state/aiApi')>(),
   sendChatMessageStream: mockSendChatMessageStream,
   respondToPermission: mockRespondToPermission,
 }));
@@ -35,6 +36,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 import { useChat } from '../useChat';
@@ -275,7 +277,7 @@ describe('useChat', () => {
         await result.current.handleSend();
       });
 
-      expect(result.current.error).toBe('网络错误');
+      expect(result.current.error).toMatchObject({ code: 'network_error', canRetry: true });
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isStreaming).toBe(false);
     });
@@ -285,9 +287,16 @@ describe('useChat', () => {
 
       mockSendChatMessageStream.mockImplementation(
         async (_msg: string, _ctx: unknown, callbacks: {
-          onError: (error: string) => void;
+          onError: (error: {
+            code: 'service_error'; title: string; message: string; canRetry: boolean;
+          }) => void;
         }) => {
-          callbacks.onError('服务器内部错误');
+          callbacks.onError({
+            code: 'service_error',
+            title: '模型服务暂时不可用',
+            message: '服务器内部错误',
+            canRetry: true,
+          });
         },
       );
 
@@ -299,7 +308,11 @@ describe('useChat', () => {
         await result.current.handleSend();
       });
 
-      expect(result.current.error).toBe('服务器内部错误');
+      expect(result.current.error).toMatchObject({
+        code: 'service_error',
+        title: '模型服务暂时不可用',
+        message: '服务器内部错误',
+      });
       expect(result.current.isStreaming).toBe(false);
     });
 
@@ -314,7 +327,7 @@ describe('useChat', () => {
       await act(async () => {
         await result.current.handleSend();
       });
-      expect(result.current.error).toBe('失败');
+      expect(result.current.error).toMatchObject({ code: 'network_error' });
       // 第一次失败的消息仍在 messages 中
       expect(result.current.messages).toHaveLength(1);
 
@@ -337,6 +350,78 @@ describe('useChat', () => {
       expect(result.current.error).toBeNull();
       // 第一次失败的用户消息 + 第二次的用户消息 + 第二次的助手回复 = 3 条
       expect(result.current.messages).toHaveLength(3);
+    });
+
+    it('点击重试会重发失败的内容，但不重复添加用户消息', async () => {
+      const { result } = renderHook(() => useChat());
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: {
+          onError: (error: { code: 'rate_limited'; title: string; message: string; canRetry: boolean }) => void;
+        }) => {
+          callbacks.onError({ code: 'rate_limited', title: '请求过于频繁', message: '请稍后重试。', canRetry: true });
+        },
+      );
+      act(() => result.current.setInputValue('请分析这段内容'));
+      await act(async () => result.current.handleSend());
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: { onComplete: (content: string) => void }) => {
+          callbacks.onComplete('重试成功');
+        },
+      );
+      await act(async () => result.current.handleRetry());
+
+      expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
+        2,
+        '请分析这段内容',
+        expect.any(Array),
+        expect.any(Object),
+        expect.any(String),
+        undefined,
+        undefined,
+        expect.any(AbortSignal),
+      );
+      expect(result.current.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+      expect(result.current.messages.at(-1)?.content).toBe('重试成功');
+    });
+
+    it('重试会携带流错误前已生成的内容，以便模型继续回答', async () => {
+      const { result } = renderHook(() => useChat());
+      const errorInfo = {
+        code: 'service_error' as const,
+        title: '服务中断',
+        message: '请重试。',
+        canRetry: true,
+      };
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: {
+          onError: (error: typeof errorInfo, partialContent?: string) => void;
+        }) => {
+          callbacks.onError(errorInfo, '第一部分已经完成。');
+        },
+      );
+      act(() => result.current.setInputValue('请写一份摘要'));
+      await act(async () => result.current.handleSend());
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: { onComplete: (content: string) => void }) => {
+          callbacks.onComplete('续写完成');
+        },
+      );
+      await act(async () => result.current.handleRetry());
+
+      expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
+        2,
+        '请写一份摘要\n\n上次回答在生成中断。请从以下已生成内容继续，不要重复已有内容：\n第一部分已经完成。',
+        expect.any(Array),
+        expect.any(Object),
+        expect.any(String),
+        undefined,
+        undefined,
+        expect.any(AbortSignal),
+      );
     });
   });
 
@@ -513,6 +598,108 @@ describe('useChat', () => {
 
   // ── localStorage 持久化 ─────────────────────────────────────────────────
   describe('localStorage 持久化', () => {
+    it('应从 Pi v3 message 记录恢复用户和助手历史', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [
+            { type: 'session', version: 3, id: 'sdk-id' },
+            { type: 'message', id: 'u1', message: { role: 'user', content: '旧问题' } },
+            {
+              type: 'message', id: 'a1',
+              message: { role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
+            },
+          ],
+        }),
+      } as Response));
+
+      const { result } = renderHook(() =>
+        useChat([], { sessionId: 'product-session', projectId: 'project-a' }),
+      );
+
+      await waitFor(() => expect(result.current.messages).toHaveLength(2));
+      expect(result.current.messages.map((message) => message.content)).toEqual(['旧问题', '旧回答']);
+    });
+
+    it('发送消息时应把当前 sessionId 传给后端', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false } as Response));
+      const { result } = renderHook(() =>
+        useChat([], { sessionId: 'session-contract', projectId: 'project-a' }),
+      );
+
+      mockSendChatMessageStream.mockImplementation(
+        (_msg: string, _ctx: unknown, callbacks: { onComplete: (content: string) => void }) => {
+          callbacks.onComplete('完成');
+          return Promise.resolve();
+        },
+      );
+
+      act(() => {
+        result.current.setInputValue('hello');
+      });
+      await act(async () => {
+        await result.current.handleSend();
+      });
+
+      expect(mockSendChatMessageStream).toHaveBeenCalledWith(
+        'hello',
+        [],
+        expect.any(Object),
+        'readonly',
+        'project-a',
+        'session-contract',
+        expect.any(AbortSignal),
+      );
+    });
+
+    it('停止生成时应保留部分回答，并允许继续发送', async () => {
+      const { result } = renderHook(() =>
+        useChat([], { sessionId: 'session-stop', projectId: 'project-a' }),
+      );
+
+      mockSendChatMessageStream.mockImplementation(
+        async (
+          _msg: string,
+          _ctx: unknown,
+          callbacks: { onChunk: (delta: string) => void; onAborted?: (content: string) => void },
+          _mode: string,
+          _projectId: string,
+          _sessionId: string,
+          signal: AbortSignal,
+        ) => {
+          callbacks.onChunk('已经生成的部分');
+          await new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => {
+              callbacks.onAborted?.('已经生成的部分');
+              resolve();
+            }, { once: true });
+          });
+        },
+      );
+
+      act(() => result.current.setInputValue('开始回答'));
+      act(() => { void result.current.handleSend(); });
+      await waitFor(() => expect(result.current.isLoading).toBe(true));
+      act(() => result.current.handleStop());
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.messages.at(-1)).toMatchObject({
+        role: 'assistant',
+        content: '已经生成的部分',
+        status: 'stopped',
+      });
+
+      mockSendChatMessageStream.mockImplementationOnce(
+        async (_msg: string, _ctx: unknown, callbacks: { onComplete: (content: string) => void }) => {
+          callbacks.onComplete('下一轮正常');
+        },
+      );
+      act(() => result.current.setInputValue('继续'));
+      await act(async () => result.current.handleSend());
+      expect(result.current.messages.at(-1)?.content).toBe('下一轮正常');
+    });
+
     it('有 sessionId 时消息应该持久化到 localStorage', async () => {
       const { result } = renderHook(() =>
         useChat([], { sessionId: 'session-test-1' }),

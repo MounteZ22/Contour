@@ -9,6 +9,7 @@ import {
   Plus,
   Settings,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAtom } from 'jotai';
 import { showToast } from '../Toast';
@@ -25,16 +26,21 @@ function projectInitial(title: string) {
 }
 
 export function LeftSidebar({
+  forceExpanded = false,
+  onClose,
   onRefresh,
   projects,
 }: {
+  forceExpanded?: boolean;
+  onClose?: () => void;
   onRefresh: () => void;
   projects: ProjectData[];
 }) {
   const navigate = useNavigate();
-  const { sessions } = useAgentSessions();
   const [collapsed, setCollapsed] = useAtom(sidebarCollapsedAtom);
+  const displayCollapsed = forceExpanded ? false : collapsed;
   const [currentProjectId, setCurrentProjectId] = useAtom(currentProjectIdAtom);
+  const { sessions, deleteSession } = useAgentSessions(currentProjectId ?? undefined);
 
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
@@ -46,6 +52,13 @@ export function LeftSidebar({
   const handleSelectProject = (projectId: string) => {
     setCurrentProjectId(projectId);
     navigate('/contour');
+  };
+
+  const handleDeleteSession = (sessionId: string, title: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!confirm(`确定要删除会话「${title}」吗？此操作不可撤销。`)) return;
+    deleteSession(sessionId);
   };
 
   const handleAddProject = async () => {
@@ -106,7 +119,7 @@ export function LeftSidebar({
     <aside
       className={cn(
         'h-screen shrink-0 border-r border-border bg-surface flex flex-col transition-[width] duration-200',
-        collapsed ? 'w-[68px]' : 'w-[280px]',
+        displayCollapsed ? 'w-[68px]' : 'w-[280px]',
       )}
     >
       {/* Header */}
@@ -119,7 +132,7 @@ export function LeftSidebar({
           <div className="w-8 h-8 rounded-lg bg-accent-strong text-accent-on flex items-center justify-center font-headline font-bold text-[15px]">
             C
           </div>
-          {!collapsed && (
+          {!displayCollapsed && (
             <div className="min-w-0">
               <h1 className="text-[15px] font-bold font-headline leading-tight text-text-primary">Contour</h1>
               <p className="text-[10px] text-text-tertiary font-mono">Agent + Research Map</p>
@@ -130,11 +143,11 @@ export function LeftSidebar({
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0"
-          onClick={() => setCollapsed((value) => !value)}
-          title={collapsed ? '展开侧栏' : '收起侧栏'}
+          onClick={forceExpanded ? onClose : () => setCollapsed((value) => !value)}
+          title={forceExpanded ? '关闭导航' : displayCollapsed ? '展开侧栏' : '收起侧栏'}
           type="button"
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          {forceExpanded ? <X size={16} /> : displayCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </Button>
       </div>
 
@@ -145,28 +158,28 @@ export function LeftSidebar({
           className={({ isActive }) =>
             cn(
               'h-9 rounded-[6px] px-3 inline-flex items-center gap-2 text-sm transition-colors',
-              collapsed && 'justify-center px-0',
+              displayCollapsed && 'justify-center px-0',
               isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
             )
           }
           title="Contour 视图"
         >
           <Map size={16} />
-          {!collapsed && <span>Contour</span>}
+          {!displayCollapsed && <span>Contour</span>}
         </NavLink>
         <NavLink
           to="/agent"
           className={({ isActive }) =>
             cn(
               'h-9 rounded-[6px] px-3 inline-flex items-center gap-2 text-sm transition-colors',
-              collapsed && 'justify-center px-0',
+              displayCollapsed && 'justify-center px-0',
               isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
             )
           }
           title="Agent 会话"
         >
           <Bot size={16} />
-          {!collapsed && <span>Agent</span>}
+          {!displayCollapsed && <span>Agent</span>}
         </NavLink>
       </nav>
 
@@ -174,7 +187,7 @@ export function LeftSidebar({
       <div className="flex-1 overflow-y-auto p-3 space-y-5">
         {/* Projects section */}
         <section>
-          {!collapsed && (
+          {!displayCollapsed && (
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] uppercase tracking-wider text-text-tertiary font-mono">Projects</p>
               <Button
@@ -197,7 +210,7 @@ export function LeftSidebar({
                 <button
                   className={cn(
                     'group w-full rounded-[6px] border text-left transition-colors',
-                    collapsed ? 'h-10 flex items-center justify-center px-0' : 'p-2.5',
+                    displayCollapsed ? 'h-10 flex items-center justify-center px-0' : 'p-2.5',
                     active
                       ? 'bg-accent-subtle-bg'
                       : 'border-transparent text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
@@ -206,8 +219,9 @@ export function LeftSidebar({
                   onClick={() => handleSelectProject(project.projectId)}
                   title={project.title}
                   type="button"
+                  aria-current={active ? 'true' : undefined}
                 >
-                  {collapsed ? (
+                  {displayCollapsed ? (
                     <span className="text-xs font-bold font-headline">{projectInitial(project.title)}</span>
                   ) : (
                     <div className="flex items-start justify-between gap-2">
@@ -238,7 +252,7 @@ export function LeftSidebar({
               );
             })}
 
-            {!collapsed && showNewProject && (
+            {!displayCollapsed && showNewProject && (
               <div className="grid gap-2 rounded-[6px] border bg-surface-sunken p-3">
                 <Input
                   autoFocus
@@ -272,19 +286,28 @@ export function LeftSidebar({
           </div>
         </section>
 
-        {!collapsed && (
+        {!displayCollapsed && (
           <>
             {pinnedSessions.length > 0 && (
               <section className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wider text-text-tertiary font-mono">Pinned</p>
                 {pinnedSessions.map((session) => (
-                  <NavLink
-                    key={session.id}
-                    to={`/agent/${session.id}`}
-                    className="block rounded-[6px] px-3 py-2 text-sm text-text-secondary hover:bg-surface-sunken hover:text-text-primary truncate"
-                  >
-                    {session.title}
-                  </NavLink>
+                  <div key={session.id} className="group relative flex items-center">
+                    <NavLink
+                      to={`/agent/${session.id}`}
+                      className="flex-1 rounded-[6px] px-3 py-2 text-sm text-text-secondary hover:bg-surface-sunken hover:text-text-primary truncate"
+                    >
+                      {session.title}
+                    </NavLink>
+                    <button
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error hover:text-white group-hover:block"
+                      title="删除会话"
+                      onClick={(e) => handleDeleteSession(session.id, session.title, e)}
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))}
               </section>
             )}
@@ -297,19 +320,28 @@ export function LeftSidebar({
                 </div>
               ) : (
                 recentSessions.map((session) => (
-                  <NavLink
-                    key={session.id}
-                    to={`/agent/${session.id}`}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-start gap-2 rounded-[6px] px-3 py-2 text-sm transition-colors',
-                        isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
-                      )
-                    }
-                  >
-                    <MessageSquare size={14} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 truncate">{session.title}</span>
-                  </NavLink>
+                  <div key={session.id} className="group relative flex items-center">
+                    <NavLink
+                      to={`/agent/${session.id}`}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex-1 flex items-start gap-2 rounded-[6px] px-3 py-2 text-sm transition-colors',
+                          isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
+                        )
+                      }
+                    >
+                      <MessageSquare size={14} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 truncate">{session.title}</span>
+                    </NavLink>
+                    <button
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error hover:text-white group-hover:block"
+                      title="删除会话"
+                      onClick={(e) => handleDeleteSession(session.id, session.title, e)}
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))
               )}
             </section>
@@ -324,14 +356,14 @@ export function LeftSidebar({
           className={({ isActive }) =>
             cn(
               'h-9 rounded-[6px] px-3 inline-flex items-center gap-2 text-sm transition-colors',
-              collapsed && 'justify-center px-0',
+              displayCollapsed && 'justify-center px-0',
               isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
             )
           }
           title="设置"
         >
           <Settings size={16} />
-          {!collapsed && <span>设置</span>}
+          {!displayCollapsed && <span>设置</span>}
         </NavLink>
       </div>
     </aside>
