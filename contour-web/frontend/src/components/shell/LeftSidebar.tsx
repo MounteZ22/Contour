@@ -54,9 +54,10 @@ export function LeftSidebar({
     navigate('/contour');
   };
 
-  const handleDeleteSession = (sessionId: string, event: React.MouseEvent) => {
+  const handleDeleteSession = (sessionId: string, title: string, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    if (!confirm(`确定要删除会话「${title}」吗？此操作不可撤销。`)) return;
     deleteSession(sessionId);
   };
 
@@ -299,9 +300,9 @@ export function LeftSidebar({
                       {session.title}
                     </NavLink>
                     <button
-                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error hover:text-white group-hover:block"
                       title="删除会话"
-                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      onClick={(e) => handleDeleteSession(session.id, session.title, e)}
                       type="button"
                     >
                       <Trash2 size={12} />
@@ -333,9 +334,9 @@ export function LeftSidebar({
                       <span className="min-w-0 truncate">{session.title}</span>
                     </NavLink>
                     <button
-                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error hover:text-white group-hover:block"
                       title="删除会话"
-                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      onClick={(e) => handleDeleteSession(session.id, session.title, e)}
                       type="button"
                     >
                       <Trash2 size={12} />
