@@ -303,6 +303,9 @@ export function ProjectFilesSettings() {
         onAdd={(path) => addPath('file', path)}
         onRemove={(path) => removePath('file', path)}
       />
+      <div className="mt-2 rounded-[6px] bg-surface-sunken px-4 py-3 text-xs text-text-secondary">
+        💡 也可以在 Agent 界面的右侧<strong className="text-text-primary">文件面板</strong> → 项目文件 Tab 底部直接添加和移除附加文件夹/文件，无需跳转到设置页。
+      </div>
     </div>
   );
 }

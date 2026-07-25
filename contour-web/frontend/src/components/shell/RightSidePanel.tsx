@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Loader2, PanelRightClose } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { FolderOpen, File, Loader2, PanelRightClose, Plus, Trash2, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useAtom } from 'jotai';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { FileTree, type FileTreeNode } from '../agent/FileTree';
 import { rightPanelOpenAtom, rightPanelWidthAtom } from '../../state/shell';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
-import { getProjectConfig } from '../../state/projectConfig';
+import {
+  addAttachedDirectory,
+  addAttachedFile,
+  getProjectConfig,
+  removeAttachedDirectory,
+  removeAttachedFile,
+} from '../../state/projectConfig';
 import {
   findFlowEntry,
   hostBasename,
@@ -14,6 +21,7 @@ import {
   listDirectory,
   type FileEntry,
 } from '../../state/fileBrowser';
+import { showToast } from '../Toast';
 import type { AIContextItem, Claim, Flow, ProjectConfig, ProjectData, ProjectDoc } from '../../types';
 
 type PanelTab = 'session' | 'project';
@@ -67,7 +75,7 @@ function buildProjectFiles(project: ProjectData, config: ProjectConfig): FileTre
   if (!config.projectDir) return [];
   const prefix = `${project.projectId}:project`;
 
-  const roots: FileTreeNode[] = [{
+  return [{
     id: `${prefix}:vault`,
     name: `Vault · ${project.title}`,
     path: config.projectDir,
@@ -75,46 +83,6 @@ function buildProjectFiles(project: ProjectData, config: ProjectConfig): FileTre
     lazy: true,
     loadType: 'vault',
   }];
-
-  if (config.attachedDirectories.length > 0) {
-    roots.push({
-      id: `${prefix}:attached-directories`,
-      name: '附加文件夹',
-      path: '',
-      kind: 'directory',
-      actions: false,
-      defaultExpanded: true,
-      children: config.attachedDirectories.map((entry) => ({
-        id: `${prefix}:attached-directory:${entry.path}`,
-        name: hostBasename(entry.path),
-        path: entry.path,
-        kind: 'directory',
-        available: entry.available,
-        lazy: entry.available,
-        loadType: entry.available ? 'directory' : undefined,
-      })),
-    });
-  }
-
-  if (config.attachedFiles.length > 0) {
-    roots.push({
-      id: `${prefix}:attached-files`,
-      name: '附加文件',
-      path: '',
-      kind: 'directory',
-      actions: false,
-      defaultExpanded: true,
-      children: config.attachedFiles.map((entry) => ({
-        id: `${prefix}:attached-file:${entry.path}`,
-        name: hostBasename(entry.path),
-        path: entry.path,
-        kind: 'file',
-        available: entry.available,
-      })),
-    });
-  }
-
-  return roots;
 }
 
 function buildSessionFiles(
@@ -197,6 +165,10 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
   const [tab, setTab] = useState<PanelTab>('session');
   const [config, setConfig] = useState<ProjectConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [addingKind, setAddingKind] = useState<'folder' | 'file' | null>(null);
+  const [newPath, setNewPath] = useState('');
+  const [busyPath, setBusyPath] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [, setRightPanelOpen] = useAtom(rightPanelOpenAtom);
   const [rightPanelWidth] = useAtom(rightPanelWidthAtom);
   const session = getSession(sessionId);
@@ -216,6 +188,63 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
       active = false;
     };
   }, [project.projectId]);
+
+  const refreshConfig = useCallback(async () => {
+    try {
+      const nextConfig = await getProjectConfig(project.projectId);
+      setConfig(nextConfig);
+      setConfigError(null);
+    } catch (error) {
+      setConfigError(error instanceof Error ? error.message : '读取项目文件配置失败');
+    }
+  }, [project.projectId]);
+
+  const handleAdd = useCallback((kind: 'folder' | 'file') => {
+    setAddingKind(kind);
+    setNewPath('');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleConfirmAdd = useCallback(async () => {
+    const trimmed = newPath.trim();
+    if (!trimmed) return;
+    setBusyPath(trimmed);
+    try {
+      if (addingKind === 'folder') {
+        await addAttachedDirectory(project.projectId, trimmed);
+      } else {
+        await addAttachedFile(project.projectId, trimmed);
+      }
+      await refreshConfig();
+      setAddingKind(null);
+      setNewPath('');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '添加失败', 'error');
+    } finally {
+      setBusyPath(null);
+    }
+  }, [addingKind, newPath, project.projectId, refreshConfig]);
+
+  const handleCancelAdd = useCallback(() => {
+    setAddingKind(null);
+    setNewPath('');
+  }, []);
+
+  const handleRemove = useCallback(async (kind: 'folder' | 'file', path: string) => {
+    setBusyPath(path);
+    try {
+      if (kind === 'folder') {
+        await removeAttachedDirectory(project.projectId, path);
+      } else {
+        await removeAttachedFile(project.projectId, path);
+      }
+      await refreshConfig();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '移除失败', 'error');
+    } finally {
+      setBusyPath(null);
+    }
+  }, [project.projectId, refreshConfig]);
 
   const loadChildren = useCallback(async (node: FileTreeNode): Promise<FileTreeNode[]> => {
     if (node.loadType === 'vault') {
@@ -325,12 +354,166 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
           />
         )}
         {config && tab === 'project' && (
-          <FileTree
-            nodes={projectFiles}
-            emptyText="当前项目还没有可展示的文件。"
-            projectId={project.projectId}
-            loadChildren={loadChildren}
-          />
+          <>
+            <FileTree
+              nodes={projectFiles}
+              emptyText="当前项目还没有可展示的文件。"
+              projectId={project.projectId}
+              loadChildren={loadChildren}
+            />
+
+            {/* ── 附加文件夹 ── */}
+            {config.attachedDirectories.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                  附加文件夹
+                </p>
+                <ul className="space-y-0.5">
+                  {config.attachedDirectories.map((entry) => (
+                    <li
+                      key={entry.path}
+                      className={`group flex items-center gap-2 rounded-[4px] px-2 py-1 text-xs ${
+                        entry.available
+                          ? 'text-text-primary hover:bg-surface-sunken'
+                          : 'text-text-muted line-through'
+                      }`}
+                    >
+                      <FolderOpen size={12} className="shrink-0 text-accent-strong" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {hostBasename(entry.path)}
+                      </span>
+                      <span className="hidden truncate text-[10px] text-text-secondary group-hover:hidden">
+                        {entry.path}
+                      </span>
+                      <button
+                        className="hidden shrink-0 rounded-[3px] p-0.5 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                        title="移除附加文件夹"
+                        onClick={() => handleRemove('folder', entry.path)}
+                        disabled={busyPath === entry.path}
+                        type="button"
+                      >
+                        {busyPath === entry.path ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <X size={12} />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* ── 附加文件 ── */}
+            {config.attachedFiles.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                  附加文件
+                </p>
+                <ul className="space-y-0.5">
+                  {config.attachedFiles.map((entry) => (
+                    <li
+                      key={entry.path}
+                      className={`group flex items-center gap-2 rounded-[4px] px-2 py-1 text-xs ${
+                        entry.available
+                          ? 'text-text-primary hover:bg-surface-sunken'
+                          : 'text-text-muted line-through'
+                      }`}
+                    >
+                      <File size={12} className="shrink-0 text-accent-strong" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {hostBasename(entry.path)}
+                      </span>
+                      <button
+                        className="hidden shrink-0 rounded-[3px] p-0.5 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                        title="移除附加文件"
+                        onClick={() => handleRemove('file', entry.path)}
+                        disabled={busyPath === entry.path}
+                        type="button"
+                      >
+                        {busyPath === entry.path ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <X size={12} />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* ── 添加操作区 ── */}
+            <div className="mt-3 border-t border-border pt-2.5">
+              {addingKind ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    ref={inputRef}
+                    className="h-7 flex-1 rounded-[4px] px-2 text-xs"
+                    placeholder={
+                      addingKind === 'folder'
+                        ? '输入文件夹绝对路径，如 D:\\MyFolder'
+                        : '输入文件绝对路径，如 D:\\data.csv'
+                    }
+                    value={newPath}
+                    onChange={(e) => setNewPath(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleConfirmAdd();
+                      if (e.key === 'Escape') handleCancelAdd();
+                    }}
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    onClick={handleConfirmAdd}
+                    disabled={!newPath.trim() || busyPath !== null}
+                    title="确认"
+                    type="button"
+                  >
+                    {busyPath !== null ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Plus size={13} />
+                    )}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0 text-text-secondary"
+                    onClick={handleCancelAdd}
+                    title="取消"
+                    type="button"
+                  >
+                    <X size={13} />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 flex-1 justify-start gap-1.5 rounded-[4px] px-2 text-xs font-normal text-text-secondary hover:text-text-primary"
+                    onClick={() => handleAdd('folder')}
+                    type="button"
+                  >
+                    <FolderOpen size={12} />
+                    添加文件夹
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 flex-1 justify-start gap-1.5 rounded-[4px] px-2 text-xs font-normal text-text-secondary hover:text-text-primary"
+                    onClick={() => handleAdd('file')}
+                    type="button"
+                  >
+                    <File size={12} />
+                    添加文件
+                  </Button>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </aside>
