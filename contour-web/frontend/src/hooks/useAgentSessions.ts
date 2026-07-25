@@ -150,6 +150,14 @@ export function useAgentSessions(projectId?: string) {
 
     let cancelled = false;
 
+    // 一次性迁移：清理无 projectId 的旧会话记录
+    const allSessions = readSessions();
+    const orphaned = allSessions.filter((s) => !s.projectId);
+    if (orphaned.length > 0) {
+      const cleaned = allSessions.filter((s) => s.projectId);
+      writeSessions(cleaned);
+    }
+
     fetchBackendSessions(projectId).then((backendSessions) => {
       if (cancelled) return;
       if (backendSessions) {

@@ -40,7 +40,7 @@ export function LeftSidebar({
   const [collapsed, setCollapsed] = useAtom(sidebarCollapsedAtom);
   const displayCollapsed = forceExpanded ? false : collapsed;
   const [currentProjectId, setCurrentProjectId] = useAtom(currentProjectIdAtom);
-  const { sessions } = useAgentSessions(currentProjectId ?? undefined);
+  const { sessions, deleteSession } = useAgentSessions(currentProjectId ?? undefined);
 
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
@@ -52,6 +52,12 @@ export function LeftSidebar({
   const handleSelectProject = (projectId: string) => {
     setCurrentProjectId(projectId);
     navigate('/contour');
+  };
+
+  const handleDeleteSession = (sessionId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteSession(sessionId);
   };
 
   const handleAddProject = async () => {
@@ -285,13 +291,22 @@ export function LeftSidebar({
               <section className="space-y-2">
                 <p className="text-[11px] uppercase tracking-wider text-text-tertiary font-mono">Pinned</p>
                 {pinnedSessions.map((session) => (
-                  <NavLink
-                    key={session.id}
-                    to={`/agent/${session.id}`}
-                    className="block rounded-[6px] px-3 py-2 text-sm text-text-secondary hover:bg-surface-sunken hover:text-text-primary truncate"
-                  >
-                    {session.title}
-                  </NavLink>
+                  <div key={session.id} className="group relative flex items-center">
+                    <NavLink
+                      to={`/agent/${session.id}`}
+                      className="flex-1 rounded-[6px] px-3 py-2 text-sm text-text-secondary hover:bg-surface-sunken hover:text-text-primary truncate"
+                    >
+                      {session.title}
+                    </NavLink>
+                    <button
+                      className="absolute right-1 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      title="删除会话"
+                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))}
               </section>
             )}
@@ -304,19 +319,28 @@ export function LeftSidebar({
                 </div>
               ) : (
                 recentSessions.map((session) => (
-                  <NavLink
-                    key={session.id}
-                    to={`/agent/${session.id}`}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-start gap-2 rounded-[6px] px-3 py-2 text-sm transition-colors',
-                        isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
-                      )
-                    }
-                  >
-                    <MessageSquare size={14} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 truncate">{session.title}</span>
-                  </NavLink>
+                  <div key={session.id} className="group relative flex items-center">
+                    <NavLink
+                      to={`/agent/${session.id}`}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex-1 flex items-start gap-2 rounded-[6px] px-3 py-2 text-sm transition-colors',
+                          isActive ? 'bg-accent-subtle-bg text-accent-subtle-text' : 'text-text-secondary hover:bg-surface-sunken hover:text-text-primary',
+                        )
+                      }
+                    >
+                      <MessageSquare size={14} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 truncate">{session.title}</span>
+                    </NavLink>
+                    <button
+                      className="absolute right-1 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      title="删除会话"
+                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))
               )}
             </section>
