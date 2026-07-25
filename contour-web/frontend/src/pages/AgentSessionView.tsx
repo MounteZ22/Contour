@@ -6,6 +6,7 @@ import { FilePreview } from '../components/agent/FilePreview';
 import { SessionChat } from '../components/agent/SessionChat';
 import { SessionHeader } from '../components/agent/SessionHeader';
 import { previewFileAtom } from '../state/chat';
+import { currentProjectIdAtom } from '../state/shell';
 import { useAgentSessions } from '../hooks/useAgentSessions';
 
 export function AgentSessionView() {
@@ -14,7 +15,15 @@ export function AgentSessionView() {
   const { getSession } = useAgentSessions();
   const previewFile = useAtomValue(previewFileAtom);
   const setPreviewFile = useSetAtom(previewFileAtom);
+  const setCurrentProjectId = useSetAtom(currentProjectIdAtom);
   const session = getSession(sessionId);
+
+  // 同步左侧栏高亮到会话所属项目
+  useEffect(() => {
+    if (session?.projectId) {
+      setCurrentProjectId(session.projectId);
+    }
+  }, [session?.projectId, setCurrentProjectId]);
 
   useEffect(() => {
     setPreviewFile(null);
