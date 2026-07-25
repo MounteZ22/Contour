@@ -59,9 +59,13 @@ async function authorizeRequestPath(
   flowId?: unknown,
 ): Promise<{ authorized: string; projectDir: string }> {
   const access = await projectAccess(projectId, flowId);
+  // 兼容前端传入的相对路径（/list 返回的相对路径被前端原样回传时，resolve 为绝对路径）
+  const resolvedPath = path.isAbsolute(inputPath)
+    ? inputPath
+    : path.resolve(access.projectDir ?? '', inputPath);
   const authorized = authorizeProjectPath(
     projectId,
-    inputPath,
+    resolvedPath,
     kind,
     access.linkedFiles,
     access.projectDir ? [access.projectDir] : [],
