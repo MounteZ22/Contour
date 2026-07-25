@@ -299,7 +299,7 @@ export function LeftSidebar({
                       {session.title}
                     </NavLink>
                     <button
-                      className="absolute right-1 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
                       title="删除会话"
                       onClick={(e) => handleDeleteSession(session.id, e)}
                       type="button"
@@ -333,7 +333,7 @@ export function LeftSidebar({
                       <span className="min-w-0 truncate">{session.title}</span>
                     </NavLink>
                     <button
-                      className="absolute right-1 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
+                      className="absolute right-1 z-10 hidden shrink-0 rounded-[3px] p-1 text-text-secondary hover:bg-error/10 hover:text-error group-hover:block"
                       title="删除会话"
                       onClick={(e) => handleDeleteSession(session.id, e)}
                       type="button"
