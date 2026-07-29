@@ -187,3 +187,11 @@ export interface FetchModelsResult {
 export interface AppSettings {
   agentChannelId?: string;
 }
+
+/**
+ * 返回给前端的网络检索配置状态。Tavily 密钥是仅后端可读的凭据，绝不放在此类型中。
+ */
+export interface WebSearchSettingsStatus {
+  enabled: boolean;
+  hasApiKey: boolean;
+}

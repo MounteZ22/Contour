@@ -1,11 +1,20 @@
-import { ArrowLeft, Bot, ChevronDown, Edit3, Files, Plus, Sparkles, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Bot, ChevronDown, Cpu, Edit3, Files, Loader2, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAtom } from 'jotai';
 import { showToast } from '../components/Toast';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { MarkdownArticle } from '../components/MarkdownArticle';
 import { StatusBadge } from '../components/StatusBadge';
 import { FlowAssetsPanel } from '../components/flow/FlowAssetsPanel';
 import { useOptimisticMutation } from '../hooks/useOptimisticMutation';
+import { useSessionModelSelection } from '../state/agentModelSelection';
+import {
+  fetchFlowSummary,
+  flowSummaryStatesAtom,
+  generateFlowSummaryDraft,
+  initialFlowSummaryState,
+  saveFlowSummary,
+} from '../state/flowSummary';
 import type { FlowStatus, ProjectData } from '../types';
 
 export function FlowWorkspacePage() {
@@ -28,6 +37,23 @@ export function FlowWorkspacePage() {
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
   const { mutate, isPending } = useOptimisticMutation();
+  const summaryKey = `${project.projectId}:${initialFlow.flowId}`;
+  const [summaryStates, setSummaryStates] = useAtom(flowSummaryStatesAtom);
+  const summaryState = summaryStates[summaryKey] ?? initialFlowSummaryState;
+  const setSummaryState = useCallback((update: typeof initialFlowSummaryState | ((current: typeof initialFlowSummaryState) => typeof initialFlowSummaryState)) => {
+    setSummaryStates((current) => {
+      const previous = current[summaryKey] ?? initialFlowSummaryState;
+      const next = typeof update === 'function' ? update(previous) : update;
+      return { ...current, [summaryKey]: next };
+    });
+  }, [setSummaryStates, summaryKey]);
+  const {
+    options: summaryModelOptions,
+    status: summaryModelStatus,
+    selectedOption: selectedSummaryModel,
+    selection: summaryModelSelection,
+    selectModel: selectSummaryModel,
+  } = useSessionModelSelection(`flow-summary:${summaryKey}`);
 
   useEffect(() => {
     setFlowStatus(initialFlow.status);
@@ -71,6 +97,30 @@ export function FlowWorkspacePage() {
     setIsEditing(false);
     setShowNewSection(false);
   }, [flowId, project.flows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSummaryState(initialFlowSummaryState);
+    fetchFlowSummary(project.projectId, initialFlow.flowId)
+      .then((content) => {
+        if (cancelled) return;
+        setSummaryState({
+          ...initialFlowSummaryState,
+          content,
+          savedContent: content,
+          isLoading: false,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSummaryState({
+          ...initialFlowSummaryState,
+          isLoading: false,
+          error: error instanceof Error ? error.message : '读取摘要失败',
+        });
+      });
+    return () => { cancelled = true; };
+  }, [initialFlow.flowId, project.projectId, setSummaryState]);
 
   if (!activeSection) {
     return (
@@ -187,6 +237,57 @@ export function FlowWorkspacePage() {
     }
   };
 
+  const handleGenerateSummary = async () => {
+    if (!summaryModelSelection || summaryState.isGenerating) return;
+    setSummaryState((current) => ({ ...current, isGenerating: true, error: null }));
+    try {
+      const { draft } = await generateFlowSummaryDraft(project.projectId, initialFlow.flowId, summaryModelSelection);
+      setSummaryState((current) => ({
+        ...current,
+        content: draft,
+        isEditing: true,
+        isGenerating: false,
+      }));
+    } catch (error) {
+      setSummaryState((current) => ({
+        ...current,
+        isGenerating: false,
+        error: error instanceof Error ? error.message : '生成摘要草稿失败',
+      }));
+    }
+  };
+
+  const handleSaveSummary = async () => {
+    if (summaryState.isSaving) return;
+    setSummaryState((current) => ({ ...current, isSaving: true, error: null }));
+    try {
+      await saveFlowSummary(project.projectId, initialFlow.flowId, summaryState.content);
+      setSummaryState((current) => ({
+        ...current,
+        savedContent: current.content,
+        isSaving: false,
+        isEditing: false,
+      }));
+      onRefresh();
+      showToast('Flow 摘要已保存', 'success');
+    } catch (error) {
+      setSummaryState((current) => ({
+        ...current,
+        isSaving: false,
+        error: error instanceof Error ? error.message : '保存摘要失败',
+      }));
+    }
+  };
+
+  const handleCancelSummary = () => {
+    setSummaryState((current) => ({
+      ...current,
+      content: current.savedContent,
+      isEditing: false,
+      error: null,
+    }));
+  };
+
   return (
     <div className="grid h-full w-full min-w-0 max-w-full gap-6 overflow-x-hidden overflow-y-auto p-4 md:p-6">
       <div className="flex items-center gap-2.5 text-body text-text-secondary">
@@ -198,12 +299,12 @@ export function FlowWorkspacePage() {
         <span className="text-text-primary font-medium">{initialFlow.flowId}</span>
       </div>
 
-      <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-6 bg-surface-sunken max-md:flex-col max-md:items-start">
-        <div>
+      <header className="flex items-start justify-between gap-3 border border-border rounded-xl p-4 sm:p-6 bg-surface-sunken max-md:flex-col max-md:items-stretch">
+        <div className="min-w-0">
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">{initialFlow.flowId}</p>
-          <h2 className="text-xl font-bold text-text-primary font-headline">{initialFlow.title}</h2>
+          <h2 className="break-words text-xl font-bold text-text-primary font-headline">{initialFlow.title}</h2>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex min-w-0 items-center gap-3 flex-wrap">
           <Link
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
             to="/agent"
@@ -243,22 +344,131 @@ export function FlowWorkspacePage() {
             )}
           </div>
           <span className="text-caption text-text-secondary font-mono">{initialFlow.type.replace('_', ' ')}</span>
-          <span className="text-caption text-text-secondary font-mono">更新于 {initialFlow.updated}</span>
+          <span className="break-words text-caption text-text-secondary font-mono">更新于 {initialFlow.updated}</span>
         </div>
       </header>
 
-      <section className="grid grid-cols-3 gap-4 border border-border rounded-xl p-6 bg-surface-sunken max-lg:grid-cols-1">
-        <div>
+      <section className="grid gap-4 border border-border rounded-xl p-4 sm:p-6 bg-surface-sunken">
+        <div className="flex items-start justify-between gap-4 max-sm:flex-col">
+          <div className="min-w-0 flex items-start gap-3">
+            <div className="w-8 h-8 shrink-0 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
+              <Sparkles size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">AI Flow Summary</p>
+              <h3 className="text-base font-semibold text-text-primary font-headline">摘要草稿</h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                {selectedSummaryModel
+                  ? `生成时会将当前完整 Flow 发送给 ${selectedSummaryModel.modelName}（${selectedSummaryModel.channelName}）。`
+                  : summaryModelStatus === 'loading'
+                    ? '正在读取可用模型。'
+                    : '未找到可用模型，请先在设置中启用一个 Agent 兼容模型。'}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-end sm:self-auto">
+            <select
+              aria-label="摘要模型选择"
+              className="max-w-52 rounded-md border border-border/50 bg-surface px-2.5 py-1.5 text-xs text-text-primary font-mono outline-none focus:border-accent-strong/40 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={summaryModelStatus !== 'ready' || summaryModelOptions.length === 0 || summaryState.isGenerating}
+              onChange={(event) => {
+                const option = summaryModelOptions.find((item) => `${item.channelId}:${item.modelId}` === event.target.value);
+                if (option) selectSummaryModel(option);
+              }}
+              value={selectedSummaryModel ? `${selectedSummaryModel.channelId}:${selectedSummaryModel.modelId}` : ''}
+            >
+              {summaryModelOptions.length === 0 ? (
+                <option value="">{summaryModelStatus === 'loading' ? '加载模型...' : '没有可用模型'}</option>
+              ) : summaryModelOptions.map((option) => (
+                <option key={`${option.channelId}:${option.modelId}`} value={`${option.channelId}:${option.modelId}`}>
+                  {option.modelName} · {option.channelName}
+                </option>
+              ))}
+            </select>
+            <button
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!summaryModelSelection || summaryState.isGenerating || summaryState.isSaving}
+              onClick={handleGenerateSummary}
+              title={selectedSummaryModel ? `使用 ${selectedSummaryModel.modelName} 生成草稿` : '请先选择可用模型'}
+              type="button"
+            >
+              {summaryState.isGenerating ? <Loader2 className="animate-spin" size={14} /> : <Cpu size={14} />}
+              生成草稿
+            </button>
+          </div>
+        </div>
+
+        {summaryState.error && <p className="text-sm text-danger">{summaryState.error}</p>}
+
+        {summaryState.isLoading ? (
+          <div className="flex min-h-24 items-center gap-2 text-sm text-text-secondary">
+            <Loader2 className="animate-spin" size={16} />
+            正在读取已保存的摘要...
+          </div>
+        ) : summaryState.isEditing ? (
+          <div className="grid gap-3">
+            <textarea
+              aria-label="Flow 摘要草稿"
+              className="min-h-44 w-full resize-y rounded-lg border border-accent-strong/25 bg-surface-raised p-4 font-mono text-sm leading-7 text-text-primary outline-none focus:border-accent-strong/40"
+              maxLength={1200}
+              onChange={(event) => setSummaryState((current) => ({ ...current, content: event.target.value }))}
+              value={summaryState.content}
+            />
+            <div className="flex justify-between gap-3 max-sm:flex-col max-sm:items-start">
+              <span className="text-xs text-text-secondary font-mono">{summaryState.content.length}/1200</span>
+              <div className="flex gap-2">
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={summaryState.isSaving}
+                  onClick={handleSaveSummary}
+                  type="button"
+                >
+                  {summaryState.isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                  保存摘要
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-danger-subtle-bg/25 border-danger/20 text-danger hover:bg-danger-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={summaryState.isSaving}
+                  onClick={handleCancelSummary}
+                  type="button"
+                >
+                  <X size={14} />
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : summaryState.savedContent ? (
+          <div className="grid gap-3">
+            <MarkdownArticle content={summaryState.savedContent} />
+            <div>
+              <button
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/40 bg-surface text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
+                onClick={() => setSummaryState((current) => ({ ...current, isEditing: true, error: null }))}
+                type="button"
+              >
+                <Edit3 size={14} />
+                编辑摘要
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-text-secondary">尚未保存摘要。生成草稿后可先编辑，再确认保存。</p>
+        )}
+      </section>
+
+      <section className="grid grid-cols-3 gap-4 border border-border rounded-xl p-4 sm:p-6 bg-surface-sunken max-lg:grid-cols-1">
+        <div className="min-w-0">
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">待解决的不确定性</p>
-          <strong className="text-body text-text-primary font-mono">{initialFlow.openUncertainties[0]}</strong>
+          <strong className="break-words text-body text-text-primary font-mono">{initialFlow.openUncertainties[0]}</strong>
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">父节点</p>
-          <strong className="text-body text-text-primary font-mono">{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
+          <strong className="break-words text-body text-text-primary font-mono">{initialFlow.parentFlows.length === 0 ? 'Root' : initialFlow.parentFlows.join(', ')}</strong>
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong mb-0.5">标签</p>
-          <strong className="text-body text-text-primary font-mono">{initialFlow.tags.join(' · ')}</strong>
+          <strong className="break-words text-body text-text-primary font-mono">{initialFlow.tags.join(' · ')}</strong>
         </div>
       </section>
 
@@ -293,14 +503,14 @@ export function FlowWorkspacePage() {
                 key={section.id}
               >
                 <button
-                  className="flex-1 grid gap-1.5 bg-transparent border-none text-inherit text-left p-0 cursor-pointer font-inherit"
+                  className="min-w-0 flex-1 grid gap-1.5 bg-transparent border-none text-inherit text-left p-0 cursor-pointer font-inherit"
                   onClick={() => {
                     setActiveSectionId(section.id);
                     setIsEditing(false);
                   }}
                   type="button"
                 >
-                  <strong className="text-body text-text-primary">{section.title}</strong>
+                  <strong className="break-words text-body text-text-primary">{section.title}</strong>
                   <span className="text-caption text-text-secondary font-mono">{section.filename}</span>
                 </button>
                 <button
@@ -346,16 +556,18 @@ export function FlowWorkspacePage() {
           </div>
         </aside>
 
-        <section className="min-w-0 border border-border bg-surface-sunken rounded-xl p-6 min-h-[70vh]">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="w-8 h-8 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
-              <Sparkles size={18} />
+        <section className="min-w-0 border border-border bg-surface-sunken rounded-xl p-4 sm:p-6 min-h-[70vh]">
+          <div className="flex items-start justify-between gap-3 mb-4 max-sm:flex-col">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="w-8 h-8 shrink-0 rounded-md inline-flex items-center justify-center bg-accent-subtle-bg/20 text-accent-strong">
+                <Sparkles size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">{isEditing ? '编辑模式' : '阅读区'}</p>
+                <h3 className="break-words text-base font-semibold text-text-primary font-headline">{activeSection.title}</h3>
+              </div>
             </div>
-            <div>
-              <p className="text-label font-mono font-medium uppercase tracking-wider text-accent-strong">{isEditing ? '编辑模式' : '阅读区'}</p>
-              <h3 className="text-base font-semibold text-text-primary font-headline">{activeSection.title}</h3>
-            </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex shrink-0 gap-2 items-center self-end sm:self-auto">
               {isEditing ? (
                 <>
                   <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium cursor-pointer transition-colors bg-accent-subtle-bg/25 border-accent-strong/25 text-accent-strong hover:bg-accent-subtle-bg/40 font-mono disabled:opacity-50 disabled:cursor-not-allowed" disabled={isPending} onClick={handleSave} type="button">

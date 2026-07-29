@@ -1,18 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { ShellLayout } from './components/shell/ShellLayout';
-import { AgentSessionView } from './pages/AgentSessionView';
-import { AgentView } from './pages/AgentView';
-import { ContourView } from './pages/ContourView';
-import { FlowWorkspacePage } from './pages/FlowWorkspacePage';
-import { ProjectClaimPage } from './pages/ProjectClaimPage';
-import { ProjectDocPage } from './pages/ProjectDocPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Button } from './components/ui/button';
 import type { ContourAppData } from './types';
+
+// Shell 保持在首包中，工作区页面在用户实际访问时再加载。
+const AgentSessionView = lazy(() =>
+  import('./pages/AgentSessionView').then(({ AgentSessionView }) => ({ default: AgentSessionView })),
+);
+const AgentView = lazy(() =>
+  import('./pages/AgentView').then(({ AgentView }) => ({ default: AgentView })),
+);
+const ContourView = lazy(() =>
+  import('./pages/ContourView').then(({ ContourView }) => ({ default: ContourView })),
+);
+const FlowWorkspacePage = lazy(() =>
+  import('./pages/FlowWorkspacePage').then(({ FlowWorkspacePage }) => ({ default: FlowWorkspacePage })),
+);
+const ProjectClaimPage = lazy(() =>
+  import('./pages/ProjectClaimPage').then(({ ProjectClaimPage }) => ({ default: ProjectClaimPage })),
+);
+const ProjectDocPage = lazy(() =>
+  import('./pages/ProjectDocPage').then(({ ProjectDocPage }) => ({ default: ProjectDocPage })),
+);
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then(({ SettingsPage }) => ({ default: SettingsPage })),
+);
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex h-full min-h-[16rem] items-center justify-center" role="status">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <Loader2 aria-hidden="true" className="animate-spin text-primary" size={18} />
+        <span>正在加载页面...</span>
+      </div>
+    </div>
+  );
+}
+
+function LazyRoute({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<PageLoadingFallback />}>{children}</Suspense>;
+}
 
 export default function App() {
   const [appData, setAppData] = useState<ContourAppData>({ projects: [] });
@@ -79,13 +110,13 @@ export default function App() {
             element={<ShellLayout onRefresh={refreshProjects} projects={appData.projects} />}
           >
             <Route element={<Navigate replace to="/contour" />} index />
-            <Route element={<ContourView />} path="contour" />
-            <Route element={<AgentView />} path="agent" />
-            <Route element={<AgentSessionView />} path="agent/:sessionId" />
-            <Route element={<FlowWorkspacePage />} path="project/:projectId/flows/:flowId" />
-            <Route element={<ProjectClaimPage />} path="project/:projectId/claims/:claimId" />
-            <Route element={<ProjectDocPage />} path="project/:projectId/docs/:docId" />
-            <Route element={<SettingsPage />} path="settings" />
+            <Route element={<LazyRoute><ContourView /></LazyRoute>} path="contour" />
+            <Route element={<LazyRoute><AgentView /></LazyRoute>} path="agent" />
+            <Route element={<LazyRoute><AgentSessionView /></LazyRoute>} path="agent/:sessionId" />
+            <Route element={<LazyRoute><FlowWorkspacePage /></LazyRoute>} path="project/:projectId/flows/:flowId" />
+            <Route element={<LazyRoute><ProjectClaimPage /></LazyRoute>} path="project/:projectId/claims/:claimId" />
+            <Route element={<LazyRoute><ProjectDocPage /></LazyRoute>} path="project/:projectId/docs/:docId" />
+            <Route element={<LazyRoute><SettingsPage /></LazyRoute>} path="settings" />
           </Route>
           <Route element={<Navigate replace to="/contour" />} path="*" />
         </Routes>

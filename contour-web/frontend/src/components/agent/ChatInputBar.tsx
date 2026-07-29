@@ -3,6 +3,7 @@ import {
   ArrowUp,
   Check,
   ChevronDown,
+  Cpu,
   Eye,
   Square,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { AIContextItem } from '@/types';
 import type { PermissionMode } from '@/hooks/useChat';
+import type { AgentModelOption } from '@/state/agentModelSelection';
 
 interface ChatInputBarProps {
   inputValue: string;
@@ -30,6 +32,11 @@ interface ChatInputBarProps {
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   contextItems: AIContextItem[];
+  /** 可选，保留给首发会话等复用场景；未提供时后端使用默认渠道。 */
+  modelOptions?: AgentModelOption[];
+  selectedModel?: AgentModelOption;
+  modelStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  onModelChange?: (option: AgentModelOption) => void;
 }
 
 const PERMISSION_OPTIONS: { value: PermissionMode; label: string; icon: typeof Eye; description: string }[] = [
@@ -50,6 +57,10 @@ export function ChatInputBar({
   permissionMode,
   onPermissionModeChange,
   contextItems,
+  modelOptions = [],
+  selectedModel,
+  modelStatus = 'idle',
+  onModelChange,
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -113,6 +124,48 @@ export function ChatInputBar({
               ))}
 
               {hasContext && <div className="w-px h-3.5 bg-border shrink-0" />}
+
+              {/* 模型选择：仅展示安全的渠道与模型名称，实际凭据始终保留在后端。 */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="模型选择"
+                    disabled={modelStatus === 'loading' || !onModelChange || modelOptions.length === 0}
+                    className="h-6 max-w-44 px-2 rounded-sm bg-surface-sunken text-text-secondary text-label font-medium
+                      hover:text-text-primary inline-flex items-center gap-1 transition-colors duration-150 cursor-pointer
+                      disabled:opacity-60 disabled:cursor-not-allowed"
+                    title={
+                      selectedModel
+                        ? `${selectedModel.channelName} · ${selectedModel.modelName}`
+                        : modelStatus === 'error'
+                          ? '模型列表暂不可用，将使用默认渠道'
+                          : '正在加载可用模型'
+                    }
+                  >
+                    <Cpu size={12} />
+                    <span className="truncate">
+                      {selectedModel?.modelName ?? (modelStatus === 'error' ? '默认模型' : '加载模型...')}
+                    </span>
+                    <ChevronDown size={10} className="text-text-tertiary shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" sideOffset={8} className="max-h-64 overflow-y-auto">
+                  {modelOptions.map((option) => {
+                    const selected = selectedModel?.channelId === option.channelId && selectedModel.modelId === option.modelId;
+                    return (
+                      <DropdownMenuItem key={`${option.channelId}:${option.modelId}`} onClick={() => onModelChange?.(option)}>
+                        <Cpu size={14} className="text-text-secondary" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{option.modelName}</span>
+                          <span className="block truncate text-xs text-text-tertiary">{option.channelName}</span>
+                        </span>
+                        {selected && <Check size={14} className="text-accent-strong shrink-0" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* 权限 pill */}
               <DropdownMenu>

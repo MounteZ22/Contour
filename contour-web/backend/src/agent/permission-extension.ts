@@ -269,26 +269,32 @@ export function createPermissionExtensionFactory(
   dataDir: string,
   projectId: string,
   getRequester: () => PermissionRequesterFn | null,
+  alwaysConfirmToolNames: readonly string[] = [],
 ): (pi: any) => void {
   return (pi: any) => {
-    // readonly / yolo 不挂钩子
-    if (permissionMode !== "review") return;
+    const forcedTools = new Set(alwaysConfirmToolNames);
+    // yolo 可以跳过 Contour 自身受控写工具确认，但外部 MCP 绝不能跳过。
+    if (permissionMode !== "review" && forcedTools.size === 0) return;
 
     pi.on("tool_call", (event: any, _ctx: any) => {
-      // 只放行非写工具
-      if (!WRITE_TOOLS.has(event.toolName)) return;
+      const forceConfirm = forcedTools.has(event.toolName);
+      const reviewWrite = permissionMode === "review" && WRITE_TOOLS.has(event.toolName);
+      if (!forceConfirm && !reviewWrite) return;
 
       // ── 1. 规则匹配 ─────────────────────────────────────────────────────
-      const rules = loadRules(dataDir, projectId);
-      const matched = matchRule(rules, event.toolName, event.input);
-      if (matched) {
-        if (matched.action === "allow") {
-          return; // 放行（undefined = 不 block）
+      // 外部 MCP 必须每次确认，禁止被“记住”规则绕过。
+      if (!forceConfirm) {
+        const rules = loadRules(dataDir, projectId);
+        const matched = matchRule(rules, event.toolName, event.input);
+        if (matched) {
+          if (matched.action === "allow") {
+            return; // 放行（undefined = 不 block）
+          }
+          return {
+            block: true,
+            reason: `审查模式规则已拒绝 ${event.toolName} 的类似操作`,
+          };
         }
-        return {
-          block: true,
-          reason: `审查模式规则已拒绝 ${event.toolName} 的类似操作`,
-        };
       }
 
       // ── 2. 无命中规则 → 请求用户确认 ──────────────────────────────────
@@ -314,11 +320,11 @@ export function createPermissionExtensionFactory(
             requestId: "", // requester 内部生成真实 requestId
             toolName: event.toolName,
             input: event.input,
-            reason: `Agent 请求执行 ${event.toolName}`,
+            reason: forceConfirm ? `Agent 请求调用外部 MCP 工具 ${event.toolName}` : `Agent 请求执行 ${event.toolName}`,
           });
 
           // 保存规则（如果用户要求记住）
-          if (result.remember) {
+          if (result.remember && !forceConfirm) {
             const inputStr =
               typeof event.input === "string"
                 ? event.input

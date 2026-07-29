@@ -84,14 +84,24 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   toolActivities?: ToolActivity[];
+  /** 可观察的执行状态，不含模型原始推理。 */
+  processActivities?: ProcessActivity[];
   status?: 'stopped';
 }
 
 export interface ToolActivity {
+  /** Pi SDK 的 toolCallId，用于区分同名的并行调用。 */
+  id?: string;
   toolName: string;
-  status: 'running' | 'done';
+  status: 'running' | 'done' | 'error';
   input?: Record<string, unknown>;
   result?: string;
+}
+
+export interface ProcessActivity {
+  id: string;
+  label: string;
+  status: 'active' | 'done' | 'error';
 }
 
 /** 权限确认请求（来自后端 permission-extension） */
@@ -113,6 +123,8 @@ interface StreamCallbacks {
   onChunk: (delta: string) => void;
   /** 收到工具活动 */
   onToolActivity?: (activity: ToolActivity) => void;
+  /** 收到可观察的执行状态；不包含模型原始推理。 */
+  onProcessActivity?: (activity: ProcessActivity) => void;
   /** 收到权限确认请求 */
   onPermissionRequest?: (request: PermissionRequest) => void;
   /** 流式完成 */
@@ -136,11 +148,16 @@ export async function sendChatMessageStream(
   projectId?: string,
   sessionId?: string,
   signal?: AbortSignal,
+  modelSelection?: { channelId: string; model: string },
 ): Promise<void> {
   const body: Record<string, unknown> = { message, contextItems };
   if (permissionMode) body.permissionMode = permissionMode;
   if (projectId) body.projectId = projectId;
   if (sessionId) body.sessionId = sessionId;
+  if (modelSelection) {
+    body.channelId = modelSelection.channelId;
+    body.model = modelSelection.model;
+  }
 
   let partialContent = '';
   let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
@@ -219,6 +236,22 @@ export async function sendChatMessageStream(
           const raw = JSON.parse(data) as Record<string, unknown>;
 
           switch (raw.type) {
+            case 'agent_start':
+              callbacks.onProcessActivity?.({
+                id: 'agent-start',
+                label: '正在准备回答',
+                status: 'active',
+              });
+              break;
+
+            case 'turn_start':
+              callbacks.onProcessActivity?.({
+                id: 'turn-start',
+                label: '正在生成回应',
+                status: 'active',
+              });
+              break;
+
             case 'text_delta':
               if (raw.delta) {
                 partialContent += raw.delta as string;
@@ -227,20 +260,35 @@ export async function sendChatMessageStream(
               break;
 
             case 'tool_call_start':
-              if (callbacks.onToolActivity && raw.toolName) {
-                callbacks.onToolActivity({
+              if (raw.toolName) {
+                callbacks.onToolActivity?.({
+                  id: typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined,
                   toolName: raw.toolName as string,
                   status: 'running',
+                  input: isRecord(raw.input) ? raw.input : undefined,
+                });
+                callbacks.onProcessActivity?.({
+                  id: `tool-${raw.toolCallId ?? raw.toolName}`,
+                  label: `正在调用 ${raw.toolName as string}`,
+                  status: 'active',
                 });
               }
               break;
 
             case 'tool_call_end':
-              if (callbacks.onToolActivity && raw.toolName) {
-                callbacks.onToolActivity({
+              if (raw.toolName) {
+                callbacks.onToolActivity?.({
+                  id: typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined,
                   toolName: raw.toolName as string,
-                  status: 'done',
-                  result: raw.isError ? '工具执行出错' : undefined,
+                  status: raw.isError ? 'error' : 'done',
+                  result: typeof raw.result === 'string'
+                    ? raw.result
+                    : raw.isError ? '工具执行出错' : undefined,
+                });
+                callbacks.onProcessActivity?.({
+                  id: `tool-${raw.toolCallId ?? raw.toolName}`,
+                  label: `${raw.toolName as string} ${raw.isError ? '执行失败' : '已完成'}`,
+                  status: raw.isError ? 'error' : 'done',
                 });
               }
               break;
@@ -257,6 +305,21 @@ export async function sendChatMessageStream(
               break;
 
             case 'done':
+              callbacks.onProcessActivity?.({
+                id: 'agent-start',
+                label: '回答已准备完成',
+                status: 'done',
+              });
+              callbacks.onProcessActivity?.({
+                id: 'turn-start',
+                label: '回应已生成',
+                status: 'done',
+              });
+              callbacks.onProcessActivity?.({
+                id: 'agent-finished',
+                label: '已完成',
+                status: 'done',
+              });
               callbacks.onComplete(partialContent);
               return;
 
@@ -265,8 +328,7 @@ export async function sendChatMessageStream(
               return;
 
             default:
-              // agent_start / turn_start / turn_end / agent_end / thinking_delta
-              // 在最小集展示策略下忽略
+              // thinking_delta 是模型原始推理，不能展示或持久化。
               break;
           }
         } catch {
@@ -286,6 +348,10 @@ export async function sendChatMessageStream(
     reader.releaseLock();
     cleanup();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

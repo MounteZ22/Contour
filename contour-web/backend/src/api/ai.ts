@@ -3,13 +3,17 @@ import { testLLMConnection } from '../services/aiService.js';
 import { buildAgentPrompt } from '../services/promptBuilder.js';
 import type { AIContextItem } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
-import { channelToAgentRuntimeConfig, findDefaultAgentChannel } from '../agent/channel-adapter.js';
+import { channelToAgentRuntimeConfig, findDefaultAgentChannel, validateAgentChannelSelection } from '../agent/channel-adapter.js';
 import { PiRuntime } from '../agent/pi-runtime.js';
 import { CONFIG } from '../config.js';
 import { createContourCustomTools } from '../tools/pi-vault-tools.js';
+import { createTaskProgressTools } from '../tools/task-progress-tools.js';
+import { createWebSearchTools } from '../tools/web-search-tools.js';
+import { getWebSearchRuntimeConfig } from '../services/settingsService.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
 import { findProjectDir } from '../vault/locate.js';
 import { ensureProjectDir } from '../services/projectManager.js';
+import { getEnabledProjectSkillDirectories } from '../services/project-plugin-config.js';
 import path from 'node:path';
 import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '../agent/typed-error.js';
 import { loadProjects } from '../vault/loader.js';
@@ -34,6 +38,8 @@ interface PiChatRequestBody {
    * 行为对齐。前端目前没有渠道选择 UI，依赖这个回退。
    */
   channelId?: string;
+  /** 渠道中的具体模型 ID；传入时必须属于该渠道且处于启用状态。 */
+  model?: string;
   /**
    * 业务上下文项（可选）
    *
@@ -136,6 +142,18 @@ router.post('/pi-chat', async (req, res) => {
       }), 400);
       return;
     }
+    try {
+      validateAgentChannelSelection(channel, body.model);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '当前模型不可用';
+      sendAgentHttpError(res, typedAgentError('invalid_model', {
+        title: '模型不可用',
+        message,
+        canRetry: false,
+        action: 'open_settings',
+      }), 400);
+      return;
+    }
 
     // 3. 确定项目目录和存储名称
     //    - 如果前端传了 projectId，用 findProjectDir 解析实际项目子目录
@@ -183,17 +201,25 @@ router.post('/pi-chat', async (req, res) => {
     });
 
     // 5. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
+    const webSearchConfig = await getWebSearchRuntimeConfig();
+    const additionalSkillPaths = getEnabledProjectSkillDirectories(projectName);
     let agentConfig;
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
+        model: body.model,
         systemPrompt,
-        customTools: createContourCustomTools(currentProject?.projectId ?? projectName),
+        customTools: [
+          ...createContourCustomTools(currentProject?.projectId ?? projectName),
+          ...createTaskProgressTools(),
+          ...createWebSearchTools(webSearchConfig),
+        ],
         authorizedFiles,
         permissionMode: body.permissionMode,
         sessionId: body.sessionId,
         dataDir: CONFIG.DATA_DIR,
         projectDir,
         projectId: projectName,
+        additionalSkillPaths,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -252,7 +278,7 @@ router.post('/pi-chat', async (req, res) => {
   } finally {
     // 10. 释放 PiRuntime 资源
     if (runtime) {
-      runtime.dispose();
+      await runtime.dispose();
     }
     if (res.headersSent && !res.writableEnded) {
       res.end();

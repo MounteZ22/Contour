@@ -1,10 +1,15 @@
-import { Copy, ExternalLink, FolderOpen, X } from 'lucide-react';
+import { lazy, Suspense } from 'react';
+import { Copy, ExternalLink, FolderOpen, Loader2, X } from 'lucide-react';
 import { useAtom } from 'jotai';
 import { MarkdownArticle } from '../MarkdownArticle';
 import { Button } from '../ui/button';
 import { previewFileAtom } from '../../state/chat';
 import { openFile, revealFile } from '../../state/fileBrowser';
 import { showToast } from '../Toast';
+import { getFileContentUrl } from '../../state/fileBrowser';
+
+const PdfPreview = lazy(async () => ({ default: (await import('./PdfPreview')).PdfPreview }));
+const SpreadsheetPreview = lazy(async () => ({ default: (await import('./SpreadsheetPreview')).SpreadsheetPreview }));
 
 function isMarkdown(filePath: string): boolean {
   return /\.(?:md|markdown)$/i.test(filePath);
@@ -76,7 +81,21 @@ export function FilePreview() {
         </div>
       </header>
       <div className="flex-1 min-h-0 overflow-auto p-4 sm:p-6">
-        {previewFile.kind === 'image' ? (
+        {previewFile.kind === 'pdf' || previewFile.kind === 'xlsx' ? (
+          <Suspense fallback={<div className="flex min-h-48 items-center justify-center gap-2 text-sm text-text-secondary"><Loader2 className="animate-spin" size={16} /> 正在加载预览器</div>}>
+            {previewFile.kind === 'pdf' ? (
+              <PdfPreview
+                contentUrl={getFileContentUrl(previewFile.projectId, previewFile.path, previewFile.flowId)}
+                onOpenWithSystem={() => { void runHostAction('open'); }}
+              />
+            ) : (
+              <SpreadsheetPreview
+                contentUrl={getFileContentUrl(previewFile.projectId, previewFile.path, previewFile.flowId)}
+                onOpenWithSystem={() => { void runHostAction('open'); }}
+              />
+            )}
+          </Suspense>
+        ) : previewFile.kind === 'image' ? (
           <div className="flex min-h-full items-start justify-center">
             <img
               alt={previewFile.name}

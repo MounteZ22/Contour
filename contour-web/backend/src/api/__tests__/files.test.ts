@@ -17,6 +17,7 @@ vi.mock('../../config.js', async () => {
   vaultsDir = join(testRoot, 'vaults');
   legacyDir = join(testRoot, 'legacy');
   return {
+    DATA_DIR: testRoot,
     PROJECTS_DIR: projectsDir,
     CONFIG: {
       VAULTS_DIR: vaultsDir,
@@ -108,7 +109,47 @@ describe('本机文件 API 授权与预览', () => {
 
     expect(image.body.data.kind).toBe('image');
     expect(image.body.data.dataUrl).toBe('data:image/png;base64,iVBORw==');
-    expect(external.body.data).toMatchObject({ kind: 'external', path: fs.realpathSync.native(attachedFile) });
+    expect(external.body.data).toMatchObject({
+      kind: 'external',
+      // 预览响应只提供相对展示路径，避免向浏览器暴露本机绝对路径。
+      path: path.relative(projectDir, fs.realpathSync.native(attachedFile)),
+    });
+  });
+
+  it('Given 已授权的 PDF 与 XLSX, When 请求内置预览内容, Then 返回受限二进制响应和防嗅探头', async () => {
+    const pdfPath = path.join(projectDir, 'paper.pdf');
+    const workbookPath = path.join(projectDir, 'table.xlsx');
+    fs.writeFileSync(pdfPath, Buffer.from('%PDF-1.7'));
+    fs.writeFileSync(workbookPath, Buffer.from('PK\x03\x04'));
+
+    const pdf = await request(app).get('/api/files/content').query({ projectId, path: pdfPath });
+    const workbook = await request(app).get('/api/files/content').query({ projectId, path: workbookPath });
+
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers['content-type']).toContain('application/pdf');
+    expect(pdf.headers['cache-control']).toContain('no-store');
+    expect(pdf.headers['x-content-type-options']).toBe('nosniff');
+    expect(pdf.body).toEqual(Buffer.from('%PDF-1.7'));
+    expect(workbook.status).toBe(200);
+    expect(workbook.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  });
+
+  it('Given 旧版 XLS、超限文件或未授权文件, When 请求内置预览内容, Then 拒绝并且不会泄漏内容', async () => {
+    const xlsPath = path.join(projectDir, 'legacy.xls');
+    const largePdfPath = path.join(projectDir, 'large.pdf');
+    fs.writeFileSync(xlsPath, Buffer.from('legacy workbook'));
+    fs.writeFileSync(largePdfPath, Buffer.alloc(25 * 1024 * 1024 + 1));
+
+    const legacy = await request(app).get('/api/files/content').query({ projectId, path: xlsPath });
+    const tooLarge = await request(app).get('/api/files/content').query({ projectId, path: largePdfPath });
+    const forbidden = await request(app).get('/api/files/content').query({ projectId, path: siblingFile });
+
+    expect(legacy.status).toBe(400);
+    expect(legacy.body.error).toContain('旧版 XLS');
+    expect(tooLarge.status).toBe(400);
+    expect(tooLarge.body.error).toContain('25 MiB');
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body).not.toHaveProperty('data');
   });
 
   it('Given 超大文本或图片, When 预览, Then 按实际读取字节拒绝返回', async () => {
