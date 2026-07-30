@@ -74,6 +74,7 @@ export function AgentView() {
           selectedModel={modelSelector.selectedOption}
           modelStatus={modelSelector.status}
           onModelChange={modelSelector.selectModel}
+          projectId={project?.projectId}
         />
       </div>
     </div>

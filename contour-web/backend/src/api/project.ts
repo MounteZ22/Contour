@@ -8,7 +8,7 @@ import { validateId, ValidationError } from '../vault/validate.js';
 import { findProjectDir } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
 import { yamlSafeValue } from '../vault/yaml-utils.js';
-import { ensureProjectDir } from '../services/projectManager.js';
+import { ensureProjectDir, getProjectConfig } from '../services/projectManager.js';
 
 const router = Router();
 
@@ -146,6 +146,132 @@ router.delete('/:projectId', async (req, res) => {
       res.status(400).json({ success: false, error: err.message });
       return;
     }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ── @ 提及搜索 ────────────────────────────────────────────────────────────────
+
+/** 提及建议项 */
+interface MentionItem {
+  type: 'file' | 'flow' | 'doc';
+  name: string;
+  path: string;
+  /** Flow/Doc 的标题 */
+  title?: string;
+}
+
+/** 递归搜索目录，收集名称匹配的文件 */
+async function searchDirectory(
+  dirPath: string,
+  query: string,
+  projectDir: string,
+  maxDepth: number,
+  maxResults: number,
+  results: MentionItem[],
+): Promise<void> {
+  if (maxDepth <= 0 || results.length >= maxResults) return;
+  let entries;
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return; // 跳过无法访问的目录
+  }
+  const lowerQuery = query.toLowerCase();
+  // 先处理文件，再递归子目录（文件和当前目录结果优先）
+  for (const entry of entries) {
+    if (results.length >= maxResults) return;
+    if (entry.isFile() && entry.name.toLowerCase().includes(lowerQuery)) {
+      const absolutePath = path.join(dirPath, entry.name);
+      const relativePath = projectDir ? path.relative(projectDir, absolutePath) : absolutePath;
+      // 去重
+      if (!results.some((r) => r.type === 'file' && r.path === relativePath)) {
+        results.push({ type: 'file', name: entry.name, path: relativePath });
+      }
+    }
+  }
+  for (const entry of entries) {
+    if (results.length >= maxResults) return;
+    if (entry.isDirectory()) {
+      await searchDirectory(path.join(dirPath, entry.name), query, projectDir, maxDepth - 1, maxResults, results);
+    }
+  }
+}
+
+// GET /api/project/:projectId/search-mentions?q=xxx
+router.get('/:projectId/search-mentions', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+
+    if (!q) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const lowerQuery = q.toLowerCase();
+    const results: MentionItem[] = [];
+    const MAX_RESULTS = 20;
+    const MAX_SEARCH_DEPTH = 4;
+
+    // 1. 搜索项目 Flows
+    try {
+      const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+      const project = projects.find((p) => p.projectId === projectId);
+      if (project) {
+        // Flows
+        for (const flow of project.flows) {
+          if (results.length >= MAX_RESULTS) break;
+          const nameMatch =
+            flow.flowId.toLowerCase().includes(lowerQuery) ||
+            flow.title.toLowerCase().includes(lowerQuery);
+          if (nameMatch && !results.some((r) => r.type === 'flow' && r.path === flow.flowId)) {
+            results.push({ type: 'flow', name: `${flow.flowId} · ${flow.title}`, path: flow.flowId, title: flow.title });
+          }
+        }
+        // Docs
+        for (const doc of project.docs) {
+          if (results.length >= MAX_RESULTS) break;
+          const nameMatch =
+            doc.id.toLowerCase().includes(lowerQuery) ||
+            doc.title.toLowerCase().includes(lowerQuery);
+          if (nameMatch && !results.some((r) => r.type === 'doc' && r.path === doc.id)) {
+            results.push({ type: 'doc', name: `${doc.title}.md`, path: doc.id, title: doc.title });
+          }
+        }
+      }
+    } catch {
+      // 项目数据加载失败不影响文件搜索
+    }
+
+    // 2. 搜索授权目录中的文件
+    try {
+      const config = getProjectConfig(projectId);
+      // 搜索项目主目录
+      if (config.projectDir) {
+        await searchDirectory(config.projectDir, q, config.projectDir, MAX_SEARCH_DEPTH, MAX_RESULTS, results);
+      }
+      // 搜索附加目录
+      for (const dir of config.attachedDirectories) {
+        if (results.length >= MAX_RESULTS) break;
+        await searchDirectory(dir, q, dir, MAX_SEARCH_DEPTH, MAX_RESULTS, results);
+      }
+      // 搜索附加文件（直接匹配名称）
+      for (const filePath of config.attachedFiles) {
+        if (results.length >= MAX_RESULTS) break;
+        const name = path.basename(filePath);
+        if (name.toLowerCase().includes(lowerQuery) && !results.some((r) => r.type === 'file' && r.path === filePath)) {
+          results.push({ type: 'file', name, path: filePath });
+        }
+      }
+    } catch {
+      // 配置文件读取失败时不阻断
+    }
+
+    const response: ApiResponse<MentionItem[]> = { success: true, data: results.slice(0, MAX_RESULTS) };
+    res.json(response);
+  } catch (err) {
     console.error(`[${req.method} ${req.path}]`, err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }

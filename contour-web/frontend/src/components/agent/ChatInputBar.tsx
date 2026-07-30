@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   Check,
@@ -19,6 +19,7 @@ import {
 import type { AIContextItem } from '@/types';
 import type { PermissionMode } from '@/hooks/useChat';
 import type { AgentModelOption } from '@/state/agentModelSelection';
+import { MentionList, type MentionItem } from './MentionList';
 
 interface ChatInputBarProps {
   inputValue: string;
@@ -37,6 +38,11 @@ interface ChatInputBarProps {
   selectedModel?: AgentModelOption;
   modelStatus?: 'idle' | 'loading' | 'ready' | 'error';
   onModelChange?: (option: AgentModelOption) => void;
+  /** Plan Mode 开关 */
+  planModeEnabled?: boolean;
+  onPlanModeChange?: (enabled: boolean) => void;
+  /** 当前项目 ID，用于 @ 提及搜索 */
+  projectId?: string;
 }
 
 const PERMISSION_OPTIONS: { value: PermissionMode; label: string; icon: typeof Eye; description: string }[] = [
@@ -44,6 +50,76 @@ const PERMISSION_OPTIONS: { value: PermissionMode; label: string; icon: typeof E
   { value: 'review', label: '审查', icon: ShieldCheck, description: '写操作需弹窗确认' },
   { value: 'yolo', label: '自动', icon: Zap, description: '在项目范围内自动写入' },
 ];
+
+/** 从 textarea 当前光标位置找到最近的 @ 及其查询文本 */
+function extractMentionQuery(
+  value: string,
+  cursorPos: number,
+): { atIndex: number; query: string } | null {
+  // 从光标位置往前找最近的非空白 @
+  const beforeCursor = value.slice(0, cursorPos);
+  const atIndex = beforeCursor.lastIndexOf('@');
+  if (atIndex === -1) return null;
+
+  // @ 前面必须是行首或空白字符
+  if (atIndex > 0 && !/[\s\n]/.test(beforeCursor[atIndex - 1])) return null;
+
+  // @ 和光标之间不应包含空格或换行
+  const query = beforeCursor.slice(atIndex + 1);
+  if (/[\s\n]/.test(query)) return null;
+
+  return { atIndex, query };
+}
+
+/**
+ * 通过测量 span 元素来估算 textarea 中指定位置的像素坐标。
+ * 返回相对于输入容器的 top/left。
+ */
+function measureCaretPosition(
+  textarea: HTMLTextAreaElement,
+  charIndex: number,
+  lineHeight: number,
+): { top: number; left: number } {
+  // 使用 canvas 测量会更好，但为简洁这里基于 columns 和 rows 估算
+  const style = window.getComputedStyle(textarea);
+  const paddingLeft = parseFloat(style.paddingLeft) || 0;
+  const paddingTop = parseFloat(style.paddingTop) || 0;
+
+  // 计算 @ 之前的文本宽度
+  const textBeforeAt = textarea.value.slice(0, charIndex);
+
+  // 创建隐藏的测量 span
+  const measurer = document.createElement('span');
+  measurer.style.position = 'absolute';
+  measurer.style.visibility = 'hidden';
+  measurer.style.whiteSpace = 'pre-wrap';
+  measurer.style.wordWrap = 'break-word';
+  measurer.style.font = style.font;
+  measurer.style.fontSize = style.fontSize;
+  measurer.style.fontFamily = style.fontFamily;
+  measurer.style.lineHeight = style.lineHeight;
+  measurer.style.width = `${textarea.clientWidth - paddingLeft - (parseFloat(style.paddingRight) || 0)}px`;
+  measurer.style.overflowWrap = 'break-word';
+  document.body.appendChild(measurer);
+
+  try {
+    // 分行计算
+    const lines = textBeforeAt.split('\n');
+    const lastLine = lines[lines.length - 1] || '';
+    const lineCount = lines.length;
+
+    // 测量最后一行的宽度
+    measurer.textContent = lastLine;
+    const lastLineWidth = measurer.offsetWidth;
+
+    return {
+      top: paddingTop + (lineCount - 1) * lineHeight,
+      left: paddingLeft + lastLineWidth,
+    };
+  } finally {
+    document.body.removeChild(measurer);
+  }
+}
 
 export function ChatInputBar({
   inputValue,
@@ -61,8 +137,19 @@ export function ChatInputBar({
   selectedModel,
   modelStatus = 'idle',
   onModelChange,
+  projectId,
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // ── @ 提及状态 ──────────────────────────────────────────────────
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
+  const mentionAtRef = useRef<number>(0); // @ 在文本中的位置
+  const mentionQueryRef = useRef<string>(''); // 当前查询文本
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -71,14 +158,137 @@ export function ChatInputBar({
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
-  // autoResize 在 handleInput 中即时调用，无需额外的 effect 调度
+  // 关闭提及面板
+  const closeMention = useCallback(() => {
+    setMentionOpen(false);
+    setMentionItems([]);
+    setMentionIndex(0);
+    mentionQueryRef.current = '';
+    mentionAtRef.current = 0;
+  }, []);
+
+  // 从后端搜索提及项
+  const fetchMentions = useCallback(
+    (query: string) => {
+      if (!projectId || !query) {
+        setMentionItems([]);
+        setMentionIndex(0);
+        return;
+      }
+      fetch(
+        `/api/project/${encodeURIComponent(projectId)}/search-mentions?q=${encodeURIComponent(query)}`,
+      )
+        .then((res) => res.json())
+        .then((result) => {
+          if (result.success && Array.isArray(result.data)) {
+            setMentionItems(result.data.slice(0, 20));
+            setMentionIndex(0);
+          }
+        })
+        .catch(() => {
+          setMentionItems([]);
+        });
+    },
+    [projectId],
+  );
+
+  // 选中提及项并插入引用
+  const selectMention = useCallback(
+    (item: MentionItem) => {
+      const atIndex = mentionAtRef.current;
+      const query = mentionQueryRef.current;
+      // 替换 @query 为 @[name](path)
+      const before = inputValue.slice(0, atIndex);
+      const after = inputValue.slice(atIndex + 1 + query.length);
+      const refText = `@[${item.name}](${item.path})`;
+      const newValue = `${before}${refText}${after}`;
+
+      onInputChange(newValue);
+      closeMention();
+
+      // 恢复焦点并将光标移到引用之后
+      setTimeout(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const newCursorPos = before.length + refText.length;
+        el.setSelectionRange(newCursorPos, newCursorPos);
+        autoResize();
+      }, 0);
+    },
+    [inputValue, onInputChange, closeMention, autoResize],
+  );
+
+  // 清理 fetch timer
+  useEffect(() => {
+    return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    };
+  }, []);
 
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      onInputChange(e.target.value);
+      const newValue = e.target.value;
+      onInputChange(newValue);
       autoResize();
+
+      // 检测 @ 触发
+      const cursorPos = e.target.selectionStart;
+      const mention = extractMentionQuery(newValue, cursorPos);
+
+      if (mention && projectId) {
+        mentionAtRef.current = mention.atIndex;
+        mentionQueryRef.current = mention.query;
+
+        // 计算弹窗位置
+        const el = textareaRef.current;
+        if (el) {
+          const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 20;
+          const pos = measureCaretPosition(el, mention.atIndex, lineHeight);
+          setMentionPosition({ top: pos.top + lineHeight + 2, left: pos.left });
+        }
+
+        setMentionOpen(true);
+
+        // 防抖搜索
+        if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+        fetchTimerRef.current = setTimeout(() => fetchMentions(mention.query), 150);
+      } else {
+        closeMention();
+      }
     },
-    [onInputChange, autoResize],
+    [onInputChange, autoResize, projectId, closeMention, fetchMentions],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mentionOpen && mentionItems.length > 0) {
+        // 提及面板打开时拦截方向键和 Enter/Escape
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setMentionIndex((prev) => (prev + 1) % mentionItems.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setMentionIndex((prev) => (prev - 1 + mentionItems.length) % mentionItems.length);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          selectMention(mentionItems[mentionIndex]);
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeMention();
+          return;
+        }
+      }
+      // 委托父组件的键盘处理
+      onKeyDown(e);
+    },
+    [mentionOpen, mentionItems, mentionIndex, selectMention, closeMention, onKeyDown],
   );
 
   const currentPerm = PERMISSION_OPTIONS.find((o) => o.value === permissionMode) || PERMISSION_OPTIONS[0];
@@ -89,7 +299,8 @@ export function ChatInputBar({
     <div className="shrink-0 bg-background px-6 pt-3 pb-4">
       <div className="max-w-[720px] mx-auto">
         <div
-          className="bg-surface border border-border rounded-lg overflow-hidden
+          ref={containerRef}
+          className="bg-surface border border-border rounded-lg overflow-hidden relative
             focus-within:border-accent-strong focus-within:ring-[3px] focus-within:ring-accent-subtle-bg
             transition-all duration-150"
         >
@@ -98,13 +309,24 @@ export function ChatInputBar({
             rows={1}
             value={inputValue}
             onChange={handleInput}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDown}
             disabled={isLoading}
             placeholder={hasContext ? '基于选中的上下文提问...' : '在此输入消息，与 Agent 交流...'}
             className="w-full px-4 py-3 text-body leading-relaxed text-text-primary
               bg-transparent placeholder:text-text-tertiary resize-none
               min-h-[40px] max-h-[120px] font-sans outline-none"
           />
+
+          {/* @ 提及建议弹窗 */}
+          {mentionOpen && mentionItems.length > 0 && (
+            <MentionList
+              items={mentionItems}
+              selectedIndex={mentionIndex}
+              onSelect={selectMention}
+              onClose={closeMention}
+              position={mentionPosition}
+            />
+          )}
 
           <div className="flex justify-between items-center px-2 pb-2 pt-1.5">
             {/* 左侧：上下文药丸 + 权限 pill */}

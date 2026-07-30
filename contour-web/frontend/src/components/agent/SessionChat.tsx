@@ -1,16 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bot, Loader2 } from 'lucide-react';
 import { ChatMessageItem } from '../ChatMessage';
 import { ChatInputBar } from './ChatInputBar';
+import { PlanCard } from './PlanCard';
 import { useChat } from '../../hooks/useChat';
 import { useSmoothStream } from '../../hooks/useSmoothStream';
 import { useAgentSessions, type AgentSession } from '../../hooks/useAgentSessions';
-import { PermissionDialog } from './PermissionDialog';
-import type { ChatMessage } from '../../state/aiApi';
+import { PermissionBanner } from './PermissionBanner';
+import type { ChatMessage, PermissionRequest } from '../../state/aiApi';
 import { AgentErrorNotice } from './AgentErrorNotice';
 import { useSessionModelSelection } from '../../state/agentModelSelection';
 import { TaskProgressOverlay } from './TaskProgressOverlay';
+import { TurnGroup } from './TurnGroup';
 
 export function SessionChat({ session, initialMessage }: { session: AgentSession; initialMessage?: string }) {
   const navigate = useNavigate();
@@ -41,11 +43,44 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
+    planModeEnabled,
+    setPlanModeEnabled,
+    planStatus,
+    planContent,
+    handleApprovePlan,
+    handleModifyPlan,
   } = useChat(session.contextItems, {
     sessionId: session.id,
     projectId: session.projectId,
     modelSelection: modelSelector.selection,
   });
+
+  // 已拒绝的权限请求（横幅保留在消息流中显示"已拒绝"状态）
+  const [deniedRequest, setDeniedRequest] = useState<PermissionRequest | null>(null);
+
+  // 新的 permissionRequest 到来时，清除之前已拒绝的记录
+  useEffect(() => {
+    if (permissionRequest) {
+      setDeniedRequest(null);
+    }
+  }, [permissionRequest]);
+
+  // 处理权限响应：允许 / 拒绝 / 允许本次会话所有同类操作
+  const handleAllow = useCallback(() => {
+    void handlePermissionResponse('allow', false);
+  }, [handlePermissionResponse]);
+
+  const handleDeny = useCallback(() => {
+    if (permissionRequest) {
+      setDeniedRequest(permissionRequest);
+    }
+    void handlePermissionResponse('deny', false);
+  }, [handlePermissionResponse, permissionRequest]);
+
+  const handleAllowSession = useCallback(() => {
+    setPermissionMode('yolo');
+    void handlePermissionResponse('allow', true);
+  }, [handlePermissionResponse, setPermissionMode]);
 
   const { displayedContent: rawSmoothContent } = useSmoothStream({
     content: streamingContent,
@@ -76,13 +111,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-background">
-      {/* 权限确认弹窗 */}
-      {permissionRequest && (
-        <PermissionDialog
-          request={permissionRequest}
-          onResponse={handlePermissionResponse}
-        />
-      )}
+      {/* 权限确认弹窗已移除 — 改用内联横幅，嵌入下方消息流中 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
         <div className="max-w-[720px] mx-auto flex flex-col gap-5">
           {messages.length === 0 && !isStreaming ? (
@@ -110,9 +139,61 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
             </div>
           ) : (
             <>
-              {messages.map((message: ChatMessage) => (
-                <ChatMessageItem key={message.id} isStreaming={false} message={message} />
-              ))}
+              {(() => {
+                // 将消息按 turn 分组：连续带 turnIndex 的消息归入一个 TurnGroup
+                const items: Array<
+                  | { type: 'message'; message: ChatMessage }
+                  | { type: 'turnGroup'; turnMessages: ChatMessage[]; isLatest: boolean }
+                > = [];
+                let i = 0;
+                while (i < messages.length) {
+                  const msg = messages[i];
+                  if (msg.turnIndex == null) {
+                    items.push({ type: 'message', message: msg });
+                    i++;
+                  } else {
+                    // 收集连续带 turnIndex 的消息
+                    const group: ChatMessage[] = [];
+                    while (i < messages.length && messages[i].turnIndex != null) {
+                      group.push(messages[i]);
+                      i++;
+                    }
+                    // 最后一个 turn 组即为当前轮
+                    const isLatest = i === messages.length;
+                    items.push({ type: 'turnGroup', turnMessages: group, isLatest });
+                  }
+                }
+
+                // 渲染分组后的项目列表
+                return items.map((item, idx) => {
+                  if (item.type === 'message') {
+                    return (
+                      <ChatMessageItem
+                        key={item.message.id}
+                        isStreaming={false}
+                        message={item.message}
+                      />
+                    );
+                  }
+                  return (
+                    <TurnGroup
+                      key={`turn-${item.turnMessages[0]?.turnIndex ?? idx}`}
+                      turnMessages={item.turnMessages}
+                      defaultExpanded={item.isLatest}
+                    />
+                  );
+                });
+              })()}
+
+              {/* Plan Mode：显示执行计划卡片 */}
+              {(planStatus === 'active' || planStatus === 'complete') && planContent && (
+                <PlanCard
+                  content={planContent}
+                  isComplete={planStatus === 'complete'}
+                  onApprove={handleApprovePlan}
+                  onModify={handleModifyPlan}
+                />
+              )}
 
               {(smoothContent || toolActivities.length > 0 || processActivities.length > 0) && (
                 <ChatMessageItem
@@ -132,6 +213,27 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                   <Loader2 size={14} className="animate-spin" />
                   <span className="text-xs">AI 正在思考...</span>
                 </div>
+              )}
+
+              {/* 内联权限确认横幅：待确认 */}
+              {permissionRequest && !deniedRequest && (
+                <PermissionBanner
+                  request={permissionRequest}
+                  onAllow={handleAllow}
+                  onDeny={handleDeny}
+                  onAllowSession={handleAllowSession}
+                />
+              )}
+
+              {/* 内联权限确认横幅：已拒绝 */}
+              {deniedRequest && (
+                <PermissionBanner
+                  request={deniedRequest}
+                  denied
+                  onAllow={handleAllow}
+                  onDeny={handleDeny}
+                  onAllowSession={handleAllowSession}
+                />
               )}
 
               {error && (
@@ -168,6 +270,9 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
         selectedModel={modelSelector.selectedOption}
         modelStatus={modelSelector.status}
         onModelChange={modelSelector.selectModel}
+        projectId={session.projectId}
+        planModeEnabled={planModeEnabled}
+        onPlanModeChange={setPlanModeEnabled}
       />
     </div>
   );
