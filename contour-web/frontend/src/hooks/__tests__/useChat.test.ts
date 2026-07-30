@@ -41,6 +41,18 @@ afterEach(() => {
 
 import { useChat } from '../useChat';
 
+interface ChatStreamCallbacks {
+  onChunk?: (delta: string) => void;
+  onAskUser?: (request: {
+    requestId: string;
+    status: 'pending' | 'answered';
+    questions: Array<{ header: string; question: string; options?: Array<{ label: string }> }>;
+  }) => void;
+  onTurnStart?: (turnIndex: number) => void;
+  onTurnEnd?: (turnIndex: number, filesChanged: string[]) => void;
+  onComplete?: (content: string) => void;
+}
+
 function createKeyDownEvent(key: string, shiftKey = false): React.KeyboardEvent<HTMLInputElement> {
   return {
     key,
@@ -643,6 +655,115 @@ describe('useChat', () => {
         input: { subject: '核对数据' },
         result: JSON.stringify({ task: { id: '1', subject: '核对数据' } }),
       })]);
+    });
+  });
+
+  // ── AskUser / Plan / 生命周期 ──────────────────────────────────────────
+  describe('交互状态机', () => {
+    it('当 AskUser SSE 到达时应立即显示卡片，回答后保留答案并继续当前轮', async () => {
+      const { result } = renderHook(() => useChat());
+      let callbacks: ChatStreamCallbacks | undefined;
+      let finishStream: (() => void) | undefined;
+
+      mockSendChatMessageStream.mockImplementation((_msg: string, _ctx: unknown, streamCallbacks: ChatStreamCallbacks) => {
+        callbacks = streamCallbacks;
+        streamCallbacks.onTurnStart?.(1);
+        streamCallbacks.onAskUser?.({
+          requestId: 'ask-1',
+          status: 'pending',
+          questions: [{ header: '范围', question: '请选择范围', options: [{ label: '全部' }] }],
+        });
+        return new Promise<void>((resolve) => { finishStream = resolve; });
+      });
+
+      act(() => result.current.setInputValue('开始任务'));
+      act(() => { void result.current.handleSend(); });
+      await waitFor(() => expect(result.current.askUserRequest?.status).toBe('pending'));
+
+      act(() => result.current.handleAskUserAnswered('ask-1', { 范围: '全部' }));
+      expect(result.current.askUserRequest).toMatchObject({
+        status: 'answered',
+        answers: { 范围: '全部' },
+      });
+
+      await act(async () => {
+        callbacks?.onChunk?.('将处理全部内容。');
+        callbacks?.onTurnEnd?.(1, []);
+        callbacks?.onComplete?.('将处理全部内容。');
+        finishStream?.();
+      });
+      expect(result.current.messages.at(-1)?.askUserRequest).toMatchObject({
+        status: 'answered',
+        answers: { 范围: '全部' },
+      });
+    });
+
+    it('当权限响应失败时应保留请求和可重试错误', async () => {
+      const { result } = renderHook(() => useChat());
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockSendChatMessageStream.mockImplementation(async (_msg: string, _ctx: unknown, callbacks: {
+        onPermissionRequest?: (request: { requestId: string; toolName: string; input: unknown; reason: string }) => void;
+        onComplete: (content: string) => void;
+      }) => {
+        callbacks.onPermissionRequest?.({ requestId: 'permission-1', toolName: 'write', input: {}, reason: '写入文件' });
+        callbacks.onComplete('');
+      });
+      act(() => result.current.setInputValue('写入'));
+      await act(async () => result.current.handleSend());
+
+      mockRespondToPermission.mockRejectedValueOnce(new Error('网络中断'));
+      await act(async () => result.current.handlePermissionResponse('allow', false));
+      expect(result.current.permissionRequest?.requestId).toBe('permission-1');
+      expect(result.current.permissionResponseError).toContain('网络中断');
+    });
+
+    it('当批准计划时应关闭 Plan Mode，并以普通执行请求继续', async () => {
+      const { result } = renderHook(() => useChat());
+      mockSendChatMessageStream.mockImplementationOnce(async (_msg: string, _ctx: unknown, callbacks: {
+        onPlan?: (event: { action: 'enter' | 'exit' }) => void;
+        onChunk: (delta: string) => void;
+        onComplete: (content: string) => void;
+      }) => {
+        callbacks.onPlan?.({ action: 'enter' });
+        callbacks.onChunk('1. 核对数据');
+        callbacks.onPlan?.({ action: 'exit' });
+        callbacks.onComplete('1. 核对数据');
+      });
+      act(() => {
+        result.current.setPlanModeEnabled(true);
+        result.current.setInputValue('请制定计划');
+      });
+      await act(async () => result.current.handleSend());
+      expect(result.current.planStatus).toBe('complete');
+
+      mockSendChatMessageStream.mockImplementationOnce(async () => undefined);
+      act(() => result.current.handleApprovePlan());
+      await waitFor(() => expect(mockSendChatMessageStream).toHaveBeenCalledTimes(2));
+      expect(result.current.planModeEnabled).toBe(false);
+      expect(result.current.planStatus).toBe('approved');
+      expect(mockSendChatMessageStream.mock.calls[1].at(-1)).toBe(false);
+    });
+
+    it('当切换会话时应中止旧流并忽略其后续回调', async () => {
+      const { result, rerender } = renderHook(
+        ({ sessionId }) => useChat([], { sessionId }),
+        { initialProps: { sessionId: 'session-a' } },
+      );
+      let oldCallbacks: { onChunk: (delta: string) => void } | undefined;
+      let oldSignal: AbortSignal | undefined;
+      mockSendChatMessageStream.mockImplementation((_msg: string, _ctx: unknown, callbacks: typeof oldCallbacks, _mode: unknown, _project: unknown, _session: unknown, signal: AbortSignal) => {
+        oldCallbacks = callbacks;
+        oldSignal = signal;
+        return new Promise<void>(() => undefined);
+      });
+
+      act(() => result.current.setInputValue('旧会话消息'));
+      act(() => { void result.current.handleSend(); });
+      await waitFor(() => expect(oldSignal).toBeDefined());
+      rerender({ sessionId: 'session-b' });
+      expect(oldSignal?.aborted).toBe(true);
+      act(() => oldCallbacks?.onChunk('不应写入新会话'));
+      expect(result.current.streamingContent).toBe('');
     });
   });
 

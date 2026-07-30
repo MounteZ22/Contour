@@ -16,11 +16,13 @@ import { ChatMessageItem } from '../ChatMessage';
 export function TurnGroup({
   turnMessages,
   defaultExpanded,
+  onAskUserAnswered,
 }: {
   /** 本轮的所有消息（至少 1 条 assistant 消息） */
   turnMessages: ChatMessage[];
   /** 是否默认展开（当前轮为 true，历史轮为 false） */
   defaultExpanded: boolean;
+  onAskUserAnswered?: (requestId: string, answers: Record<string, string>) => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [wasEverExpanded, setWasEverExpanded] = useState(defaultExpanded);
@@ -73,7 +75,12 @@ export function TurnGroup({
         <div className={expanded ? '' : 'hidden'}>
           <div className="px-4 py-3 flex flex-col gap-3">
             {turnMessages.map((msg) => (
-              <ChatMessageItem key={msg.id} isStreaming={false} message={msg} />
+              <ChatMessageItem
+                key={msg.id}
+                isStreaming={false}
+                message={msg}
+                onAskUserAnswered={onAskUserAnswered}
+              />
             ))}
           </div>
 

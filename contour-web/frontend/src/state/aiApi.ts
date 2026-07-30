@@ -97,6 +97,8 @@ export interface AskUserRequest {
   requestId: string;
   questions: AskUserQuestion[];
   status: 'pending' | 'answered';
+  /** 已提交的答案，用于在对话历史中保留用户选择。 */
+  answers?: Record<string, string>;
 }
 
 export interface ChatMessage {
@@ -157,6 +159,8 @@ interface StreamCallbacks {
   onAskUser?: (request: AskUserRequest) => void;
   /** 收到 Plan Mode 事件 */
   onPlan?: (event: { action: 'enter' | 'exit' }) => void;
+  /** 流因等待用户交互暂停 watchdog 时，提供恢复计时的当前流回调。 */
+  onWatchdogPaused?: (resume: () => void) => void;
   /** 新一轮开始，含轮次序号 */
   onTurnStart?: (turnIndex: number) => void;
   /** 本轮结束，含文件改动列表 */
@@ -198,8 +202,10 @@ export async function sendChatMessageStream(
   let partialContent = '';
   let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
   let didWatchdogTimeout = false;
+  let waitingForUser = false;
   const abortController = new AbortController();
   const resetWatchdog = () => {
+    if (waitingForUser) return;
     if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
     watchdogTimer = setTimeout(() => {
       didWatchdogTimeout = true;
@@ -211,6 +217,15 @@ export async function sendChatMessageStream(
         canRetry: true,
       }, partialContent);
     }, 120_000);
+  };
+  const pauseWatchdog = () => {
+    waitingForUser = true;
+    if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+    watchdogTimer = undefined;
+    callbacks.onWatchdogPaused?.(() => {
+      waitingForUser = false;
+      resetWatchdog();
+    });
   };
   const abortFromSignal = () => abortController.abort();
   const cleanup = () => {
@@ -343,6 +358,7 @@ export async function sendChatMessageStream(
 
             case 'permission_request':
               if (callbacks.onPermissionRequest && raw.requestId) {
+                pauseWatchdog();
                 callbacks.onPermissionRequest({
                   requestId: raw.requestId as string,
                   toolName: raw.toolName as string,
@@ -354,6 +370,7 @@ export async function sendChatMessageStream(
 
             case 'ask_user':
               if (callbacks.onAskUser && raw.requestId && Array.isArray(raw.questions)) {
+                pauseWatchdog();
                 callbacks.onAskUser({
                   requestId: raw.requestId as string,
                   questions: raw.questions as AskUserQuestion[],

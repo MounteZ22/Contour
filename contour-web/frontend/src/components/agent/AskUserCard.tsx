@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Send, MessageSquare } from 'lucide-react';
 import type { AskUserRequest, AskUserQuestion } from '../../state/aiApi';
 import { sendAskUserResponse } from '../../state/aiApi';
 
 interface AskUserCardProps {
   askUserRequest: AskUserRequest;
-  onAnswered?: () => void;
+  onAnswered?: (answers: Record<string, string>) => void;
 }
 
 /**
@@ -20,10 +20,14 @@ interface AskUserCardProps {
  */
 export function AskUserCard({ askUserRequest, onAnswered }: AskUserCardProps) {
   const { requestId, questions, status } = askUserRequest;
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(askUserRequest.answers ?? {});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isAnswered = status === 'answered';
+
+  useEffect(() => {
+    setAnswers(askUserRequest.answers ?? {});
+  }, [askUserRequest.requestId, askUserRequest.answers]);
 
   const handleSingleSelect = useCallback(
     (header: string, value: string) => {
@@ -65,8 +69,12 @@ export function AskUserCard({ askUserRequest, onAnswered }: AskUserCardProps) {
     setError(null);
 
     try {
-      await sendAskUserResponse(requestId, answers);
-      onAnswered?.();
+      const accepted = await sendAskUserResponse(requestId, answers);
+      if (!accepted) {
+        setError('服务未接受答案，请重试。');
+        return;
+      }
+      onAnswered?.(answers);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '提交答案失败';
       setError(msg);

@@ -158,6 +158,44 @@ describe('Agent 结构化错误解析', () => {
     expect(handlers.onAborted).not.toHaveBeenCalled();
   });
 
+  it('当 Agent 等待权限确认时应暂停 watchdog，用户响应后才恢复超时保护', async () => {
+    vi.useFakeTimers();
+    const encoded = new TextEncoder().encode(
+      'data: {"type":"permission_request","requestId":"permission-1","toolName":"write","input":{},"reason":"需要写入"}\n\n',
+    );
+    let readCount = 0;
+    let finishRead: (() => void) | undefined;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: () => {
+            if (readCount++ === 0) return Promise.resolve({ done: false, value: encoded });
+            return new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+              finishRead = () => resolve({ done: true });
+            });
+          },
+          releaseLock: vi.fn(),
+        }),
+      },
+    } as unknown as Response));
+    const onWatchdogPaused = vi.fn();
+    const handlers = { ...callbacks(), onPermissionRequest: vi.fn(), onWatchdogPaused };
+    const promise = sendChatMessageStream('写入文件', [], handlers);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onWatchdogPaused).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(handlers.onError).not.toHaveBeenCalled();
+
+    const resume = onWatchdogPaused.mock.calls[0][0] as () => void;
+    resume();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(handlers.onError).toHaveBeenCalledWith(expect.objectContaining({ title: '生成超时' }), '');
+    finishRead?.();
+    await promise;
+  });
+
   it('turn_start / turn_end 事件应触发对应回调并传递轮次与文件改动', async () => {
     const encoded = new TextEncoder().encode([
       'data: {"type":"turn_start","turnIndex":1}',

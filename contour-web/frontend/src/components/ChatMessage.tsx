@@ -126,9 +126,10 @@ function ProcessActivityList({ activities }: { activities: ProcessActivity[] }) 
 interface ChatMessageProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  onAskUserAnswered?: (requestId: string, answers: Record<string, string>) => void;
 }
 
-export function ChatMessageItem({ message, isStreaming = false }: ChatMessageProps) {
+export function ChatMessageItem({ message, isStreaming = false, onAskUserAnswered }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
 
@@ -170,7 +171,10 @@ export function ChatMessageItem({ message, isStreaming = false }: ChatMessagePro
 
         {/* AskUser 交互问答（仅 AI 消息） */}
         {!isUser && message.askUserRequest && (
-          <AskUserCard askUserRequest={message.askUserRequest} />
+          <AskUserCard
+            askUserRequest={message.askUserRequest}
+            onAnswered={(answers) => onAskUserAnswered?.(message.askUserRequest!.requestId, answers)}
+          />
         )}
 
         {/* 消息气泡 */}

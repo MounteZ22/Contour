@@ -320,6 +320,7 @@ export function ContourView() {
             projectId={project.projectId}
             selectedFlowIds={selectedFlows}
             onPositionSaved={onRefresh}
+            onLayoutSaved={onRefresh}
           />
         </div>
 

@@ -11,7 +11,7 @@ import { createTaskProgressTools } from '../tools/task-progress-tools.js';
 import { createWebSearchTools } from '../tools/web-search-tools.js';
 import { getWebSearchRuntimeConfig } from '../services/settingsService.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
-import { resolveAskUser } from '../agent/ask-user.js';
+import type { AskUserRequestManager } from '../agent/ask-user.js';
 import { findProjectDir } from '../vault/locate.js';
 import { ensureProjectDir } from '../services/projectManager.js';
 import { getEnabledProjectSkillDirectories } from '../services/project-plugin-config.js';
@@ -21,6 +21,20 @@ import { loadProjects } from '../vault/loader.js';
 
 
 const router = Router();
+
+// HTTP 回调不持有 Promise；它只按 requestId 找到所属运行时的实例管理器。
+// 请求真正的创建、超时和取消均由 AskUserRequestManager 按实例处理。
+const askUserManagers = new Map<string, AskUserRequestManager>();
+
+/** 仅供路由测试构造已登记的 AskUser 请求，不参与生产请求生命周期。 */
+export const __testOnlyAskUserResponseRegistry = {
+  register(requestId: string, manager: AskUserRequestManager): void {
+    askUserManagers.set(requestId, manager);
+  },
+  clear(): void {
+    askUserManagers.clear();
+  },
+};
 
 function sendAgentHttpError(res: Response, error: unknown, status?: number): void {
   const payload = classifyAgentError(error);
@@ -247,7 +261,14 @@ router.post('/pi-chat', async (req, res) => {
     }
 
     // 6. 通过 PiRuntime 初始化并发送消息
-    runtime = new PiRuntime();
+    runtime = new PiRuntime({
+      askUserLifecycle: {
+        onCreated: (requestId, manager) => askUserManagers.set(requestId, manager),
+        onSettled: (requestId, manager) => {
+          if (askUserManagers.get(requestId) === manager) askUserManagers.delete(requestId);
+        },
+      },
+    });
     await runtime.init(agentConfig);
 
     // 7. 设置 SSE 响应头
@@ -265,14 +286,12 @@ router.post('/pi-chat', async (req, res) => {
     try {
       // 9. 消费 PiRuntime.prompt() 事件流 → SSE 输出
       let streamFailed = false;
-      let planActive = false;
       for await (const event of runtime.prompt(body.message)) {
         if (aborted) break;
         if (event.type === 'error') streamFailed = true;
 
         // 检测 EnterPlanMode / ExitPlanMode 工具调用，转换为 plan 事件
         if (event.type === 'tool_call_start' && event.toolName === 'EnterPlanMode') {
-          planActive = true;
           res.write(`data: ${JSON.stringify({ type: 'plan', action: 'enter' })}\n\n`);
           continue;
         }
@@ -283,7 +302,6 @@ router.post('/pi-chat', async (req, res) => {
           continue;
         }
         if (event.type === 'tool_call_end' && event.toolName === 'ExitPlanMode') {
-          planActive = false;
           res.write(`data: ${JSON.stringify({ type: 'plan', action: 'exit' })}\n\n`);
           continue;
         }
@@ -374,7 +392,7 @@ router.post('/ask-user-response', (req, res) => {
       return;
     }
 
-    const resolved = resolveAskUser(requestId, answers);
+    const resolved = askUserManagers.get(requestId)?.resolve(requestId, answers) ?? false;
     if (!resolved) {
       res.status(404).json({ success: false, error: '问答请求不存在或已过期' });
       return;

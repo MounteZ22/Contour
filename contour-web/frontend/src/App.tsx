@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { PageSkeleton } from './components/ui/PageSkeleton';
 import { AgentPageSkeleton } from './components/ui/AgentPageSkeleton';
 import { FlowPageSkeleton } from './components/ui/FlowPageSkeleton';
@@ -82,9 +82,8 @@ export default function App() {
 
   if (loading && appData.projects.length === 0) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
-        <Loader2 size={40} className="text-primary animate-spin" />
-        <p className="mt-4 text-sm text-muted-foreground font-mono">正在加载研究项目...</p>
+      <div className="min-h-screen bg-background">
+        <PageSkeleton />
       </div>
     );
   }

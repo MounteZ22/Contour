@@ -7,6 +7,8 @@ interface PermissionBannerProps {
   request: PermissionRequest;
   /** 是否已处于"已拒绝"状态（不再显示操作按钮） */
   denied?: boolean;
+  /** 提交权限决定失败时保留横幅，并给出可重试原因。 */
+  error?: string | null;
   onAllow: () => void;
   onDeny: () => void;
   onAllowSession: () => void;
@@ -25,6 +27,7 @@ interface PermissionBannerProps {
 export function PermissionBanner({
   request,
   denied = false,
+  error,
   onAllow,
   onDeny,
   onAllowSession,
@@ -56,7 +59,7 @@ export function PermissionBanner({
 
           {/* 工具标识 */}
           <div className="flex items-center gap-2 flex-wrap">
-            {!denied && (
+           {!denied && (
               <Badge variant="secondary" className="font-mono text-[11px]">
                 <Terminal size={11} className="mr-1 inline" />
                 {request.toolName}
@@ -77,6 +80,9 @@ export function PermissionBanner({
                 {formatInput(request.input)}
               </pre>
             </div>
+           )}
+          {error && !denied && (
+            <p className="text-xs text-danger" role="alert">{error}</p>
           )}
 
           {/* 操作按钮 */}

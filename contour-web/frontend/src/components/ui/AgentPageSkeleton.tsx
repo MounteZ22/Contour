@@ -6,7 +6,8 @@ import { Skeleton } from './Skeleton';
  */
 export function AgentPageSkeleton() {
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-background px-6 py-8">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-background px-6 py-8" role="status">
+      <span className="sr-only">Agent 页面加载中</span>
       <div className="mx-auto flex w-full max-w-[720px] flex-col items-center pb-20">
         {/* Bot 图标 */}
         <div className="mb-6">

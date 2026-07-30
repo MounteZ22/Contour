@@ -6,8 +6,8 @@ import { useState } from 'react';
 interface PlanCardProps {
   /** Markdown 格式的计划内容 */
   content: string;
-  /** 是否正在等待审批（流式完成前为 false，完成后才可操作） */
-  isComplete: boolean;
+  /** 计划生成、待审批或已批准后的展示状态。 */
+  status: 'active' | 'complete' | 'approved';
   /** 批准并执行 */
   onApprove: () => void;
   /** 修改计划（传入反馈文本） */
@@ -20,7 +20,7 @@ interface PlanCardProps {
  * 在对话流中渲染 Markdown 格式的计划内容，底部提供"批准并执行"和"修改计划"
  * 两个操作按钮。仅在 Plan Mode 开启时显示。
  */
-export function PlanCard({ content, isComplete, onApprove, onModify }: PlanCardProps) {
+export function PlanCard({ content, status, onApprove, onModify }: PlanCardProps) {
   const [showModifyInput, setShowModifyInput] = useState(false);
   const [modifyFeedback, setModifyFeedback] = useState('');
 
@@ -43,8 +43,11 @@ export function PlanCard({ content, isComplete, onApprove, onModify }: PlanCardP
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-accent-strong/10 bg-accent-subtle-bg/80">
         <ClipboardList size={16} className="text-accent-strong" />
         <span className="text-sm font-medium text-accent-strong">📋 执行计划</span>
-        {!isComplete && (
+        {status === 'active' && (
           <span className="text-xs text-text-tertiary ml-auto">正在生成...</span>
+        )}
+        {status === 'approved' && (
+          <span className="text-xs text-success ml-auto">已批准，正在执行</span>
         )}
       </div>
 
@@ -67,7 +70,7 @@ export function PlanCard({ content, isComplete, onApprove, onModify }: PlanCardP
       </div>
 
       {/* 操作按钮 / 修改反馈输入 */}
-      {isComplete && !showModifyInput && (
+       {status === 'complete' && !showModifyInput && (
         <div className="flex items-center gap-2 px-4 py-2.5 border-t border-accent-strong/10 bg-surface/50">
           <button
             type="button"
@@ -91,7 +94,7 @@ export function PlanCard({ content, isComplete, onApprove, onModify }: PlanCardP
         </div>
       )}
 
-      {isComplete && showModifyInput && (
+       {status === 'complete' && showModifyInput && (
         <div className="px-4 py-2.5 border-t border-accent-strong/10 bg-surface/50">
           <textarea
             autoFocus

@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom';
 import type { Claim, Flow } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { CONFIDENCE_BG_MAP, CONFIDENCE_COLOR_MAP } from '../constants/claimColors';
+import { showToast } from './Toast';
 
-interface NodePos {
+export interface NodePos {
   x: number;
   y: number;
 }
@@ -35,79 +36,162 @@ function drawEdgePath(
   return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
 }
 
-// ===== DAG 分层布局算法 =====
+// ===== Flow 分层布局算法 =====
 
 /**
- * 使用拓扑排序 + BFS 对 Flow DAG 进行分层布局。
- * 根节点（无入边）放在第 0 层，子节点逐层向下排列。
+ * 先将强连通分量（SCC）缩点，再对缩点后的 DAG 进行横向分层布局。
+ * 环内节点保持同层；环外下游节点继续沿 x 轴分层，避免出现反向边。
  */
-function computeLayeredLayout(flows: Flow[]): Map<string, NodePos> {
+export function computeLayeredLayout(flows: Flow[]): Map<string, NodePos> {
   const flowIds = new Set(flows.map((f) => f.flowId));
 
-  // 构建邻接表和入度（仅计算 flow 集合内部的父子关系）
+  // 构建邻接表（仅计算当前 Flow 集合内部的父子关系）。
   const children = new Map<string, string[]>();
-  const inDegree = new Map<string, number>();
   for (const flow of flows) {
-    inDegree.set(flow.flowId, 0);
+    children.set(flow.flowId, []);
   }
   for (const flow of flows) {
     for (const parentId of flow.parentFlows) {
       if (flowIds.has(parentId)) {
-        inDegree.set(flow.flowId, (inDegree.get(flow.flowId) ?? 0) + 1);
-        if (!children.has(parentId)) children.set(parentId, []);
         children.get(parentId)!.push(flow.flowId);
       }
     }
   }
 
-  // 拓扑排序 + 分层：每处理一个父节点后入度 -1，入度为 0 时入队
-  const queue: string[] = [];
-  const layer = new Map<string, number>();
+  // Tarjan 算法：先将每个环缩为一个强连通分量，后续图一定是 DAG。
+  const discoveryIndex = new Map<string, number>();
+  const lowLink = new Map<string, number>();
+  const stack: string[] = [];
+  const inStack = new Set<string>();
+  const components: string[][] = [];
+  let nextIndex = 0;
+
+  const collectComponent = (flowId: string) => {
+    discoveryIndex.set(flowId, nextIndex);
+    lowLink.set(flowId, nextIndex);
+    nextIndex += 1;
+    stack.push(flowId);
+    inStack.add(flowId);
+
+    for (const childId of children.get(flowId) ?? []) {
+      if (!discoveryIndex.has(childId)) {
+        collectComponent(childId);
+        lowLink.set(flowId, Math.min(lowLink.get(flowId)!, lowLink.get(childId)!));
+      } else if (inStack.has(childId)) {
+        lowLink.set(flowId, Math.min(lowLink.get(flowId)!, discoveryIndex.get(childId)!));
+      }
+    }
+
+    if (lowLink.get(flowId) === discoveryIndex.get(flowId)) {
+      const component: string[] = [];
+      let memberId: string;
+      do {
+        memberId = stack.pop()!;
+        inStack.delete(memberId);
+        component.push(memberId);
+      } while (memberId !== flowId);
+      components.push(component);
+    }
+  };
 
   for (const flow of flows) {
-    if (inDegree.get(flow.flowId) === 0) {
-      queue.push(flow.flowId);
-      layer.set(flow.flowId, 0);
-    }
+    if (!discoveryIndex.has(flow.flowId)) collectComponent(flow.flowId);
   }
 
+  // 按原始输入顺序固定分量与同层节点的排列，保证重复布局坐标稳定。
+  const flowOrder = new Map(flows.map((flow, index) => [flow.flowId, index]));
+  components.forEach((component) => component.sort((a, b) => flowOrder.get(a)! - flowOrder.get(b)!));
+  components.sort((a, b) => flowOrder.get(a[0])! - flowOrder.get(b[0])!);
+
+  const componentByFlow = new Map<string, number>();
+  components.forEach((component, componentId) => {
+    component.forEach((flowId) => componentByFlow.set(flowId, componentId));
+  });
+
+  const componentChildren = components.map(() => new Set<number>());
+  const componentInDegree = components.map(() => 0);
+  components.forEach((component, sourceComponentId) => {
+    for (const flowId of component) {
+      for (const childId of children.get(flowId) ?? []) {
+        const targetComponentId = componentByFlow.get(childId)!;
+        if (targetComponentId !== sourceComponentId && !componentChildren[sourceComponentId].has(targetComponentId)) {
+          componentChildren[sourceComponentId].add(targetComponentId);
+          componentInDegree[targetComponentId] += 1;
+        }
+      }
+    }
+  });
+
+  // 缩点后的图是 DAG，可安全进行标准拓扑分层。
+  const queue: number[] = [];
+  const componentLayer = components.map(() => 0);
+  const candidateLayer = components.map(() => 0);
+  componentInDegree.forEach((degree, componentId) => {
+    if (degree === 0) queue.push(componentId);
+  });
+
   while (queue.length > 0) {
-    const current = queue.shift()!;
-    const currentLayer = layer.get(current)!;
-    for (const childId of children.get(current) ?? []) {
-      // 子节点层号 = max(当前计算值, 父层 + 1)
-      layer.set(childId, Math.max(layer.get(childId) ?? -1, currentLayer + 1));
-      const deg = (inDegree.get(childId) ?? 1) - 1;
-      inDegree.set(childId, deg);
-      if (deg === 0) queue.push(childId);
+    const sourceComponentId = queue.shift()!;
+    for (const targetComponentId of componentChildren[sourceComponentId]) {
+      candidateLayer[targetComponentId] = Math.max(
+        candidateLayer[targetComponentId],
+        componentLayer[sourceComponentId] + 1,
+      );
+      componentInDegree[targetComponentId] -= 1;
+      if (componentInDegree[targetComponentId] === 0) {
+        componentLayer[targetComponentId] = candidateLayer[targetComponentId];
+        queue.push(targetComponentId);
+      }
     }
   }
 
   // 按层分组
   const layerGroups = new Map<number, string[]>();
-  for (const [id, l] of layer) {
+  for (const flow of flows) {
+    const id = flow.flowId;
+    const l = componentLayer[componentByFlow.get(id)!];
     if (!layerGroups.has(l)) layerGroups.set(l, []);
     layerGroups.get(l)!.push(id);
   }
 
   // 按层排列节点
   const positions = new Map<string, NodePos>();
-  const nodeSpacing = 280;    // 同层节点水平间距
-  const layerSpacing = 200;   // 层间垂直间距
+  const nodeSpacing = 150;    // 同层节点垂直间距
+  const layerSpacing = 300;   // 层间水平间距，匹配左到右连线
   const margin = 40;          // 画布边距
 
-  for (const [l, ids] of layerGroups) {
-    const totalWidth = (ids.length - 1) * nodeSpacing;
-    const startX = margin;
+  for (const [l, ids] of [...layerGroups.entries()].sort(([a], [b]) => a - b)) {
     ids.forEach((id, i) => {
       positions.set(id, {
-        x: startX + i * nodeSpacing,
-        y: margin + l * layerSpacing,
+        x: margin + l * layerSpacing,
+        y: margin + i * nodeSpacing,
       });
     });
   }
 
   return positions;
+}
+
+/**
+ * 并发保存自动布局位置，等待全部请求结束后再返回结果。
+ * 失败不抛出，调用方可保留已在画布上应用的本地坐标并统一提示用户。
+ */
+export async function saveLayoutPositions(
+  flows: Pick<Flow, 'flowId'>[],
+  positions: Map<string, NodePos>,
+  savePosition: (flowId: string, position: NodePos) => Promise<void>,
+): Promise<{ failedFlowIds: string[] }> {
+  const results = await Promise.all(
+    flows.flatMap((flow) => {
+      const position = positions.get(flow.flowId);
+      if (!position) return [];
+      return savePosition(flow.flowId, position)
+        .then(() => null)
+        .catch(() => flow.flowId);
+    }),
+  );
+
+  return { failedFlowIds: results.filter((flowId): flowId is string => flowId !== null) };
 }
 
 /** 截取文本前 N 行（按 \n 分割） */
@@ -132,6 +216,8 @@ export const ContourMap = forwardRef<ContourMapHandle, {
   onToggleFlowSelection?: (flowId: string) => void;
   /** 位置保存成功后回调，通知父组件同步数据 */
   onPositionSaved?: (flowId: string, x: number, y: number) => void;
+  /** 自动布局的全部位置请求结束后回调一次，通知父组件同步数据 */
+  onLayoutSaved?: () => void;
 }>(function ContourMap({
   flows,
   projectId,
@@ -142,6 +228,7 @@ export const ContourMap = forwardRef<ContourMapHandle, {
   selectedFlowIds,
   onToggleFlowSelection,
   onPositionSaved,
+  onLayoutSaved,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
@@ -149,6 +236,7 @@ export const ContourMap = forwardRef<ContourMapHandle, {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [creatingFromId, setCreatingFromId] = useState<string | null>(null);
   const [createTitle, setCreateTitle] = useState('');
+  const [isAutoLayoutSaving, setIsAutoLayoutSaving] = useState(false);
 
   // ----- Hover 预览状态 -----
   const [hoveredFlowId, setHoveredFlowId] = useState<string | null>(null);
@@ -183,6 +271,8 @@ export const ContourMap = forwardRef<ContourMapHandle, {
   const hasDraggedRef = useRef(false);
   // 阻止下一次 click 导航（拖拽结束后 Link 会收到 click 事件）
   const preventClickRef = useRef(false);
+  // 避免快速重复点击导致两批位置写入相互覆盖。
+  const isAutoLayoutSavingRef = useRef(false);
 
   // 项目切换时：保存当前项目位置，恢复/清空目标项目位置
   const prevProjectRef = useRef(projectId);
@@ -228,26 +318,34 @@ export const ContourMap = forwardRef<ContourMapHandle, {
 
   // ===== 自动布局 =====
   const autoLayout = useCallback(async () => {
+    if (isAutoLayoutSavingRef.current) return;
+
+    isAutoLayoutSavingRef.current = true;
+    setIsAutoLayoutSaving(true);
     const newPositions = computeLayeredLayout(flows);
     setPositions(newPositions);
 
-    // 批量保存所有新位置到后端
-    const savePromises = flows.map((flow) => {
-      const pos = newPositions.get(flow.flowId);
-      if (!pos) return Promise.resolve();
-      return fetch(`/api/flows/${flow.flowId}/position`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y), projectId }),
-        keepalive: true,
-      })
-        .then((res) => {
-          if (res.ok) onPositionSaved?.(flow.flowId, Math.round(pos.x), Math.round(pos.y));
-        })
-        .catch((err) => console.error('保存位置失败:', err));
-    });
-    await Promise.all(savePromises);
-  }, [flows, projectId, onPositionSaved]);
+    try {
+      const { failedFlowIds } = await saveLayoutPositions(flows, newPositions, async (flowId, position) => {
+        const response = await fetch(`/api/flows/${flowId}/position`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ x: Math.round(position.x), y: Math.round(position.y), projectId }),
+          keepalive: true,
+        });
+        if (!response.ok) throw new Error(`保存位置失败（${response.status}）`);
+      });
+
+      if (failedFlowIds.length > 0) {
+        showToast(`自动布局已应用，但 ${failedFlowIds.length} 个节点的位置保存失败`, 'error');
+      }
+      // 所有请求已结束后仅刷新一次，避免中间状态覆盖本地布局。
+      onLayoutSaved?.();
+    } finally {
+      isAutoLayoutSavingRef.current = false;
+      setIsAutoLayoutSaving(false);
+    }
+  }, [flows, projectId, onLayoutSaved]);
 
   // 暴露 autoLayout 给父组件
   useImperativeHandle(ref, () => ({ autoLayout }), [autoLayout]);
@@ -497,6 +595,7 @@ export const ContourMap = forwardRef<ContourMapHandle, {
                     }}
                     title={`${claimsCount} 个关联 Claim`}
                     type="button"
+                    aria-expanded={expandedClaimsFlowId === flow.flowId}
                   >
                     <Shield size={11} />
                     {claimsCount} claim{claimsCount > 1 ? 's' : ''}
@@ -709,13 +808,15 @@ export const ContourMap = forwardRef<ContourMapHandle, {
         </span>
         {!contextSelectMode && (
           <button
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-raised border border-border text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-raised border border-border text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isAutoLayoutSaving}
             onClick={autoLayout}
-            title="自动分层布局 DAG 节点"
+            title="自动分层布局 Flow 节点"
             type="button"
+            aria-busy={isAutoLayoutSaving}
           >
             <LayoutGrid size={12} />
-            自动布局
+            {isAutoLayoutSaving ? '保存布局中' : '自动布局'}
           </button>
         )}
       </div>

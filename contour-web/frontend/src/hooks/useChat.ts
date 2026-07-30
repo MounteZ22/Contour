@@ -8,7 +8,7 @@ import { chatDraftsAtom, planModeEnabledAtom } from '../state/chat';
 export type PermissionMode = "readonly" | "review" | "yolo";
 
 /** Plan Mode 状态 */
-export type PlanStatus = 'idle' | 'active' | 'complete';
+export type PlanStatus = 'idle' | 'active' | 'complete' | 'approved';
 
 export interface UseChatReturn {
   messages: ChatMessage[];
@@ -33,7 +33,13 @@ export interface UseChatReturn {
   /** 当前的权限确认请求（review 模式下弹出对话框用） */
   permissionRequest: PermissionRequest | null;
   /** 响应当前权限请求 */
-  handlePermissionResponse: (action: "allow" | "deny", remember: boolean) => Promise<void>;
+  handlePermissionResponse: (action: "allow" | "deny", remember: boolean) => Promise<boolean>;
+  /** 权限响应提交失败时保留的错误；横幅仍可重试。 */
+  permissionResponseError: string | null;
+  /** 当前流中的 AskUser 请求，必须在收到 SSE 后立即显示。 */
+  askUserRequest: AskUserRequest | null;
+  /** AskUser 提交成功后将答案写入当前消息并恢复流。 */
+  handleAskUserAnswered: (requestId: string, answers: Record<string, string>) => void;
   /** Plan Mode 相关 */
   planModeEnabled: boolean;
   setPlanModeEnabled: (enabled: boolean) => void;
@@ -233,6 +239,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const [processActivities, setProcessActivities] = useState<ProcessActivity[]>([]);
   const [error, setError] = useState<AgentErrorInfo | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
+  const [permissionResponseError, setPermissionResponseError] = useState<string | null>(null);
+  const [askUserRequest, setAskUserRequest] = useState<AskUserRequest | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
   const [planStatus, setPlanStatus] = useState<PlanStatus>('idle');
   const [planContent, setPlanContent] = useState('');
@@ -241,6 +249,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const failedMessageRef = useRef<{ message: string; partialContent: string } | null>(null);
+  const resumeWatchdogRef = useRef<(() => void) | null>(null);
+  const streamGenerationRef = useRef(0);
 
   const inputValue = sessionId ? (drafts[sessionId] ?? '') : transientInputValue;
   const setInputValue = useCallback((value: string) => {
@@ -292,6 +302,15 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     };
   }, [sessionId, projectId]);
 
+  // 切换会话或卸载时必须终止旧 SSE，避免旧流回调覆盖新会话状态。
+  useEffect(() => {
+    return () => {
+      streamGenerationRef.current += 1;
+      resumeWatchdogRef.current = null;
+      abortControllerRef.current?.abort();
+    };
+  }, [sessionId]);
+
   const updateMessages = useCallback(
     (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
       setMessages((prev) => {
@@ -303,7 +322,11 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     [sessionId],
   );
 
-  const sendMessage = useCallback(async (trimmed: string, appendUserMessage: boolean) => {
+  const sendMessage = useCallback(async (
+    trimmed: string,
+    appendUserMessage: boolean,
+    requestOptions: { planMode?: boolean; preservePlan?: boolean } = {},
+  ) => {
     if (!trimmed || isLoading) return;
 
     if (appendUserMessage) {
@@ -322,10 +345,14 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setTaskActivities([]);
     setProcessActivities([]);
     setError(null);
-    setPlanStatus('idle');
-    setPlanContent('');
-    planContentRef.current = '';
+    setPermissionResponseError(null);
+    if (!requestOptions.preservePlan) {
+      setPlanStatus('idle');
+      setPlanContent('');
+      planContentRef.current = '';
+    }
     askUserRequestRef.current = null;
+    setAskUserRequest(null);
 
     const currentToolActivities: ToolActivity[] = [];
     const currentProcessActivities: ProcessActivity[] = [];
@@ -334,6 +361,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     let partialContent = ''; // 当前轮已生成的文本
     let currentTurnIndex = -1; // 当前轮次序号（-1 表示未进入任何轮次）
     let currentTurnFilesChanged: string[] = [];
+    let hasTurnEvents = false;
 
     /** 将当前轮内容刷为一条 assistant ChatMessage */
     const flushTurnMessage = () => {
@@ -359,6 +387,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
       currentToolActivities.length = 0;
       currentProcessActivities.length = 0;
       askUserRequestRef.current = null;
+      setAskUserRequest(null);
       setStreamingContent('');
       setToolActivities([]);
       setTaskActivities([]);
@@ -366,10 +395,16 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     };
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    const streamGeneration = ++streamGenerationRef.current;
+    const isCurrentStream = () => (
+      streamGenerationRef.current === streamGeneration
+      && abortControllerRef.current === abortController
+    );
 
     try {
       await sendChatMessageStream(trimmed, initialContext || [], {
         onChunk: (delta) => {
+          if (!isCurrentStream()) return;
           partialContent += delta;
           setStreamingContent((prev) => prev + delta);
           // Plan Mode：收集 EnterPlanMode 之后的文本作为计划内容
@@ -379,6 +414,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           }
         },
         onToolActivity: (activity) => {
+          if (!isCurrentStream()) return;
           const existingIdx = currentToolActivities.findIndex(
             (a) => (activity.id ? a.id === activity.id : a.toolName === activity.toolName) && a.status === 'running',
           );
@@ -412,6 +448,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           });
         },
         onProcessActivity: (activity) => {
+          if (!isCurrentStream()) return;
           const existingIdx = currentProcessActivities.findIndex((item) => item.id === activity.id);
           if (existingIdx >= 0) currentProcessActivities[existingIdx] = activity;
           else currentProcessActivities.push(activity);
@@ -425,9 +462,12 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           });
         },
         onPermissionRequest: (request) => {
+          if (!isCurrentStream()) return;
           setPermissionRequest(request);
+          setPermissionResponseError(null);
         },
         onPlan: (event) => {
+          if (!isCurrentStream()) return;
           if (event.action === 'enter') {
             setPlanStatus('active');
             planContentRef.current = '';
@@ -438,26 +478,32 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           }
         },
         onAskUser: (request) => {
+          if (!isCurrentStream()) return;
           askUserRequestRef.current = request;
+          setAskUserRequest(request);
         },
         onTurnStart: (turnIndex) => {
+          if (!isCurrentStream()) return;
           // 新一轮开始前，先刷出上一轮的内容
           flushTurnMessage();
+          hasTurnEvents = true;
           currentTurnIndex = turnIndex;
           currentTurnFilesChanged = [];
         },
         onTurnEnd: (_turnIndex, filesChanged) => {
+          if (!isCurrentStream()) return;
           currentTurnFilesChanged = filesChanged;
           // 本轮结束，刷出本轮消息
           flushTurnMessage();
           currentTurnIndex = -1;
         },
         onComplete: (_fullContent) => {
+          if (!isCurrentStream()) return;
           failedMessageRef.current = null;
           // 如果有未刷出的内容（兼容无 turn 事件的旧版响应或最后一轮未结束）
           if (currentTurnIndex >= 0) {
             flushTurnMessage();
-          } else if (_fullContent || partialContent || currentToolActivities.length > 0) {
+          } else if (!hasTurnEvents && (_fullContent || partialContent || currentToolActivities.length > 0)) {
             // 兼容无 turn 事件的响应：优先用后端返回的 fullContent
             const askUserRequest = askUserRequestRef.current;
             const assistantMessage: ChatMessage = {
@@ -477,12 +523,13 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setProcessActivities([]);
         },
         onAborted: (abortedContent) => {
+          if (!isCurrentStream()) return;
           failedMessageRef.current = null;
           // 有 turn 上下文时刷出当前轮消息
           if (currentTurnIndex >= 0) {
             partialContent = abortedContent;
             flushTurnMessage();
-          } else {
+          } else if (!hasTurnEvents) {
             const askUserRequest = askUserRequestRef.current;
             const assistantMessage: ChatMessage = {
               id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -502,6 +549,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setProcessActivities([]);
         },
         onError: (errorInfo, _partialContent = '') => {
+          if (!isCurrentStream()) return;
           failedMessageRef.current = { message: trimmed, partialContent: _partialContent };
           // 如果有正在进行的轮次，先刷出已生成的内容
           if (currentTurnIndex >= 0) {
@@ -513,8 +561,12 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setToolActivities([]);
           setProcessActivities([]);
         },
-      }, permissionMode, projectId, sessionId, abortController.signal, ...(modelSelection ? [modelSelection] : []), planModeEnabled);
+        onWatchdogPaused: (resume) => {
+          if (isCurrentStream()) resumeWatchdogRef.current = resume;
+        },
+      }, permissionMode, projectId, sessionId, abortController.signal, ...(modelSelection ? [modelSelection] : []), requestOptions.planMode ?? planModeEnabled);
     } catch (err) {
+      if (!isCurrentStream()) return;
       failedMessageRef.current = { message: trimmed, partialContent: '' };
       setError(toAgentErrorInfo(err));
       setIsStreaming(false);
@@ -523,9 +575,10 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     } finally {
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
+        resumeWatchdogRef.current = null;
+        setIsLoading(false);
+        setTimeout(scrollToBottom, 50);
       }
-      setIsLoading(false);
-      setTimeout(scrollToBottom, 50);
     }
   }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId, modelSelection, planModeEnabled]);
 
@@ -567,16 +620,48 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     remember: boolean,
   ) => {
     const req = permissionRequest;
-    if (!req) return;
+    if (!req) return false;
 
     try {
-      await respondToPermission(req.requestId, action, remember);
+      const accepted = await respondToPermission(req.requestId, action, remember);
+      if (!accepted) {
+        setPermissionResponseError('服务未接受本次权限响应，请重试。');
+        return false;
+      }
+      setPermissionRequest(null);
+      setPermissionResponseError(null);
+      const resume = resumeWatchdogRef.current;
+      resumeWatchdogRef.current = null;
+      resume?.();
+      return true;
     } catch (err) {
       console.error('[Permission] 响应失败:', err);
-    } finally {
-      setPermissionRequest(null);
+      setPermissionResponseError(err instanceof Error ? err.message : '权限响应失败，请重试。');
+      return false;
     }
   }, [permissionRequest]);
+
+  const handleAskUserAnswered = useCallback((requestId: string, answers: Record<string, string>) => {
+    const markAnswered = (request: AskUserRequest): AskUserRequest => ({
+      ...request,
+      status: 'answered',
+      answers,
+    });
+
+    if (askUserRequestRef.current?.requestId === requestId) {
+      const answeredRequest = markAnswered(askUserRequestRef.current);
+      askUserRequestRef.current = answeredRequest;
+      setAskUserRequest(answeredRequest);
+    }
+    updateMessages((previous) => previous.map((message) => (
+      message.askUserRequest?.requestId === requestId
+        ? { ...message, askUserRequest: markAnswered(message.askUserRequest) }
+        : message
+    )));
+    const resume = resumeWatchdogRef.current;
+    resumeWatchdogRef.current = null;
+    resume?.();
+  }, [updateMessages]);
 
   const clearMessages = useCallback(() => {
     updateMessages(() => []);
@@ -586,6 +671,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setTaskActivities([]);
     setProcessActivities([]);
     setError(null);
+    setPermissionRequest(null);
+    setPermissionResponseError(null);
+    setAskUserRequest(null);
     setPlanStatus('idle');
     setPlanContent('');
     planContentRef.current = '';
@@ -594,11 +682,11 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
 
   /** 批准计划并开始执行 */
   const handleApprovePlan = useCallback(() => {
-    setPlanStatus('idle');
-    setPlanContent('');
-    planContentRef.current = '';
-    void sendMessage('批准计划，开始执行', false);
-  }, [sendMessage]);
+    // React 状态更新并不会同步改变当前闭包；显式覆盖请求参数以确保执行轮不是 Plan Mode。
+    setPlanModeEnabled(false);
+    setPlanStatus('approved');
+    void sendMessage('批准计划，开始执行', false, { planMode: false, preservePlan: true });
+  }, [sendMessage, setPlanModeEnabled]);
 
   /** 修改计划，发送反馈文本让 Agent 重新规划 */
   const handleModifyPlan = useCallback((feedback: string) => {
@@ -632,6 +720,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
+    permissionResponseError,
+    askUserRequest,
+    handleAskUserAnswered,
     planModeEnabled,
     setPlanModeEnabled,
     planStatus,

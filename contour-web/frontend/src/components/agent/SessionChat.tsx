@@ -14,6 +14,41 @@ import { useSessionModelSelection } from '../../state/agentModelSelection';
 import { TaskProgressOverlay } from './TaskProgressOverlay';
 import { TurnGroup } from './TurnGroup';
 
+type ChatDisplayItem =
+  | { type: 'message'; message: ChatMessage }
+  | { type: 'turnGroup'; turnMessages: ChatMessage[]; isLatest: boolean };
+
+/** 将连续且属于同一 turnIndex 的助手消息合并为一个展示组。 */
+export function groupMessagesByTurn(messages: ChatMessage[]): ChatDisplayItem[] {
+  const items: ChatDisplayItem[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const message = messages[i];
+    if (message.turnIndex == null) {
+      items.push({ type: 'message', message });
+      i++;
+      continue;
+    }
+
+    const group: ChatMessage[] = [];
+    while (i < messages.length && messages[i].turnIndex === message.turnIndex) {
+      group.push(messages[i]);
+      i++;
+    }
+    items.push({ type: 'turnGroup', turnMessages: group, isLatest: i === messages.length });
+  }
+  return items;
+}
+
+/** 仅在后端成功接受拒绝决定后，才把权限横幅切换为已拒绝状态。 */
+export async function confirmPermissionDenial(
+  request: PermissionRequest | null,
+  respond: (action: 'deny', remember: boolean) => Promise<boolean>,
+): Promise<PermissionRequest | null> {
+  if (!request) return null;
+  return await respond('deny', false) ? request : null;
+}
+
 export function SessionChat({ session, initialMessage }: { session: AgentSession; initialMessage?: string }) {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -43,6 +78,9 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
+    permissionResponseError,
+    askUserRequest,
+    handleAskUserAnswered,
     planModeEnabled,
     setPlanModeEnabled,
     planStatus,
@@ -70,11 +108,9 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
     void handlePermissionResponse('allow', false);
   }, [handlePermissionResponse]);
 
-  const handleDeny = useCallback(() => {
-    if (permissionRequest) {
-      setDeniedRequest(permissionRequest);
-    }
-    void handlePermissionResponse('deny', false);
+  const handleDeny = useCallback(async () => {
+    const confirmedRequest = await confirmPermissionDenial(permissionRequest, handlePermissionResponse);
+    if (confirmedRequest) setDeniedRequest(confirmedRequest);
   }, [handlePermissionResponse, permissionRequest]);
 
   const handleAllowSession = useCallback(() => {
@@ -141,28 +177,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
             <>
               {(() => {
                 // 将消息按 turn 分组：连续带 turnIndex 的消息归入一个 TurnGroup
-                const items: Array<
-                  | { type: 'message'; message: ChatMessage }
-                  | { type: 'turnGroup'; turnMessages: ChatMessage[]; isLatest: boolean }
-                > = [];
-                let i = 0;
-                while (i < messages.length) {
-                  const msg = messages[i];
-                  if (msg.turnIndex == null) {
-                    items.push({ type: 'message', message: msg });
-                    i++;
-                  } else {
-                    // 收集连续带 turnIndex 的消息
-                    const group: ChatMessage[] = [];
-                    while (i < messages.length && messages[i].turnIndex != null) {
-                      group.push(messages[i]);
-                      i++;
-                    }
-                    // 最后一个 turn 组即为当前轮
-                    const isLatest = i === messages.length;
-                    items.push({ type: 'turnGroup', turnMessages: group, isLatest });
-                  }
-                }
+                const items = groupMessagesByTurn(messages);
 
                 // 渲染分组后的项目列表
                 return items.map((item, idx) => {
@@ -172,6 +187,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                         key={item.message.id}
                         isStreaming={false}
                         message={item.message}
+                        onAskUserAnswered={handleAskUserAnswered}
                       />
                     );
                   }
@@ -180,22 +196,23 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                       key={`turn-${item.turnMessages[0]?.turnIndex ?? idx}`}
                       turnMessages={item.turnMessages}
                       defaultExpanded={item.isLatest}
+                      onAskUserAnswered={handleAskUserAnswered}
                     />
                   );
                 });
               })()}
 
               {/* Plan Mode：显示执行计划卡片 */}
-              {(planStatus === 'active' || planStatus === 'complete') && planContent && (
+              {(planStatus === 'active' || planStatus === 'complete' || planStatus === 'approved') && planContent && (
                 <PlanCard
                   content={planContent}
-                  isComplete={planStatus === 'complete'}
+                  status={planStatus}
                   onApprove={handleApprovePlan}
                   onModify={handleModifyPlan}
                 />
               )}
 
-              {(smoothContent || toolActivities.length > 0 || processActivities.length > 0) && (
+              {(smoothContent || toolActivities.length > 0 || processActivities.length > 0 || askUserRequest) && (
                 <ChatMessageItem
                   isStreaming={isStreaming}
                   message={{
@@ -204,7 +221,9 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                     content: smoothContent,
                     toolActivities,
                     processActivities,
+                    askUserRequest: askUserRequest ?? undefined,
                   }}
+                  onAskUserAnswered={handleAskUserAnswered}
                 />
               )}
 
@@ -222,6 +241,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                   onAllow={handleAllow}
                   onDeny={handleDeny}
                   onAllowSession={handleAllowSession}
+                  error={permissionResponseError}
                 />
               )}
 

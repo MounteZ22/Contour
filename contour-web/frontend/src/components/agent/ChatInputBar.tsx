@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   Check,
+  ClipboardList,
   ChevronDown,
   Cpu,
   Eye,
@@ -138,6 +139,8 @@ export function ChatInputBar({
   modelStatus = 'idle',
   onModelChange,
   projectId,
+  planModeEnabled = false,
+  onPlanModeChange,
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -420,6 +423,20 @@ export function ChatInputBar({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={() => onPlanModeChange?.(!planModeEnabled)}
+                aria-label="计划模式"
+                aria-pressed={planModeEnabled}
+                title={planModeEnabled ? '关闭计划模式' : '开启计划模式'}
+                className={`w-6 h-6 rounded-sm inline-flex items-center justify-center transition-colors duration-150 cursor-pointer
+                  ${planModeEnabled
+                    ? 'bg-accent-subtle-bg text-accent-strong'
+                    : 'bg-surface-sunken text-text-secondary hover:text-text-primary'}`}
+              >
+                <ClipboardList size={13} />
+              </button>
             </div>
 
             {/* 右侧：清空 + 发送 */}
