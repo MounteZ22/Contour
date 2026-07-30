@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, Check, Moon, Palette, Radio, Settings, Sun } from 'lucide-react';
-import { useAtom } from 'jotai';
+import { ArrowLeft, Bot, Check, Globe2, Moon, Palette, PlugZap, Radio, Settings, Sun } from 'lucide-react';
+import { useAtom, useAtomValue } from 'jotai';
 import { ChannelSettings } from '../components/settings/ChannelSettings';
 import { ProjectFilesSettings } from '../components/settings/ProjectFilesSettings';
+import { PluginSettings } from '../components/settings/PluginSettings';
+import { WebSearchSettings } from '../components/settings/WebSearchSettings';
+import { SettingsCard, SettingsSection } from '../components/settings/primitives';
 import { Button } from '../components/ui/button';
 import { buttonVariants } from '../components/ui/button';
 import { cn } from '@/lib/utils';
 import { baseThemeAtom, accentThemeAtom } from '../state/theme';
+import { currentProjectIdAtom } from '../state/shell';
 
-type SettingsTab = 'general' | 'ai' | 'appearance';
+type SettingsTab = 'general' | 'ai' | 'web-search' | 'plugins' | 'appearance';
 
 interface TabItem {
   id: SettingsTab;
@@ -20,6 +24,8 @@ interface TabItem {
 const TABS: TabItem[] = [
   { id: 'general', label: '通用设置', icon: <Settings size={16} /> },
   { id: 'ai', label: 'AI 模型配置', icon: <Radio size={16} /> },
+  { id: 'web-search', label: '网络检索', icon: <Globe2 size={16} /> },
+  { id: 'plugins', label: '插件', icon: <PlugZap size={16} /> },
   { id: 'appearance', label: '外观设置', icon: <Palette size={16} /> },
 ];
 
@@ -125,12 +131,22 @@ function AppearanceSettings() {
   );
 }
 
-function renderTabContent(tab: SettingsTab): React.ReactElement {
+function renderTabContent(tab: SettingsTab, projectId: string | null): React.ReactElement {
   switch (tab) {
     case 'general':
       return <ProjectFilesSettings />;
     case 'ai':
       return <ChannelSettings />;
+    case 'web-search':
+      return <WebSearchSettings />;
+    case 'plugins':
+      return projectId ? <PluginSettings projectId={projectId} /> : (
+        <SettingsSection description="MCP 服务和 Skill 都需要绑定到一个项目。" title="插件">
+          <SettingsCard divided={false}>
+            <p className="px-6 py-10 text-center text-sm text-text-secondary">请先在左侧项目列表中选择一个项目</p>
+          </SettingsCard>
+        </SettingsSection>
+      );
     case 'appearance':
       return <AppearanceSettings />;
   }
@@ -138,6 +154,7 @@ function renderTabContent(tab: SettingsTab): React.ReactElement {
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const projectId = useAtomValue(currentProjectIdAtom);
 
   const activeTabLabel = TABS.find((t) => t.id === activeTab)?.label ?? '设置';
 
@@ -184,7 +201,7 @@ export function SettingsPage() {
 
         {/* 右侧内容 */}
         <main className="flex-1 p-8 overflow-y-auto">
-          <div className="max-w-2xl">{renderTabContent(activeTab)}</div>
+          <div className="max-w-2xl">{renderTabContent(activeTab, projectId)}</div>
         </main>
       </div>
     </div>

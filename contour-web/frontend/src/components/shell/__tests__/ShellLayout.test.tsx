@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { Provider } from 'jotai';
+import { Provider, createStore } from 'jotai';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { rightPanelOpenAtom } from '../../../state/shell';
+import type { ProjectData } from '../../../types';
 import { ShellLayout } from '../ShellLayout';
 
 vi.mock('../LeftSidebar', () => ({
@@ -35,5 +37,35 @@ describe('ShellLayout 窄屏导航', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '关闭抽屉' }));
     expect(screen.queryByTestId('mobile-navigation-drawer')).not.toBeInTheDocument();
+  });
+
+  it('Given Agent 文件面板已打开, When 点击移动端遮罩, Then 关闭文件面板', () => {
+    const store = createStore();
+    store.set(rightPanelOpenAtom, true);
+    const projects = [{
+      projectId: 'PRJ_001',
+      title: '测试项目',
+      researchGoal: '',
+      currentStage: '',
+      flows: [],
+      claims: [],
+      docs: [],
+    }] as ProjectData[];
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/agent']}>
+          <Routes>
+            <Route element={<ShellLayout onRefresh={vi.fn()} projects={projects} />}>
+              <Route path="agent" element={<div>Agent 内容</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    expect(screen.getByText('文件面板')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '关闭文件面板遮罩' }));
+    expect(screen.queryByText('文件面板')).not.toBeInTheDocument();
   });
 });

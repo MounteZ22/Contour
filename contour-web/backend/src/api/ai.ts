@@ -3,19 +3,38 @@ import { testLLMConnection } from '../services/aiService.js';
 import { buildAgentPrompt } from '../services/promptBuilder.js';
 import type { AIContextItem } from '../types.js';
 import { getChannelById } from '../services/channelManager.js';
-import { channelToAgentRuntimeConfig, findDefaultAgentChannel } from '../agent/channel-adapter.js';
+import { channelToAgentRuntimeConfig, findDefaultAgentChannel, validateAgentChannelSelection } from '../agent/channel-adapter.js';
 import { PiRuntime } from '../agent/pi-runtime.js';
 import { CONFIG } from '../config.js';
 import { createContourCustomTools } from '../tools/pi-vault-tools.js';
+import { createTaskProgressTools } from '../tools/task-progress-tools.js';
+import { createWebSearchTools } from '../tools/web-search-tools.js';
+import { getWebSearchRuntimeConfig } from '../services/settingsService.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
+import type { AskUserRequestManager } from '../agent/ask-user.js';
 import { findProjectDir } from '../vault/locate.js';
 import { ensureProjectDir } from '../services/projectManager.js';
+import { getEnabledProjectSkillDirectories } from '../services/project-plugin-config.js';
 import path from 'node:path';
 import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '../agent/typed-error.js';
 import { loadProjects } from '../vault/loader.js';
 
 
 const router = Router();
+
+// HTTP 回调不持有 Promise；它只按 requestId 找到所属运行时的实例管理器。
+// 请求真正的创建、超时和取消均由 AskUserRequestManager 按实例处理。
+const askUserManagers = new Map<string, AskUserRequestManager>();
+
+/** 仅供路由测试构造已登记的 AskUser 请求，不参与生产请求生命周期。 */
+export const __testOnlyAskUserResponseRegistry = {
+  register(requestId: string, manager: AskUserRequestManager): void {
+    askUserManagers.set(requestId, manager);
+  },
+  clear(): void {
+    askUserManagers.clear();
+  },
+};
 
 function sendAgentHttpError(res: Response, error: unknown, status?: number): void {
   const payload = classifyAgentError(error);
@@ -34,6 +53,8 @@ interface PiChatRequestBody {
    * 行为对齐。前端目前没有渠道选择 UI，依赖这个回退。
    */
   channelId?: string;
+  /** 渠道中的具体模型 ID；传入时必须属于该渠道且处于启用状态。 */
+  model?: string;
   /**
    * 业务上下文项（可选）
    *
@@ -63,6 +84,13 @@ interface PiChatRequestBody {
    * 目录下查找对应的持久化文件，加载历史消息作为上下文。
    */
   sessionId?: string;
+  /**
+   * Plan Mode 开关（可选，缺省 false）
+   *
+   * 开启后 Agent 先调研产出执行计划，等待用户审批后再执行。
+   * 后端会在 system prompt 中注入 Plan Mode 行为指令。
+   */
+  planMode?: boolean;
 }
 
 // ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -136,6 +164,18 @@ router.post('/pi-chat', async (req, res) => {
       }), 400);
       return;
     }
+    try {
+      validateAgentChannelSelection(channel, body.model);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '当前模型不可用';
+      sendAgentHttpError(res, typedAgentError('invalid_model', {
+        title: '模型不可用',
+        message,
+        canRetry: false,
+        action: 'open_settings',
+      }), 400);
+      return;
+    }
 
     // 3. 确定项目目录和存储名称
     //    - 如果前端传了 projectId，用 findProjectDir 解析实际项目子目录
@@ -182,18 +222,32 @@ router.post('/pi-chat', async (req, res) => {
       dataDir: CONFIG.DATA_DIR,
     });
 
+    // Plan Mode 指令注入：当用户开启 Plan Mode 时，在 system prompt 前追加指令。
+    const planModeInstruction = body.planMode
+      ? '你是 Plan Mode。先调研代码库和需求，输出一份执行计划给用户审批。只调研不修改。使用 EnterPlanMode / ExitPlanMode 工具。\n\n'
+      : '';
+    const finalSystemPrompt = planModeInstruction + systemPrompt;
+
     // 5. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
+    const webSearchConfig = await getWebSearchRuntimeConfig();
+    const additionalSkillPaths = getEnabledProjectSkillDirectories(projectName);
     let agentConfig;
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
-        systemPrompt,
-        customTools: createContourCustomTools(currentProject?.projectId ?? projectName),
+        model: body.model,
+        systemPrompt: finalSystemPrompt,
+        customTools: [
+          ...createContourCustomTools(currentProject?.projectId ?? projectName),
+          ...createTaskProgressTools(),
+          ...createWebSearchTools(webSearchConfig),
+        ],
         authorizedFiles,
         permissionMode: body.permissionMode,
         sessionId: body.sessionId,
         dataDir: CONFIG.DATA_DIR,
         projectDir,
         projectId: projectName,
+        additionalSkillPaths,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -207,7 +261,14 @@ router.post('/pi-chat', async (req, res) => {
     }
 
     // 6. 通过 PiRuntime 初始化并发送消息
-    runtime = new PiRuntime();
+    runtime = new PiRuntime({
+      askUserLifecycle: {
+        onCreated: (requestId, manager) => askUserManagers.set(requestId, manager),
+        onSettled: (requestId, manager) => {
+          if (askUserManagers.get(requestId) === manager) askUserManagers.delete(requestId);
+        },
+      },
+    });
     await runtime.init(agentConfig);
 
     // 7. 设置 SSE 响应头
@@ -228,6 +289,23 @@ router.post('/pi-chat', async (req, res) => {
       for await (const event of runtime.prompt(body.message)) {
         if (aborted) break;
         if (event.type === 'error') streamFailed = true;
+
+        // 检测 EnterPlanMode / ExitPlanMode 工具调用，转换为 plan 事件
+        if (event.type === 'tool_call_start' && event.toolName === 'EnterPlanMode') {
+          res.write(`data: ${JSON.stringify({ type: 'plan', action: 'enter' })}\n\n`);
+          continue;
+        }
+        if (event.type === 'tool_call_end' && event.toolName === 'EnterPlanMode') {
+          continue;
+        }
+        if (event.type === 'tool_call_start' && event.toolName === 'ExitPlanMode') {
+          continue;
+        }
+        if (event.type === 'tool_call_end' && event.toolName === 'ExitPlanMode') {
+          res.write(`data: ${JSON.stringify({ type: 'plan', action: 'exit' })}\n\n`);
+          continue;
+        }
+
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
       if (!aborted && !streamFailed) {
@@ -252,7 +330,7 @@ router.post('/pi-chat', async (req, res) => {
   } finally {
     // 10. 释放 PiRuntime 资源
     if (runtime) {
-      runtime.dispose();
+      await runtime.dispose();
     }
     if (res.headersSent && !res.writableEnded) {
       res.end();
@@ -292,6 +370,37 @@ router.post('/permission-response', (req, res) => {
     res.json({ success: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : '处理权限响应失败';
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+/**
+ * POST /api/ai/ask-user-response
+ *
+ * 接收用户对 AskUser 问题的答案，传递给 ask-user.ts 中等待的 Promise。
+ * 由前端的 AskUserCard 在用户提交答案后调用。
+ */
+router.post('/ask-user-response', (req, res) => {
+  try {
+    const { requestId, answers } = req.body as {
+      requestId: string;
+      answers: Record<string, string>;
+    };
+
+    if (!requestId || !answers || typeof answers !== 'object') {
+      res.status(400).json({ success: false, error: '缺少必要参数 requestId 或 answers' });
+      return;
+    }
+
+    const resolved = askUserManagers.get(requestId)?.resolve(requestId, answers) ?? false;
+    if (!resolved) {
+      res.status(404).json({ success: false, error: '问答请求不存在或已过期' });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '处理问答响应失败';
     res.status(500).json({ success: false, error: msg });
   }
 });

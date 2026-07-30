@@ -11,7 +11,8 @@
  * - text_start / text_delta / text_end → 对外只暴露 text_delta（调用方只需
  *   关心增量文本内容，开始/结束由 turn_start / turn_end 承载语义）
  * - tool_execution_start / tool_execution_end → tool_call_start / tool_call_end
- * - thinking 事件 → thinking_delta（同上归并逻辑）
+ * - thinking 事件不向产品 UI 暴露：其内容可能是模型原始推理，不应作为
+ *   面向用户的"思考摘要"传输或持久化
  * - agent_end 既是会话结束信号，也是 "done" 信号
  */
 
@@ -124,6 +125,10 @@ export interface AgentRuntimeConfig {
    * dataDir/projects/{projectId}/sessions/{sessionId}/ 目录下。
    */
   sessionId?: string;
+  /** 用户显式启用并经过 realpath 校验的项目技能目录。 */
+  additionalSkillPaths?: string[];
+  /** 外部 MCP 工具：不论 yolo/review，调用前都必须由用户逐次确认。 */
+  mcpConfirmationToolNames?: string[];
 }
 
 // ── 事件类型 ─────────────────────────────────────────────────────────────────
@@ -133,19 +138,30 @@ export interface AgentRuntimeConfig {
  *
  * 这些事件从 Pi SDK 的原始事件归并而来，屏蔽了 SDK 内部的事件粒度：
  * - Pi 的 text_start / text_delta / text_end → 统一为 text_delta
- * - Pi 的 thinking_start / thinking_delta / thinking_end → 统一为 thinking_delta
  * - Pi 的 tool_execution_start / tool_execution_end → tool_call_start / tool_call_end
  * - Pi 的 agent_end 即为此处的 agent_end（含 "done" 语义）
  */
 export type AgentStreamEvent =
   | { type: "agent_start" }
   | { type: "agent_end" }
-  | { type: "turn_start" }
-  | { type: "turn_end" }
+  | { type: "turn_start"; turnIndex: number }
+  | { type: "turn_end"; turnIndex: number; filesChanged: string[] }
   | { type: "text_delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
-  | { type: "tool_call_start"; toolName: string }
-  | { type: "tool_call_end"; toolName: string; isError: boolean }
+  | {
+      type: "tool_call_start";
+      toolCallId: string;
+      toolName: string;
+      /** 已脱敏、已截断的工具参数，仅用于前端展示。 */
+      input?: Record<string, unknown>;
+    }
+  | {
+      type: "tool_call_end";
+      toolCallId: string;
+      toolName: string;
+      isError: boolean;
+      /** 已脱敏、已截断并格式化的工具结果，仅用于前端展示。 */
+      result?: string;
+    }
   | { type: "error"; error: AgentErrorPayload }
   /** 权限确认请求：通知前端弹出确认框，等待用户决策后放行/拒绝 */
   | {
@@ -154,7 +170,32 @@ export type AgentStreamEvent =
       toolName: string;
       input: unknown;
       reason: string;
+    }
+  /** AskUser 交互问答：Agent 通过 AskUserQuestion 工具向用户提问 */
+  | {
+      type: "ask_user";
+      requestId: string;
+      questions: AskUserQuestionItem[];
     };
+
+/** AskUser 单个问题的结构 */
+export interface AskUserQuestionItem {
+  question: string;
+  header: string;
+  options?: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+/** AskUser 选项 */
+export interface AskUserOption {
+  label: string;
+  description?: string;
+}
+
+/** 用户提交的答案 */
+export interface AskUserResponse {
+  answers: Record<string, string>;
+}
 
 // ── Prompt 选项 ──────────────────────────────────────────────────────────────
 
@@ -196,5 +237,5 @@ export interface AgentRuntime {
   setModel(model: string): Promise<void>;
 
   /** 释放所有资源，包括事件订阅、session 等 */
-  dispose(): void;
+  dispose(): void | Promise<void>;
 }

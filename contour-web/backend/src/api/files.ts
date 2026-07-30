@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { authorizeProjectPath, PathNotAuthorizedError } from '../services/authorizedPaths.js';
 import { openWithSystem, revealInFileManager } from '../services/hostFileActions.js';
@@ -21,6 +21,11 @@ const IMAGE_MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
 };
+const CONTENT_MIME: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+const MAX_CONTENT_BYTES = 25 * 1024 * 1024;
 
 function queryString(value: unknown, name: string): string {
   if (typeof value !== 'string' || !value.trim()) throw new ValidationError(`缺少 ${name} 参数`);
@@ -130,6 +135,44 @@ router.get('/preview', async (req, res) => {
       return;
     }
     res.json({ success: true, data: { kind: 'external', path: displayPath } });
+  } catch (error) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * 向内置 PDF/Excel 预览器提供二进制内容。
+ * 仍复用项目路径授权；浏览器永远不会收到本机绝对路径或目录信息。
+ */
+router.get('/content', async (req, res) => {
+  try {
+    const projectId = queryString(req.query.projectId, 'projectId');
+    const { authorized: filePath } = await authorizeRequestPath(
+      projectId,
+      queryString(req.query.path, 'path'),
+      'file',
+      req.query.flowId,
+    );
+    const extension = path.extname(filePath).toLowerCase();
+    const mimeType = CONTENT_MIME[extension];
+    if (!mimeType) {
+      throw new ValidationError('仅支持在 Contour 中预览 PDF 和 XLSX 文件；旧版 XLS 请使用系统程序打开');
+    }
+
+    const fileStats = await stat(filePath);
+    if (fileStats.size > MAX_CONTENT_BYTES) {
+      throw new ValidationError('文件超过 25 MiB，请使用系统程序打开');
+    }
+    // stat 与读取之间文件可能变化，保留二次检查来避免把超限内容发给浏览器。
+    const data = await readFile(filePath);
+    if (data.length > MAX_CONTENT_BYTES) throw new ValidationError('文件超过 25 MiB，请使用系统程序打开');
+
+    res.set({
+      'Cache-Control': 'no-store',
+      'Content-Type': mimeType,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.send(data);
   } catch (error) {
     handleError(error, res);
   }

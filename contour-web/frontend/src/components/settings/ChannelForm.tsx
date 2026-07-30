@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -60,13 +60,6 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
 
   const [newModelId, setNewModelId] = useState('');
   const [newModelName, setNewModelName] = useState('');
-
-  // 编辑模式：加载已保存的 API Key
-  useEffect(() => {
-    if (isEdit && channel) {
-      setApiKey(channel.apiKey);
-    }
-  }, [isEdit, channel]);
 
   // 切换供应商时自动更新 Base URL
   const handleProviderChange = (p: ProviderType) => {
@@ -145,19 +138,19 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
 
   // 保存
   const handleSave = async () => {
-    if (!name.trim() || !apiKey.trim()) return;
+    if (!name.trim() || (!isEdit && !apiKey.trim())) return;
 
     setSaving(true);
     try {
       if (isEdit && channel && onUpdate) {
-        await onUpdate(channel.id, {
+        const input = {
           name,
           provider,
           baseUrl,
-          apiKey,
           models,
           enabled,
-        });
+        };
+        await onUpdate(channel.id, apiKey.trim() ? { ...input, apiKey } : input);
       } else if (onCreate) {
         await onCreate({
           name,
@@ -198,7 +191,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
         </h3>
         <button
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer bg-accent-strong text-accent-on hover:bg-accent-hover disabled:opacity-50"
-          disabled={saving || !name.trim() || !apiKey.trim()}
+          disabled={saving || !name.trim() || (!isEdit && !apiKey.trim())}
           onClick={handleSave}
           type="button"
         >
@@ -278,7 +271,7 @@ export function ChannelForm({ channel, onSaved, onCancel, onCreate, onUpdate }: 
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={isEdit ? '留空则不更新' : '输入 API Key'}
+                placeholder={isEdit ? '不显示已保存密钥；留空则保持不变' : '输入 API Key'}
                 className="w-full px-3 py-2 pr-10 rounded-lg border border-border bg-surface-raised text-text-primary text-sm outline-none focus:border-accent-strong/40 font-mono"
               />
               <button

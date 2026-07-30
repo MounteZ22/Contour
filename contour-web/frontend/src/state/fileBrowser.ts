@@ -21,6 +21,7 @@ const PREVIEW_EXTENSIONS = new Set([
   '.md', '.txt', '.json', '.yaml', '.yml', '.tsv', '.py', '.r', '.js', '.ts', '.tsx', '.jsx',
   '.css', '.html', '.xml', '.toml', '.ini', '.log', '.tex', '.bib', '.sh', '.ps1',
   '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp',
+  '.pdf', '.xlsx',
 ]);
 
 function extensionOf(filePath: string): string {
@@ -56,6 +57,19 @@ async function runAction(
 
 export function getFileOpenStrategy(filePath: string): FileOpenStrategy {
   return PREVIEW_EXTENSIONS.has(extensionOf(filePath)) ? 'preview' : 'system';
+}
+
+export function getBinaryPreviewKind(filePath: string): 'pdf' | 'xlsx' | undefined {
+  const extension = extensionOf(filePath);
+  if (extension === '.pdf') return 'pdf';
+  if (extension === '.xlsx') return 'xlsx';
+  return undefined;
+}
+
+export function getFileContentUrl(projectId: string, filePath: string, flowId?: string): string {
+  const query = new URLSearchParams({ projectId, path: filePath });
+  if (flowId) query.set('flowId', flowId);
+  return `/api/files/content?${query.toString()}`;
 }
 
 export async function listDirectory(projectId: string, directoryPath: string, flowId?: string): Promise<FileEntry[]> {

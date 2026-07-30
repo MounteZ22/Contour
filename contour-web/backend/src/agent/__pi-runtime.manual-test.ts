@@ -81,15 +81,12 @@ async function main() {
           process.stdout.write(event.delta);
           textParts.push(event.delta);
           break;
-        case "thinking_delta":
-          process.stdout.write(`[思考] ${event.delta.substring(0, 80)}...\n`);
-          break;
         case "tool_call_start":
-          console.log(`\n  [tool_call_start] 工具调用: ${event.toolName}`);
+          console.log(`\n  [tool_call_start] 工具调用: ${event.toolName} | 参数: ${JSON.stringify(event.input)}`);
           break;
         case "tool_call_end":
           console.log(
-            `  [tool_call_end] ${event.toolName} | isError=${event.isError}`,
+            `  [tool_call_end] ${event.toolName} | isError=${event.isError} | 结果: ${event.result?.slice(0, 120) ?? '(无)'}`,
           );
           break;
         case "turn_end":

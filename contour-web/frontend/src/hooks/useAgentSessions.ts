@@ -100,7 +100,7 @@ function mergeSessions(
     const local = localMap.get(bs.id);
     return {
       id: bs.id,
-      title: local?.title || bs.title,
+      title: bs.title || local?.title || '新的 Agent 会话',
       createdAt: local?.createdAt ?? bs.updatedAt,
       updatedAt: bs.updatedAt,
       contextItems: local?.contextItems ?? [],
@@ -223,11 +223,26 @@ export function useAgentSessions(projectId?: string) {
   // ── 更新会话 ──────────────────────────────────────────────────────────────
   const updateSession = useCallback(
     (sessionId: string, patch: Partial<Omit<AgentSession, 'id' | 'createdAt'>>) => {
-      const next = readSessions().map((session) =>
+      const allSessions = readSessions();
+      const targetSession = allSessions.find((session) => session.id === sessionId);
+      const next = allSessions.map((session) =>
         session.id === sessionId ? { ...session, ...patch, updatedAt: Date.now() } : session,
       );
       writeSessions(next);
       setSessions(filterSessionsByProject(next, projectId));
+
+      if (typeof patch.title === 'string' && targetSession?.projectId) {
+        fetch(
+          `/api/agent/sessions/${encodeURIComponent(targetSession.projectId)}/${encodeURIComponent(sessionId)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: patch.title }),
+          },
+        ).catch((err) => {
+          console.warn('[AgentSessions] 后端重命名会话失败，已保留本地标题:', err);
+        });
+      }
     },
     [projectId],
   );

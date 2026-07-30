@@ -24,6 +24,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "@sinclair/typebox";
 import type {
   AgentRuntime,
   AgentRuntimeConfig,
@@ -37,6 +38,8 @@ import type { PermissionRequesterFn } from "./permission-extension.js";
 import { classifyAgentError, typedAgentError } from "./typed-error.js";
 import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
 import { applyAgentToolPolicy } from "./tool-policy.js";
+import { createProjectMcpTools, type ProjectMcpTools } from "../tools/project-mcp-tools.js";
+import { AskUserRequestManager, type AskUserRequestLifecycle } from "./ask-user.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -50,6 +53,112 @@ interface ActivePrompt {
   done: boolean;
   /** Pi SDK 订阅取消函数 */
   unsubscribe: () => void;
+  /** AskUser 管理器中属于当前 prompt 的 generation。 */
+  askUserGeneration: number | null;
+}
+
+const MAX_TOOL_PAYLOAD_CHARS = 12_000;
+const MAX_TOOL_PAYLOAD_DEPTH = 6;
+const MAX_TOOL_PAYLOAD_ENTRIES = 50;
+const MAX_TOTAL_NODES = 5_000;
+const SENSITIVE_TOOL_FIELD = /(?:api[_-]?key|token|secret|password|authorization|cookie|credential)/i;
+const SENSITIVE_TEXT_ASSIGNMENT = /\b((?:api[_-]?key|token|secret|password|authorization|cookie|credential)[\w.-]*\s*[:=]\s*)[^\s,;]+/gi;
+const BEARER_TOKEN = /\b(bearer\s+)[^\s,;]+/gi;
+
+export interface PiRuntimeOptions {
+  /** AskUser 请求进入和离开时的路由生命周期回调。 */
+  askUserLifecycle?: AskUserRequestLifecycle;
+}
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(SENSITIVE_TEXT_ASSIGNMENT, '$1[已隐藏]')
+    .replace(BEARER_TOKEN, '$1[已隐藏]');
+}
+
+/**
+ * 将工具参数和结果转换为可安全展示的 JSON 值。
+ *
+ * 工具结果可能包含循环引用、二进制对象或意外的大段内容；同时部分工具参数也
+ * 可能带有凭据。这里在离开运行时边界前统一裁剪和脱敏，防止它们进入 SSE、
+ * localStorage 或聊天历史。
+ */
+function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth = 0, nodeCount: { count: number } = { count: 0 }): unknown {
+  if (++nodeCount.count > MAX_TOTAL_NODES) return "[内容过大，已省略]";
+  if (value === null || typeof value === "boolean" || typeof value === "number") return value;
+  if (typeof value === "string") {
+    const redacted = redactSensitiveText(value);
+    return redacted.length <= MAX_TOOL_PAYLOAD_CHARS
+      ? redacted
+      : `${redacted.slice(0, MAX_TOOL_PAYLOAD_CHARS)}\n…（内容已截断）`;
+  }
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "undefined") return "[undefined]";
+  if (typeof value === "function" || typeof value === "symbol") return `[${typeof value}]`;
+  if (value instanceof Error) return { name: value.name, message: value.message };
+  if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return "[层级过深，已省略]";
+  if (typeof value !== "object") return String(value);
+  if (seen.has(value)) return "[循环引用]";
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const items = value.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)
+      .map((item) => sanitizeToolPayload(item, seen, depth + 1, nodeCount));
+    if (value.length > MAX_TOOL_PAYLOAD_ENTRIES) items.push(`…（其余 ${value.length - MAX_TOOL_PAYLOAD_ENTRIES} 项已省略）`);
+    return items;
+  }
+
+  const result: Record<string, unknown> = {};
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, item] of entries.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)) {
+    result[key] = SENSITIVE_TOOL_FIELD.test(key)
+      ? "[已隐藏]"
+      : sanitizeToolPayload(item, seen, depth + 1, nodeCount);
+  }
+  if (entries.length > MAX_TOOL_PAYLOAD_ENTRIES) {
+    result._truncated = `其余 ${entries.length - MAX_TOOL_PAYLOAD_ENTRIES} 个字段已省略`;
+  }
+  return result;
+}
+
+function sanitizeToolInput(value: unknown): Record<string, unknown> | undefined {
+  const sanitized = sanitizeToolPayload(value);
+  if (!sanitized || typeof sanitized !== "object" || Array.isArray(sanitized)) return undefined;
+  return sanitized as Record<string, unknown>;
+}
+
+function extractToolResultText(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const content = (value as { content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((block) => {
+      if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+      const candidate = block as { type?: unknown; text?: unknown };
+      return candidate.type === "text" && typeof candidate.text === "string" ? [candidate.text] : [];
+    })
+    .join("\n");
+  return text || undefined;
+}
+
+function formatToolResult(value: unknown): string {
+  // Pi 工具统一返回 { content, details }。前端工具活动应优先展示 content
+  // 中的文本，而不是把整个包装对象再包一层 JSON；这样结构化工具结果（如
+  // { task: ... }）可以被进度视图直接读取，普通文件工具的结果也更易读。
+  const textContent = extractToolResultText(value);
+  if (textContent !== undefined) {
+    return sanitizeToolPayload(textContent) as string;
+  }
+
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(sanitizeToolPayload(value), null, 2) ?? "[undefined]";
+  } catch {
+    serialized = "[工具结果无法序列化]";
+  }
+  return serialized.length <= MAX_TOOL_PAYLOAD_CHARS
+    ? serialized
+    : `${serialized.slice(0, MAX_TOOL_PAYLOAD_CHARS)}\n…（内容已截断）`;
 }
 
 // ── PiRuntime 实现 ───────────────────────────────────────────────────────────
@@ -63,6 +172,22 @@ export class PiRuntime implements AgentRuntime {
   private activePrompt: ActivePrompt | null = null;
   /** 当前 prompt 会话的权限确认 requester（实例级，避免多实例并发覆盖） */
   private activeRequester: PermissionRequesterFn | null = null;
+  /** 当前运行时建立的外部 MCP 连接，必须随会话释放。 */
+  private projectMcpTools: ProjectMcpTools | null = null;
+  /** 仅属于此运行时的 AskUser 请求和 SSE 通道。 */
+  private readonly askUserManager: AskUserRequestManager;
+
+  /** 当前轮次序号（从 0 开始，每次 turn_start 递增） */
+  private turnIndex = 0;
+
+  /** 本轮中 write/edit 工具涉及的文件路径（去重用） */
+  private currentTurnFiles: Set<string> = new Set();
+  /** write/edit 开始时暂存的路径；仅在成功结束后确认记录。 */
+  private pendingTurnFileWrites = new Map<string, string>();
+
+  constructor(options: PiRuntimeOptions = {}) {
+    this.askUserManager = new AskUserRequestManager(options.askUserLifecycle);
+  }
 
   /**
    * 初始化 Pi 运行时
@@ -156,14 +281,32 @@ export class PiRuntime implements AgentRuntime {
         additionalFiles: config.authorizedFiles,
         allowWrite,
       }) as Array<{ name: string }>;
-    const toolPolicy = applyAgentToolPolicy({
-      requestedTools: config.tools,
-      customTools: config.customTools,
-      contourFileTools,
-      allowWrite,
+    // readonly 不调用 bridge，因此不会启动任何外部 MCP 程序。review/yolo 都会
+    // 创建桥接，但由 ResourceLoader 的强制确认名单确保每次调用先确认。
+    const projectMcpTools = await createProjectMcpTools({
+      projectId,
+      projectDir: config.projectDir,
+      permissionMode,
     });
+    try {
+      const toolPolicy = applyAgentToolPolicy({
+        requestedTools: config.tools,
+        customTools: [
+          ...(config.customTools ?? []),
+          ...projectMcpTools.tools,
+          createAskUserQuestionTool(this.askUserManager),
+          ...createPlanModeTools(),
+        ],
+        contourFileTools,
+        allowWrite,
+      });
 
-    const { session } = await createAgentSession({
+      const sharedSettings = SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: true, maxRetries: 1 },
+      });
+
+      const { session } = await createAgentSession({
       cwd: effectiveCwd,
       agentDir: effectiveCwd,
       model: this.model,
@@ -172,16 +315,21 @@ export class PiRuntime implements AgentRuntime {
       modelRegistry: this.modelRegistry,
       tools: toolPolicy.tools,
       customTools: toolPolicy.customTools as any,
-      resourceLoader: await this.createResourceLoader(config, authStorage, effectiveCwd),
+      resourceLoader: await this.createResourceLoader({
+        ...config,
+        mcpConfirmationToolNames: projectMcpTools.reviewConfirmationToolNames,
+      }, authStorage, effectiveCwd, sharedSettings),
       sessionManager,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
-    });
+      settingsManager: sharedSettings,
+      });
 
-    this.session = session;
-    console.log(`[PiRuntime] Session 已创建: ${session.sessionId}`);
+      this.session = session;
+      this.projectMcpTools = projectMcpTools;
+      console.log(`[PiRuntime] Session 已创建: ${session.sessionId}`);
+    } catch (error) {
+      await projectMcpTools.dispose();
+      throw error;
+    }
   }
 
   /**
@@ -203,12 +351,18 @@ export class PiRuntime implements AgentRuntime {
     // 清理上一次 prompt 的订阅（防止订阅堆积）
     this.cleanupActivePrompt();
 
+    // 重置 turn 序号（每次 prompt() 从 0 开始）
+    this.turnIndex = 0;
+    this.currentTurnFiles = new Set();
+    this.pendingTurnFileWrites.clear();
+
     // ── 构建共享状态对象 ──────────────────────────────────────────────────
     const promptState: ActivePrompt = {
       queue: [],
       waitingResolve: null,
       done: false,
       unsubscribe: () => {},
+      askUserGeneration: null,
     };
     this.activePrompt = promptState;
 
@@ -259,6 +413,12 @@ export class PiRuntime implements AgentRuntime {
     let currentAbort: (() => void) | null = null;
 
     const cleanup = (): void => {
+      // 无论当前轮次是否已替换，都只处理自己创建的 AskUser generation。
+      // 旧 prompt 延迟 settle 时不能碰新 prompt 的 emitter 或 pending 请求。
+      if (promptState.askUserGeneration !== null) {
+        this.askUserManager.endPrompt(promptState.askUserGeneration, "prompt 已结束");
+      }
+      if (this.activePrompt !== promptState) return;
       this.activeRequester = null;
       currentAbort?.();
       rejectAllPendingRequests("prompt 已结束");
@@ -283,6 +443,9 @@ export class PiRuntime implements AgentRuntime {
 
       return promise;
     };
+
+    // ── 设置 AskUser 事件通道（仅供当前运行时和当前 prompt 使用） ──────
+    promptState.askUserGeneration = this.askUserManager.beginPrompt(pushEvent);
 
     // ── 异步发送 prompt（不阻塞 AsyncIterable 的返回） ───────────────────
     const promptPromise = this.session
@@ -348,7 +511,7 @@ export class PiRuntime implements AgentRuntime {
     console.log(`[PiRuntime] 模型已切换: ${provider}/${modelId}`);
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.cleanupActivePrompt();
     if (this.session) {
       this.session.dispose();
@@ -357,6 +520,9 @@ export class PiRuntime implements AgentRuntime {
     this.modelRegistry = null;
     this.model = null;
     this.config = null;
+    const mcpTools = this.projectMcpTools;
+    this.projectMcpTools = null;
+    if (mcpTools) await mcpTools.dispose();
     console.log("[PiRuntime] 资源已释放");
   }
 
@@ -365,15 +531,23 @@ export class PiRuntime implements AgentRuntime {
   /** 清理上一次 prompt 的订阅状态 */
   private cleanupActivePrompt(): void {
     if (!this.activePrompt) return;
+    const promptState = this.activePrompt;
     try {
-      this.activePrompt.unsubscribe();
+      promptState.unsubscribe();
       // 如果消费者还在等待，发送 done 信号避免永久挂起
-      if (this.activePrompt.waitingResolve && !this.activePrompt.done) {
-        this.activePrompt.waitingResolve({ value: undefined, done: true });
+      if (promptState.waitingResolve && !promptState.done) {
+        promptState.waitingResolve({ value: undefined, done: true });
       }
     } finally {
       this.activePrompt = null;
     }
+    // 只清理旧 prompt generation 的 AskUser 请求，不影响新一轮。
+    if (promptState.askUserGeneration !== null) {
+      this.askUserManager.endPrompt(promptState.askUserGeneration, "prompt 已结束");
+    }
+    this.activeRequester = null;
+    rejectAllPendingRequests("prompt 已结束");
+    this.pendingTurnFileWrites.clear();
   }
 
   /**
@@ -383,7 +557,8 @@ export class PiRuntime implements AgentRuntime {
    * - agent_start / turn_start / turn_end / agent_end → 直接映射
    * - message_update.text_delta → text_delta
    *   （忽略 text_start / text_end，turn_start / turn_end 已承载起止语义）
-   * - message_update.thinking_delta → thinking_delta
+   * - message_update.thinking_delta → 丢弃。该事件承载模型原始推理，不是
+   *   可安全展示的产品摘要，严禁传给前端或写入聊天历史。
    * - tool_execution_start / tool_execution_end → tool_call_start / tool_call_end
    *
    * 不对外暴露的事件（被归并）：
@@ -410,11 +585,19 @@ export class PiRuntime implements AgentRuntime {
         return { type: "agent_end" };
       }
 
-      case "turn_start":
-        return { type: "turn_start" };
+      case "turn_start": {
+        // 新一轮开始：递增序号，清空本轮文件改动记录
+        this.turnIndex += 1;
+        this.currentTurnFiles = new Set();
+        this.pendingTurnFileWrites.clear();
+        return { type: "turn_start", turnIndex: this.turnIndex };
+      }
 
-      case "turn_end":
-        return { type: "turn_end" };
+      case "turn_end": {
+        const filesChanged = [...this.currentTurnFiles];
+        this.pendingTurnFileWrites.clear();
+        return { type: "turn_end", turnIndex: this.turnIndex, filesChanged };
+      }
 
       case "message_update": {
         const sub = (event as any).assistantMessageEvent;
@@ -423,25 +606,48 @@ export class PiRuntime implements AgentRuntime {
         switch (sub.type) {
           case "text_delta":
             return { type: "text_delta", delta: sub.delta };
-          case "thinking_delta":
-            return { type: "thinking_delta", delta: sub.delta };
           default:
             return null;
         }
       }
 
-      case "tool_execution_start":
+      case "tool_execution_start": {
+        const toolName: string = (event as any).toolName ?? "unknown";
+        const args: unknown = (event as any).args;
+
+        // 暂存 write / edit 路径；工具成功结束后才算作真实改动。
+        if ((toolName === 'write' || toolName === 'edit') && args && typeof args === 'object') {
+          const pathValue = (args as Record<string, unknown>).path;
+          const toolCallId = (event as any).toolCallId;
+          if (typeof toolCallId === 'string' && toolCallId && typeof pathValue === 'string' && pathValue.length > 0) {
+            this.pendingTurnFileWrites.set(toolCallId, pathValue);
+          }
+        }
+
         return {
           type: "tool_call_start",
-          toolName: (event as any).toolName ?? "unknown",
+          toolCallId: (event as any).toolCallId ?? toolName,
+          toolName,
+          input: sanitizeToolInput(args),
         };
+      }
 
-      case "tool_execution_end":
+      case "tool_execution_end": {
+        const toolCallId = (event as any).toolCallId ?? (event as any).toolName ?? "unknown";
+        const toolName = (event as any).toolName ?? "unknown";
+        const pendingPath = this.pendingTurnFileWrites.get(toolCallId);
+        this.pendingTurnFileWrites.delete(toolCallId);
+        if (!((event as any).isError) && (toolName === "write" || toolName === "edit") && pendingPath) {
+          this.currentTurnFiles.add(pendingPath);
+        }
         return {
           type: "tool_call_end",
-          toolName: (event as any).toolName ?? "unknown",
+          toolCallId,
+          toolName,
           isError: !!(event as any).isError,
+          result: formatToolResult((event as any).result),
         };
+      }
 
       default:
         return null;
@@ -453,6 +659,7 @@ export class PiRuntime implements AgentRuntime {
     config: AgentRuntimeConfig,
     _authStorage: AuthStorage,
     effectiveCwd: string,
+    sharedSettings: SettingsManager,
   ): Promise<DefaultResourceLoader> {
     // systemPromptOverride 注入业务上下文（如 Flow/Doc）到 Agent 的 system prompt。
     // 文档第五节已记录：systemPromptOverride 实际是 DefaultResourceLoader 的构造
@@ -472,22 +679,100 @@ export class PiRuntime implements AgentRuntime {
     // createAgentSession 直接参数），且和 customTools 能共存。
     const permissionMode = config.permissionMode ?? "readonly";
     const projectId = config.projectId ?? path.basename(effectiveCwd);
+    const mustConfirmTools = config.mcpConfirmationToolNames ?? [];
     const extensionFactories =
-      permissionMode === "review"
-        ? [createPermissionExtensionFactory("review", config.dataDir, projectId, () => this.activeRequester)]
+      permissionMode === "review" || mustConfirmTools.length > 0
+        ? [createPermissionExtensionFactory(permissionMode, config.dataDir, projectId, () => this.activeRequester, mustConfirmTools)]
         : [];
 
     const loader = new DefaultResourceLoader({
       cwd: effectiveCwd,
       agentDir: effectiveCwd,
+      // Contour 只在 promptBuilder 中受控读取项目根 CLAUDE.md。禁用 Pi 的默认
+      // 祖先扫描，避免会话目录或磁盘父目录中的 AGENTS.md/CLAUDE.md 意外影响 Agent。
+      noContextFiles: true,
+      // 关闭 Pi 的默认/祖先技能发现，只读取 Contour 配置中用户显式启用的目录。
+      noSkills: true,
+      additionalSkillPaths: config.additionalSkillPaths ?? [],
       systemPromptOverride,
       extensionFactories,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
+      settingsManager: sharedSettings,
     });
     await loader.reload();
     return loader;
   }
+}
+
+// ── AskUserQuestion 自定义工具 ──────────────────────────────────────────────
+
+/**
+ * 创建覆盖 Pi SDK 内置 AskUserQuestion 的自定义工具。
+ *
+ * Pi SDK 内置的 AskUserQuestion 依赖 SDK 自有的 UI 层；Contour 前端需要
+ * 通过自己的 UI 展示问题并收集答案。此自定义工具：
+ * 1. 通过 ask-user.ts 模块发出 ask_user SSE 事件
+ * 2. 等待前端 POST /api/ai/ask-user-response 回传答案
+ * 3. 将答案作为工具结果返回给 Agent
+ */
+const askUserQuestionParams = Type.Object({
+  questions: Type.Array(Type.Object({
+    question: Type.String({ description: "要询问用户的问题" }),
+    header: Type.String({ description: "简短标题" }),
+    options: Type.Optional(Type.Array(Type.Object({
+      label: Type.String({ description: "选项标签" }),
+      description: Type.Optional(Type.String({ description: "选项说明" })),
+    }))),
+    multiSelect: Type.Optional(Type.Boolean({ description: "是否允许多选" })),
+  })),
+});
+
+function createAskUserQuestionTool(manager: AskUserRequestManager) {
+  return {
+    name: "AskUserQuestion",
+    label: "向用户提问",
+    description:
+      "当需要用户选择、补充信息或确认偏好时调用。支持三种题型：" +
+      "单选（options 数组 + multiSelect: false）、多选（options 数组 + multiSelect: true）、" +
+      "文本输入（不传 options，由用户自由输入）。",
+    parameters: askUserQuestionParams,
+    execute: async (_toolCallId: string, params: Static<typeof askUserQuestionParams>) => {
+      const result = await manager.request(params.questions);
+      // 将用户答案格式化为工具结果文本
+      const answerText = Object.entries(result.answers)
+        .map(([header, answer]) => `${header}: ${answer}`)
+        .join("\n");
+      return {
+        content: [{ type: "text" as const, text: `用户已回答：\n${answerText}` }],
+        details: {},
+      };
+    },
+  };
+}
+
+const emptyPlanModeParams = Type.Object({});
+
+/** Plan Mode 工具仅作为前端状态切换信号，不改变 Agent 或项目状态。 */
+export function createPlanModeTools() {
+  return [
+    {
+      name: "EnterPlanMode",
+      label: "进入计划模式",
+      description: "开始输出待用户审批的执行计划时调用。不会执行任何项目修改。",
+      parameters: emptyPlanModeParams,
+      execute: async (_toolCallId: string, _params: Static<typeof emptyPlanModeParams>) => ({
+        content: [{ type: "text" as const, text: "已进入计划模式，请先向用户展示执行计划。" }],
+        details: {},
+      }),
+    },
+    {
+      name: "ExitPlanMode",
+      label: "退出计划模式",
+      description: "用户批准计划并准备继续下一步时调用。该工具本身不会执行任何修改。",
+      parameters: emptyPlanModeParams,
+      execute: async (_toolCallId: string, _params: Static<typeof emptyPlanModeParams>) => ({
+        content: [{ type: "text" as const, text: "已退出计划模式。" }],
+        details: {},
+      }),
+    },
+  ];
 }

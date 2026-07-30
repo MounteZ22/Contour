@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { Button } from '../components/ui/button';
 import { FilePreview } from '../components/agent/FilePreview';
@@ -11,12 +11,16 @@ import { useAgentSessions } from '../hooks/useAgentSessions';
 
 export function AgentSessionView() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { sessionId } = useParams();
   const { getSession } = useAgentSessions();
   const previewFile = useAtomValue(previewFileAtom);
   const setPreviewFile = useSetAtom(previewFileAtom);
   const setCurrentProjectId = useSetAtom(currentProjectIdAtom);
   const session = getSession(sessionId);
+  const initialMessage = typeof (location.state as { initialMessage?: unknown } | null)?.initialMessage === 'string'
+    ? (location.state as { initialMessage: string }).initialMessage
+    : undefined;
 
   // 同步左侧栏高亮到会话所属项目
   useEffect(() => {
@@ -48,7 +52,7 @@ export function AgentSessionView() {
       <SessionHeader session={session} />
       <div className="flex-1 min-h-0 flex">
         <div className={previewFile ? 'w-1/2 min-w-0 min-h-0' : 'flex-1 min-w-0 min-h-0'}>
-          <SessionChat session={session} />
+          <SessionChat initialMessage={initialMessage} session={session} />
         </div>
         {previewFile && (
           <div className="flex-1 min-w-0 min-h-0">

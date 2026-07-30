@@ -12,6 +12,7 @@ import {
 import { useSetAtom } from 'jotai';
 import { previewFileAtom } from '../../state/chat';
 import {
+  getBinaryPreviewKind,
   getFileOpenStrategy,
   openFile,
   previewFile,
@@ -95,6 +96,17 @@ function TreeNode({
     try {
       if (getFileOpenStrategy(node.path) === 'system') {
         await openFile(projectId, node.path, node.flowId);
+        return;
+      }
+      const binaryPreviewKind = getBinaryPreviewKind(node.path);
+      if (binaryPreviewKind) {
+        setPreviewFile({
+          kind: binaryPreviewKind,
+          name: node.name,
+          path: node.path,
+          projectId,
+          flowId: node.flowId,
+        });
         return;
       }
       const preview = await previewFile(projectId, node.path, node.flowId);

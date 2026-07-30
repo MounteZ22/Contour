@@ -22,6 +22,14 @@ import type {
 const CONFIG_VERSION = 1;
 const CHANNELS_FILE = path.join(CONFIG.CONFIG_DIR, 'channels.json');
 
+/** 供 Agent 模型选择器使用的安全展示数据，绝不包含渠道凭据。 */
+export interface AgentModelOption {
+  channelId: string;
+  channelName: string;
+  modelId: string;
+  modelName: string;
+}
+
 /** 读取渠道配置文件 */
 async function readConfig(): Promise<ChannelsConfig> {
   try {
@@ -95,6 +103,22 @@ export async function listChannels(): Promise<Channel[]> {
 export async function getChannelById(id: string): Promise<Channel | undefined> {
   const config = await readConfig();
   return config.channels.find((c) => c.id === id);
+}
+
+/** 返回所有可用于 Agent 的已启用模型，不向调用方暴露 API Key 或 Base URL。 */
+export async function listAgentModelOptions(): Promise<AgentModelOption[]> {
+  const channels = await listChannels();
+  return channels.flatMap((channel) => {
+    if (!channel.enabled || !AGENT_COMPATIBLE_PROVIDERS.has(channel.provider)) return [];
+    return channel.models
+      .filter((model) => model.enabled)
+      .map((model) => ({
+        channelId: channel.id,
+        channelName: channel.name,
+        modelId: model.id,
+        modelName: model.name,
+      }));
+  });
 }
 
 export async function createChannel(input: ChannelCreateInput): Promise<Channel> {

@@ -26,6 +26,24 @@ import type { AIContextItem, Claim, Flow, ProjectConfig, ProjectData, ProjectDoc
 
 type PanelTab = 'session' | 'project';
 
+const MOBILE_PANEL_MEDIA_QUERY = '(max-width: 767px)';
+
+function useIsMobilePanel() {
+  const [isMobile, setIsMobile] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(MOBILE_PANEL_MEDIA_QUERY).matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_PANEL_MEDIA_QUERY);
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener('change', update);
+    return () => mediaQuery.removeEventListener('change', update);
+  }, []);
+
+  return isMobile;
+}
+
 function fileNode(entry: FileEntry, prefix: string, flowId?: string): FileTreeNode {
   return {
     id: `${prefix}:${entry.path}`,
@@ -169,9 +187,28 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
   const [newPath, setNewPath] = useState('');
   const [busyPath, setBusyPath] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [, setRightPanelOpen] = useAtom(rightPanelOpenAtom);
   const [rightPanelWidth] = useAtom(rightPanelWidthAtom);
   const session = getSession(sessionId);
+  const isMobilePanel = useIsMobilePanel();
+
+  useEffect(() => {
+    if (!isMobilePanel) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setRightPanelOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (restoreFocusRef.current?.isConnected) restoreFocusRef.current.focus();
+    };
+  }, [isMobilePanel, setRightPanelOpen]);
 
   useEffect(() => {
     let active = true;
@@ -284,19 +321,23 @@ export function RightSidePanel({ project }: { project: ProjectData }) {
 
   return (
     <aside
+      aria-labelledby="right-panel-title"
+      aria-modal={isMobilePanel || undefined}
       className="fixed inset-y-0 right-0 z-50 flex h-screen w-full max-w-[420px] shrink-0 flex-col bg-surface shadow-lg transition-[width] duration-200 md:static md:z-auto md:max-w-none md:w-[var(--right-panel-width)]"
+      role={isMobilePanel ? 'dialog' : undefined}
       style={{ '--right-panel-width': `${rightPanelWidth}px` } as CSSProperties}
     >
       <header className="h-12 shrink-0 border-b border-border px-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-mono uppercase tracking-normal text-accent-strong">Files</p>
-          <h2 className="font-headline text-[14px] font-semibold text-text-primary">文件面板</h2>
+          <h2 id="right-panel-title" className="font-headline text-[14px] font-semibold text-text-primary">文件面板</h2>
         </div>
         <Button
           variant="ghost"
           size="icon"
           className="h-8 w-8"
           onClick={() => setRightPanelOpen(false)}
+          ref={closeButtonRef}
           title="收起文件面板"
           type="button"
         >

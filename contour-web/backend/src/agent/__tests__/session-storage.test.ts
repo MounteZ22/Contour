@@ -7,6 +7,7 @@ import {
   ensureProductSession,
   findPiSessionFile,
   getSessionWorkspaceDir,
+  updateProductSession,
 } from '../session-storage.js';
 
 describe('Agent Session 存储', () => {
@@ -86,5 +87,18 @@ describe('Agent Session 存储', () => {
     writeFileSync(path.join(sessionsDir, 'index.json'), '{broken json', 'utf-8');
 
     await expect(ensureProductSession(dataDir, 'project-a', 'session_safe')).rejects.toThrow();
+  });
+
+  it('重命名应持久化到产品会话索引', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'contour-session-'));
+    await ensureProductSession(dataDir, 'project-a', 'session_rename', '原始标题');
+
+    const updated = await updateProductSession(dataDir, 'project-a', 'session_rename', {
+      title: '重命名后的会话',
+    });
+
+    expect(updated.title).toBe('重命名后的会话');
+    const reopened = await ensureProductSession(dataDir, 'project-a', 'session_rename');
+    expect(reopened.meta.title).toBe('重命名后的会话');
   });
 });

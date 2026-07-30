@@ -79,19 +79,57 @@ export function toAgentErrorInfo(error: unknown): AgentErrorInfo {
   return NETWORK_ERROR;
 }
 
+/** AskUser 交互问答类型 */
+export interface AskUserOption {
+  label: string;
+  description?: string;
+}
+
+export interface AskUserQuestion {
+  question: string;
+  header: string;
+  options?: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+/** 一次性问答请求（嵌入在消息中） */
+export interface AskUserRequest {
+  requestId: string;
+  questions: AskUserQuestion[];
+  status: 'pending' | 'answered';
+  /** 已提交的答案，用于在对话历史中保留用户选择。 */
+  answers?: Record<string, string>;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** 所属轮次序号（从 1 开始），用于前端按 turn 分组展示 */
+  turnIndex?: number;
+  /** 本轮中 write/edit 操作涉及的文件路径（去重后） */
+  filesChanged?: string[];
   toolActivities?: ToolActivity[];
+  /** 可观察的执行状态，不含模型原始推理。 */
+  processActivities?: ProcessActivity[];
   status?: 'stopped';
+  /** AskUser 交互问答请求 */
+  askUserRequest?: AskUserRequest;
 }
 
 export interface ToolActivity {
+  /** Pi SDK 的 toolCallId，用于区分同名的并行调用。 */
+  id?: string;
   toolName: string;
-  status: 'running' | 'done';
+  status: 'running' | 'done' | 'error';
   input?: Record<string, unknown>;
   result?: string;
+}
+
+export interface ProcessActivity {
+  id: string;
+  label: string;
+  status: 'active' | 'done' | 'error';
 }
 
 /** 权限确认请求（来自后端 permission-extension） */
@@ -113,8 +151,20 @@ interface StreamCallbacks {
   onChunk: (delta: string) => void;
   /** 收到工具活动 */
   onToolActivity?: (activity: ToolActivity) => void;
+  /** 收到可观察的执行状态；不包含模型原始推理。 */
+  onProcessActivity?: (activity: ProcessActivity) => void;
   /** 收到权限确认请求 */
   onPermissionRequest?: (request: PermissionRequest) => void;
+  /** 收到 AskUser 交互问答请求 */
+  onAskUser?: (request: AskUserRequest) => void;
+  /** 收到 Plan Mode 事件 */
+  onPlan?: (event: { action: 'enter' | 'exit' }) => void;
+  /** 流因等待用户交互暂停 watchdog 时，提供恢复计时的当前流回调。 */
+  onWatchdogPaused?: (resume: () => void) => void;
+  /** 新一轮开始，含轮次序号 */
+  onTurnStart?: (turnIndex: number) => void;
+  /** 本轮结束，含文件改动列表 */
+  onTurnEnd?: (turnIndex: number, filesChanged: string[]) => void;
   /** 流式完成 */
   onComplete: (fullContent: string) => void;
   /** 用户主动停止，返回停止前已收到的内容 */
@@ -136,17 +186,26 @@ export async function sendChatMessageStream(
   projectId?: string,
   sessionId?: string,
   signal?: AbortSignal,
+  modelSelection?: { channelId: string; model: string },
+  planMode?: boolean,
 ): Promise<void> {
   const body: Record<string, unknown> = { message, contextItems };
   if (permissionMode) body.permissionMode = permissionMode;
   if (projectId) body.projectId = projectId;
   if (sessionId) body.sessionId = sessionId;
+  if (planMode) body.planMode = planMode;
+  if (modelSelection) {
+    body.channelId = modelSelection.channelId;
+    body.model = modelSelection.model;
+  }
 
   let partialContent = '';
   let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
   let didWatchdogTimeout = false;
+  let waitingForUser = false;
   const abortController = new AbortController();
   const resetWatchdog = () => {
+    if (waitingForUser) return;
     if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
     watchdogTimer = setTimeout(() => {
       didWatchdogTimeout = true;
@@ -158,6 +217,15 @@ export async function sendChatMessageStream(
         canRetry: true,
       }, partialContent);
     }, 120_000);
+  };
+  const pauseWatchdog = () => {
+    waitingForUser = true;
+    if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+    watchdogTimer = undefined;
+    callbacks.onWatchdogPaused?.(() => {
+      waitingForUser = false;
+      resetWatchdog();
+    });
   };
   const abortFromSignal = () => abortController.abort();
   const cleanup = () => {
@@ -219,6 +287,34 @@ export async function sendChatMessageStream(
           const raw = JSON.parse(data) as Record<string, unknown>;
 
           switch (raw.type) {
+            case 'agent_start':
+              callbacks.onProcessActivity?.({
+                id: 'agent-start',
+                label: '正在准备回答',
+                status: 'active',
+              });
+              break;
+
+            case 'turn_start': {
+              const turnIndex = typeof raw.turnIndex === 'number' ? raw.turnIndex : 0;
+              callbacks.onTurnStart?.(turnIndex);
+              callbacks.onProcessActivity?.({
+                id: 'turn-start',
+                label: '正在生成回应',
+                status: 'active',
+              });
+              break;
+            }
+
+            case 'turn_end': {
+              const turnIndex = typeof raw.turnIndex === 'number' ? raw.turnIndex : 0;
+              const filesChanged = Array.isArray(raw.filesChanged)
+                ? raw.filesChanged.filter((f: unknown): f is string => typeof f === 'string')
+                : [];
+              callbacks.onTurnEnd?.(turnIndex, filesChanged);
+              break;
+            }
+
             case 'text_delta':
               if (raw.delta) {
                 partialContent += raw.delta as string;
@@ -227,26 +323,42 @@ export async function sendChatMessageStream(
               break;
 
             case 'tool_call_start':
-              if (callbacks.onToolActivity && raw.toolName) {
-                callbacks.onToolActivity({
+              if (raw.toolName) {
+                callbacks.onToolActivity?.({
+                  id: typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined,
                   toolName: raw.toolName as string,
                   status: 'running',
+                  input: isRecord(raw.input) ? raw.input : undefined,
+                });
+                callbacks.onProcessActivity?.({
+                  id: `tool-${raw.toolCallId ?? raw.toolName}`,
+                  label: `正在调用 ${raw.toolName as string}`,
+                  status: 'active',
                 });
               }
               break;
 
             case 'tool_call_end':
-              if (callbacks.onToolActivity && raw.toolName) {
-                callbacks.onToolActivity({
+              if (raw.toolName) {
+                callbacks.onToolActivity?.({
+                  id: typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined,
                   toolName: raw.toolName as string,
-                  status: 'done',
-                  result: raw.isError ? '工具执行出错' : undefined,
+                  status: raw.isError ? 'error' : 'done',
+                  result: typeof raw.result === 'string'
+                    ? raw.result
+                    : raw.isError ? '工具执行出错' : undefined,
+                });
+                callbacks.onProcessActivity?.({
+                  id: `tool-${raw.toolCallId ?? raw.toolName}`,
+                  label: `${raw.toolName as string} ${raw.isError ? '执行失败' : '已完成'}`,
+                  status: raw.isError ? 'error' : 'done',
                 });
               }
               break;
 
             case 'permission_request':
               if (callbacks.onPermissionRequest && raw.requestId) {
+                pauseWatchdog();
                 callbacks.onPermissionRequest({
                   requestId: raw.requestId as string,
                   toolName: raw.toolName as string,
@@ -256,7 +368,41 @@ export async function sendChatMessageStream(
               }
               break;
 
+            case 'ask_user':
+              if (callbacks.onAskUser && raw.requestId && Array.isArray(raw.questions)) {
+                pauseWatchdog();
+                callbacks.onAskUser({
+                  requestId: raw.requestId as string,
+                  questions: raw.questions as AskUserQuestion[],
+                  status: 'pending',
+                });
+              }
+              break;
+
+            case 'plan':
+              if (callbacks.onPlan && raw.action) {
+                callbacks.onPlan({
+                  action: raw.action as 'enter' | 'exit',
+                });
+              }
+              break;
+
             case 'done':
+              callbacks.onProcessActivity?.({
+                id: 'agent-start',
+                label: '回答已准备完成',
+                status: 'done',
+              });
+              callbacks.onProcessActivity?.({
+                id: 'turn-start',
+                label: '回应已生成',
+                status: 'done',
+              });
+              callbacks.onProcessActivity?.({
+                id: 'agent-finished',
+                label: '已完成',
+                status: 'done',
+              });
               callbacks.onComplete(partialContent);
               return;
 
@@ -265,8 +411,7 @@ export async function sendChatMessageStream(
               return;
 
             default:
-              // agent_start / turn_start / turn_end / agent_end / thinking_delta
-              // 在最小集展示策略下忽略
+              // thinking_delta 是模型原始推理，不能展示或持久化。
               break;
           }
         } catch {
@@ -288,6 +433,10 @@ export async function sendChatMessageStream(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 /**
  * 发送用户对工具权限请求的决策
  *
@@ -307,6 +456,30 @@ export async function respondToPermission(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`权限响应失败 (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json() as { success: boolean };
+  return data.success;
+}
+
+/**
+ * 发送用户对 AskUser 问题的答案
+ *
+ * 由 AskUserCard 在用户提交后调用，告知后端用户答案。
+ */
+export async function sendAskUserResponse(
+  requestId: string,
+  answers: Record<string, string>,
+): Promise<boolean> {
+  const res = await fetch('/api/ai/ask-user-response', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, answers }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`问答响应失败 (${res.status}): ${text.slice(0, 200)}`);
   }
 
   const data = await res.json() as { success: boolean };
