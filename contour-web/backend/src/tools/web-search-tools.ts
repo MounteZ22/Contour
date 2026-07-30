@@ -101,8 +101,18 @@ export function isUnsafeIpAddress(address: string): boolean {
       || a >= 224;
   }
   if (family === 6) {
-    const normalized = address.toLowerCase();
-    const mapped = normalized.match(/^::ffff:(.+)$/);
+    // 将 IPv6 地址标准化为压缩形式，防止展开式 mapped 地址绕过检查。
+    // URL 构造器的 hostname 可能带方括号（如 [fc00::1]），需 strip 后再比较。
+    let effective = address.toLowerCase();
+    try {
+      const compressed = new URL(`http://[${effective}]/`).hostname.replace(/^\[|\]$/g, '');
+      if (compressed && compressed !== effective) {
+        effective = compressed;
+      }
+    } catch {
+      // 无法压缩保持原值
+    }
+    const mapped = effective.match(/^::ffff:(.+)$/);
     if (mapped) {
       const mappedAddress = mapped[1];
       if (net.isIP(mappedAddress) === 4) return isUnsafeIpAddress(mappedAddress);
@@ -113,12 +123,12 @@ export function isUnsafeIpAddress(address: string): boolean {
         return isUnsafeIpAddress(`${first >> 8}.${first & 255}.${second >> 8}.${second & 255}`);
       }
     }
-    return normalized === '::' || normalized === '::1'
-      || normalized.startsWith('fc') || normalized.startsWith('fd')
-      || normalized.startsWith('fe8') || normalized.startsWith('fe9')
-      || normalized.startsWith('fea') || normalized.startsWith('feb')
-      || normalized.startsWith('::ffff:127.') || normalized.startsWith('::ffff:10.')
-      || normalized.startsWith('::ffff:192.168.') || normalized.startsWith('::ffff:169.254.');
+    return effective === '::' || effective === '::1'
+      || effective.startsWith('fc') || effective.startsWith('fd')
+      || effective.startsWith('fe8') || effective.startsWith('fe9')
+      || effective.startsWith('fea') || effective.startsWith('feb')
+      || effective.startsWith('::ffff:127.') || effective.startsWith('::ffff:10.')
+      || effective.startsWith('::ffff:192.168.') || effective.startsWith('::ffff:169.254.');
   }
   return true;
 }

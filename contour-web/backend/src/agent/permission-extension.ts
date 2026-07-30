@@ -140,6 +140,7 @@ function matchRule(
     const filePath = typeof inputObj.path === "string" ? inputObj.path : null;
     if (filePath) {
       const normalizedPath = filePath.replace(/\\/g, "/");
+      const resolvedPath = path.normalize(normalizedPath).replace(/\\/g, "/");
       return rules.find((r) => {
         if (r.toolName !== toolName) return false;
         // 尝试解析规则 pattern 为路径，做目录前缀匹配
@@ -147,13 +148,13 @@ function matchRule(
           const rulePath = JSON.parse(r.pattern) as unknown;
           if (typeof rulePath === "object" && rulePath !== null && "path" in rulePath) {
             const ruleFilePath = String((rulePath as Record<string, unknown>).path).replace(/\\/g, "/");
-            return normalizedPath.startsWith(ruleFilePath) || normalizedPath === ruleFilePath;
+            return resolvedPath.startsWith(ruleFilePath) || resolvedPath === ruleFilePath;
           }
         } catch {
           // pattern 不是 JSON，回退到普通前缀匹配
         }
         const rulePattern = r.pattern.replace(/\\/g, "/");
-        return normalizedPath.startsWith(rulePattern) || normalizedPath === rulePattern;
+        return resolvedPath.startsWith(rulePattern) || resolvedPath === rulePattern;
       });
     }
   }

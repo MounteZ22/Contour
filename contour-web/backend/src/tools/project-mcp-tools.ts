@@ -156,56 +156,57 @@ export async function createProjectMcpTools(options: CreateProjectMcpToolsOption
   const tools: ProjectMcpTools["tools"] = [];
   const reviewConfirmationToolNames: string[] = [];
 
-  try {
     for (const [serverIndex, server] of servers.entries()) {
       if (tools.length >= MAX_TOTAL_TOOLS) break;
       // SDK 的 Client 有比桥接所需更宽的泛型签名；在唯一边界处收窄，避免
       // 让 MCP 协议类型渗入 Agent 工具层。
       const client = options.createClient?.() ?? new Client({ name: "contour", version: "1.0.0" }) as unknown as McpClientLike;
-      const environment = minimalEnvironment(server.env);
-      const transport = options.createTransport?.(server, environment) ?? new StdioClientTransport({
-        command: server.command,
-        args: server.args,
-        env: environment,
-        cwd: options.projectDir,
-        stderr: "pipe",
-        maxBufferSize: MAX_RESULT_CHARS * 4,
-      });
-      await connectWithTimeout(client, transport);
-      clients.push(client);
-
-      const listed = await client.listTools(undefined, { timeout: CONNECT_TIMEOUT_MS, maxTotalTimeout: CONNECT_TIMEOUT_MS });
-      const permitted = listed.tools.slice(0, Math.min(server.toolLimit, MAX_TOTAL_TOOLS - tools.length));
-      for (const [toolIndex, remoteTool] of permitted.entries()) {
-        if (!remoteTool || typeof remoteTool.name !== "string" || !remoteTool.name.trim()) continue;
-        const schema = sanitizeSchema(remoteTool.inputSchema);
-        if (!schema) continue;
-        const name = mcpToolName(serverIndex, toolIndex, remoteTool.name);
-        const description = truncate(remoteTool.description?.trim() || `调用 MCP 服务 ${server.name} 的 ${remoteTool.name}`, MAX_DESCRIPTION_CHARS);
-        tools.push({
-          name,
-          label: `MCP: ${server.name} / ${remoteTool.name}`,
-          description,
-          parameters: Type.Unsafe(schema),
-          execute: async (_toolCallId: string, params: Record<string, unknown>, signal?: AbortSignal) => {
-            const result = await client.callTool(
-              { name: remoteTool.name, arguments: params },
-              undefined,
-              { timeout: CALL_TIMEOUT_MS, maxTotalTimeout: CALL_TIMEOUT_MS, signal },
-            );
-            return {
-              content: [{ type: "text" as const, text: formatMcpResult(result) }],
-              details: { source: "mcp", server: server.name, tool: remoteTool.name },
-            };
-          },
+      try {
+        const environment = minimalEnvironment(server.env);
+        const transport = options.createTransport?.(server, environment) ?? new StdioClientTransport({
+          command: server.command,
+          args: server.args,
+          env: environment,
+          cwd: options.projectDir,
+          stderr: "pipe",
+          maxBufferSize: MAX_RESULT_CHARS * 4,
         });
-        reviewConfirmationToolNames.push(name);
+        await connectWithTimeout(client, transport);
+        clients.push(client);
+
+        const listed = await client.listTools(undefined, { timeout: CONNECT_TIMEOUT_MS, maxTotalTimeout: CONNECT_TIMEOUT_MS });
+        const permitted = listed.tools.slice(0, Math.min(server.toolLimit, MAX_TOTAL_TOOLS - tools.length));
+        for (const [toolIndex, remoteTool] of permitted.entries()) {
+          if (!remoteTool || typeof remoteTool.name !== "string" || !remoteTool.name.trim()) continue;
+          const schema = sanitizeSchema(remoteTool.inputSchema);
+          if (!schema) continue;
+          const name = mcpToolName(serverIndex, toolIndex, remoteTool.name);
+          const description = truncate(remoteTool.description?.trim() || `调用 MCP 服务 ${server.name} 的 ${remoteTool.name}`, MAX_DESCRIPTION_CHARS);
+          tools.push({
+            name,
+            label: `MCP: ${server.name} / ${remoteTool.name}`,
+            description,
+            parameters: Type.Unsafe(schema),
+            execute: async (_toolCallId: string, params: Record<string, unknown>, signal?: AbortSignal) => {
+              const result = await client.callTool(
+                { name: remoteTool.name, arguments: params },
+                undefined,
+                { timeout: CALL_TIMEOUT_MS, maxTotalTimeout: CALL_TIMEOUT_MS, signal },
+              );
+              return {
+                content: [{ type: "text" as const, text: formatMcpResult(result) }],
+                details: { source: "mcp", server: server.name, tool: remoteTool.name },
+              };
+            },
+          });
+          reviewConfirmationToolNames.push(name);
+        }
+      } catch (error) {
+        console.warn(`[ProjectMcpTools] MCP 服务 ${server.name} 连接失败，已跳过:`, error);
+        await closeQuietly(client);
+        continue;
       }
     }
-  } catch (error) {
-    await Promise.all(clients.map(closeQuietly));
-    throw error;
-  }
 
   return {
     tools,

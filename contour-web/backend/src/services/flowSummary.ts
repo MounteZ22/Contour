@@ -141,9 +141,12 @@ function getChannelHeaders(channel: Channel): Record<string, string> {
   if (channel.provider === 'kimi-coding') {
     headers.Authorization = `Bearer ${channel.apiKey}`;
     headers['User-Agent'] = 'KimiCLI/1.3';
-  } else {
-    headers['x-api-key'] = channel.apiKey;
+  } else if (channel.provider === 'deepseek' || channel.provider === 'openai') {
+    // OpenAI 兼容 API 使用 Bearer token
     headers.Authorization = `Bearer ${channel.apiKey}`;
+  } else {
+    // Anthropic 及兼容 API（含 Proma 代理等）使用 x-api-key
+    headers['x-api-key'] = channel.apiKey;
   }
   return headers;
 }

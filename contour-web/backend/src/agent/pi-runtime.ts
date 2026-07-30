@@ -56,6 +56,7 @@ interface ActivePrompt {
 const MAX_TOOL_PAYLOAD_CHARS = 12_000;
 const MAX_TOOL_PAYLOAD_DEPTH = 6;
 const MAX_TOOL_PAYLOAD_ENTRIES = 50;
+const MAX_TOTAL_NODES = 5_000;
 const SENSITIVE_TOOL_FIELD = /(?:api[_-]?key|token|secret|password|authorization|cookie|credential)/i;
 const SENSITIVE_TEXT_ASSIGNMENT = /\b((?:api[_-]?key|token|secret|password|authorization|cookie|credential)[\w.-]*\s*[:=]\s*)[^\s,;]+/gi;
 const BEARER_TOKEN = /\b(bearer\s+)[^\s,;]+/gi;
@@ -73,7 +74,8 @@ function redactSensitiveText(value: string): string {
  * 可能带有凭据。这里在离开运行时边界前统一裁剪和脱敏，防止它们进入 SSE、
  * localStorage 或聊天历史。
  */
-function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
+function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth = 0, nodeCount: { count: number } = { count: 0 }): unknown {
+  if (++nodeCount.count > MAX_TOTAL_NODES) return "[内容过大，已省略]";
   if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (typeof value === "string") {
     const redacted = redactSensitiveText(value);
@@ -92,7 +94,7 @@ function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth
 
   if (Array.isArray(value)) {
     const items = value.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)
-      .map((item) => sanitizeToolPayload(item, seen, depth + 1));
+      .map((item) => sanitizeToolPayload(item, seen, depth + 1, nodeCount));
     if (value.length > MAX_TOOL_PAYLOAD_ENTRIES) items.push(`…（其余 ${value.length - MAX_TOOL_PAYLOAD_ENTRIES} 项已省略）`);
     return items;
   }
@@ -102,7 +104,7 @@ function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth
   for (const [key, item] of entries.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)) {
     result[key] = SENSITIVE_TOOL_FIELD.test(key)
       ? "[已隐藏]"
-      : sanitizeToolPayload(item, seen, depth + 1);
+      : sanitizeToolPayload(item, seen, depth + 1, nodeCount);
   }
   if (entries.length > MAX_TOOL_PAYLOAD_ENTRIES) {
     result._truncated = `其余 ${entries.length - MAX_TOOL_PAYLOAD_ENTRIES} 个字段已省略`;
@@ -271,6 +273,11 @@ export class PiRuntime implements AgentRuntime {
         allowWrite,
       });
 
+      const sharedSettings = SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: true, maxRetries: 1 },
+      });
+
       const { session } = await createAgentSession({
       cwd: effectiveCwd,
       agentDir: effectiveCwd,
@@ -283,12 +290,9 @@ export class PiRuntime implements AgentRuntime {
       resourceLoader: await this.createResourceLoader({
         ...config,
         mcpConfirmationToolNames: projectMcpTools.reviewConfirmationToolNames,
-      }, authStorage, effectiveCwd),
+      }, authStorage, effectiveCwd, sharedSettings),
       sessionManager,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
+      settingsManager: sharedSettings,
       });
 
       this.session = session;
@@ -575,6 +579,7 @@ export class PiRuntime implements AgentRuntime {
     config: AgentRuntimeConfig,
     _authStorage: AuthStorage,
     effectiveCwd: string,
+    sharedSettings: SettingsManager,
   ): Promise<DefaultResourceLoader> {
     // systemPromptOverride 注入业务上下文（如 Flow/Doc）到 Agent 的 system prompt。
     // 文档第五节已记录：systemPromptOverride 实际是 DefaultResourceLoader 的构造
@@ -611,10 +616,7 @@ export class PiRuntime implements AgentRuntime {
       additionalSkillPaths: config.additionalSkillPaths ?? [],
       systemPromptOverride,
       extensionFactories,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
+      settingsManager: sharedSettings,
     });
     await loader.reload();
     return loader;
