@@ -94,4 +94,56 @@ describe('PiRuntime 错误事件', () => {
       result: '{"task":{"id":"1","subject":"核对数据"}}',
     });
   });
+
+  // ── Turn 追踪 ────────────────────────────────────────────────────────────
+  it('turn_start 递增序号，turn_end 返回收集到的文件改动列表', () => {
+    const runtime = new PiRuntime();
+    const mapEvent = (runtime as unknown as {
+      mapEvent: (event: unknown) => unknown;
+    }).mapEvent.bind(runtime);
+
+    // 首轮：write 两个文件
+    expect(mapEvent({ type: 'turn_start' })).toMatchObject({ type: 'turn_start', turnIndex: 1 });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'w1', toolName: 'write', args: { path: '/a.ts' } });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'w2', toolName: 'write', args: { path: '/b.ts' } });
+    expect(mapEvent({ type: 'turn_end' })).toMatchObject({
+      type: 'turn_end',
+      turnIndex: 1,
+      filesChanged: ['/a.ts', '/b.ts'],
+    });
+
+    // 第二轮：无文件改动
+    expect(mapEvent({ type: 'turn_start' })).toMatchObject({ type: 'turn_start', turnIndex: 2 });
+    expect(mapEvent({ type: 'turn_end' })).toMatchObject({
+      type: 'turn_end',
+      turnIndex: 2,
+      filesChanged: [],
+    });
+  });
+
+  it('同一文件多次 write/edit 只记录一次（去重）', () => {
+    const runtime = new PiRuntime();
+    const mapEvent = (runtime as unknown as {
+      mapEvent: (event: unknown) => unknown;
+    }).mapEvent.bind(runtime);
+
+    mapEvent({ type: 'turn_start' });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'e1', toolName: 'edit', args: { path: '/dup.ts' } });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'w1', toolName: 'write', args: { path: '/dup.ts' } });
+    const end = mapEvent({ type: 'turn_end' }) as { type: string; filesChanged: string[] };
+    expect(end.filesChanged).toEqual(['/dup.ts']);
+  });
+
+  it('非 write/edit 工具不记录文件改动', () => {
+    const runtime = new PiRuntime();
+    const mapEvent = (runtime as unknown as {
+      mapEvent: (event: unknown) => unknown;
+    }).mapEvent.bind(runtime);
+
+    mapEvent({ type: 'turn_start' });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'r1', toolName: 'read', args: { path: '/notes.md' } });
+    mapEvent({ type: 'tool_execution_start', toolCallId: 'g1', toolName: 'grep', args: { pattern: 'TODO' } });
+    const end = mapEvent({ type: 'turn_end' }) as { type: string; filesChanged: string[] };
+    expect(end.filesChanged).toEqual([]);
+  });
 });

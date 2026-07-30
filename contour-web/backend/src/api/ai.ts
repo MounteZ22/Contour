@@ -11,6 +11,7 @@ import { createTaskProgressTools } from '../tools/task-progress-tools.js';
 import { createWebSearchTools } from '../tools/web-search-tools.js';
 import { getWebSearchRuntimeConfig } from '../services/settingsService.js';
 import { resolvePermissionRequest } from '../agent/permission-extension.js';
+import { resolveAskUser } from '../agent/ask-user.js';
 import { findProjectDir } from '../vault/locate.js';
 import { ensureProjectDir } from '../services/projectManager.js';
 import { getEnabledProjectSkillDirectories } from '../services/project-plugin-config.js';
@@ -69,6 +70,13 @@ interface PiChatRequestBody {
    * 目录下查找对应的持久化文件，加载历史消息作为上下文。
    */
   sessionId?: string;
+  /**
+   * Plan Mode 开关（可选，缺省 false）
+   *
+   * 开启后 Agent 先调研产出执行计划，等待用户审批后再执行。
+   * 后端会在 system prompt 中注入 Plan Mode 行为指令。
+   */
+  planMode?: boolean;
 }
 
 // ── 路由 ──────────────────────────────────────────────────────────────────────
@@ -200,6 +208,12 @@ router.post('/pi-chat', async (req, res) => {
       dataDir: CONFIG.DATA_DIR,
     });
 
+    // Plan Mode 指令注入：当用户开启 Plan Mode 时，在 system prompt 前追加指令。
+    const planModeInstruction = body.planMode
+      ? '你是 Plan Mode。先调研代码库和需求，输出一份执行计划给用户审批。只调研不修改。使用 EnterPlanMode / ExitPlanMode 工具。\n\n'
+      : '';
+    const finalSystemPrompt = planModeInstruction + systemPrompt;
+
     // 5. 转换为 AgentRuntimeConfig（携带 systemPrompt + 自定义业务工具 + 权限模式）
     const webSearchConfig = await getWebSearchRuntimeConfig();
     const additionalSkillPaths = getEnabledProjectSkillDirectories(projectName);
@@ -207,7 +221,7 @@ router.post('/pi-chat', async (req, res) => {
     try {
       agentConfig = channelToAgentRuntimeConfig(channel, {
         model: body.model,
-        systemPrompt,
+        systemPrompt: finalSystemPrompt,
         customTools: [
           ...createContourCustomTools(currentProject?.projectId ?? projectName),
           ...createTaskProgressTools(),
@@ -251,9 +265,29 @@ router.post('/pi-chat', async (req, res) => {
     try {
       // 9. 消费 PiRuntime.prompt() 事件流 → SSE 输出
       let streamFailed = false;
+      let planActive = false;
       for await (const event of runtime.prompt(body.message)) {
         if (aborted) break;
         if (event.type === 'error') streamFailed = true;
+
+        // 检测 EnterPlanMode / ExitPlanMode 工具调用，转换为 plan 事件
+        if (event.type === 'tool_call_start' && event.toolName === 'EnterPlanMode') {
+          planActive = true;
+          res.write(`data: ${JSON.stringify({ type: 'plan', action: 'enter' })}\n\n`);
+          continue;
+        }
+        if (event.type === 'tool_call_end' && event.toolName === 'EnterPlanMode') {
+          continue;
+        }
+        if (event.type === 'tool_call_start' && event.toolName === 'ExitPlanMode') {
+          continue;
+        }
+        if (event.type === 'tool_call_end' && event.toolName === 'ExitPlanMode') {
+          planActive = false;
+          res.write(`data: ${JSON.stringify({ type: 'plan', action: 'exit' })}\n\n`);
+          continue;
+        }
+
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
       if (!aborted && !streamFailed) {
@@ -318,6 +352,37 @@ router.post('/permission-response', (req, res) => {
     res.json({ success: true });
   } catch (error) {
     const msg = error instanceof Error ? error.message : '处理权限响应失败';
+    res.status(500).json({ success: false, error: msg });
+  }
+});
+
+/**
+ * POST /api/ai/ask-user-response
+ *
+ * 接收用户对 AskUser 问题的答案，传递给 ask-user.ts 中等待的 Promise。
+ * 由前端的 AskUserCard 在用户提交答案后调用。
+ */
+router.post('/ask-user-response', (req, res) => {
+  try {
+    const { requestId, answers } = req.body as {
+      requestId: string;
+      answers: Record<string, string>;
+    };
+
+    if (!requestId || !answers || typeof answers !== 'object') {
+      res.status(400).json({ success: false, error: '缺少必要参数 requestId 或 answers' });
+      return;
+    }
+
+    const resolved = resolveAskUser(requestId, answers);
+    if (!resolved) {
+      res.status(404).json({ success: false, error: '问答请求不存在或已过期' });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '处理问答响应失败';
     res.status(500).json({ success: false, error: msg });
   }
 });

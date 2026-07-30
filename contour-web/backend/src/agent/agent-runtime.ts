@@ -144,8 +144,8 @@ export interface AgentRuntimeConfig {
 export type AgentStreamEvent =
   | { type: "agent_start" }
   | { type: "agent_end" }
-  | { type: "turn_start" }
-  | { type: "turn_end" }
+  | { type: "turn_start"; turnIndex: number }
+  | { type: "turn_end"; turnIndex: number; filesChanged: string[] }
   | { type: "text_delta"; delta: string }
   | {
       type: "tool_call_start";
@@ -170,7 +170,32 @@ export type AgentStreamEvent =
       toolName: string;
       input: unknown;
       reason: string;
+    }
+  /** AskUser 交互问答：Agent 通过 AskUserQuestion 工具向用户提问 */
+  | {
+      type: "ask_user";
+      requestId: string;
+      questions: AskUserQuestionItem[];
     };
+
+/** AskUser 单个问题的结构 */
+export interface AskUserQuestionItem {
+  question: string;
+  header: string;
+  options?: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+/** AskUser 选项 */
+export interface AskUserOption {
+  label: string;
+  description?: string;
+}
+
+/** 用户提交的答案 */
+export interface AskUserResponse {
+  answers: Record<string, string>;
+}
 
 // ── Prompt 选项 ──────────────────────────────────────────────────────────────
 

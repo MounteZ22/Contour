@@ -29,6 +29,7 @@ import type {
   AgentRuntimeConfig,
   AgentStreamEvent,
   PromptOptions,
+  AskUserQuestionItem,
 } from "./agent-runtime.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { createOrResumePiSession } from "./session-storage.js";
@@ -38,6 +39,11 @@ import { classifyAgentError, typedAgentError } from "./typed-error.js";
 import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
 import { applyAgentToolPolicy } from "./tool-policy.js";
 import { createProjectMcpTools, type ProjectMcpTools } from "../tools/project-mcp-tools.js";
+import {
+  setAskUserEventEmitter,
+  requestAskUser,
+  rejectAllAskUserRequests,
+} from "./ask-user.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -165,6 +171,14 @@ export class PiRuntime implements AgentRuntime {
   private activeRequester: PermissionRequesterFn | null = null;
   /** 当前运行时建立的外部 MCP 连接，必须随会话释放。 */
   private projectMcpTools: ProjectMcpTools | null = null;
+  /** 当前正在等待用户回答的 AskUser 请求（按 requestId 索引） */
+  private askUserPendingIds: Set<string> = new Set();
+
+  /** 当前轮次序号（从 0 开始，每次 turn_start 递增） */
+  private turnIndex = 0;
+
+  /** 本轮中 write/edit 工具涉及的文件路径（去重用） */
+  private currentTurnFiles: Set<string> = new Set();
 
   /**
    * 初始化 Pi 运行时
@@ -285,8 +299,8 @@ export class PiRuntime implements AgentRuntime {
       thinkingLevel: "off",
       authStorage,
       modelRegistry: this.modelRegistry,
-      tools: toolPolicy.tools,
-      customTools: toolPolicy.customTools as any,
+      tools: [...toolPolicy.tools, "AskUserQuestion"],
+      customTools: [...toolPolicy.customTools, createAskUserQuestionTool()] as any,
       resourceLoader: await this.createResourceLoader({
         ...config,
         mcpConfirmationToolNames: projectMcpTools.reviewConfirmationToolNames,
@@ -322,6 +336,10 @@ export class PiRuntime implements AgentRuntime {
 
     // 清理上一次 prompt 的订阅（防止订阅堆积）
     this.cleanupActivePrompt();
+
+    // 重置 turn 序号（每次 prompt() 从 0 开始）
+    this.turnIndex = 0;
+    this.currentTurnFiles = new Set();
 
     // ── 构建共享状态对象 ──────────────────────────────────────────────────
     const promptState: ActivePrompt = {
@@ -403,6 +421,9 @@ export class PiRuntime implements AgentRuntime {
 
       return promise;
     };
+
+    // ── 设置 AskUser 事件通道（供自定义 AskUserQuestion 工具使用） ─────
+    setAskUserEventEmitter(pushEvent);
 
     // ── 异步发送 prompt（不阻塞 AsyncIterable 的返回） ───────────────────
     const promptPromise = this.session
@@ -497,6 +518,10 @@ export class PiRuntime implements AgentRuntime {
     } finally {
       this.activePrompt = null;
     }
+    // 清理 AskUser 事件通道和所有 pending 请求
+    setAskUserEventEmitter(null);
+    rejectAllAskUserRequests("prompt 已结束");
+    this.askUserPendingIds.clear();
   }
 
   /**
@@ -534,11 +559,17 @@ export class PiRuntime implements AgentRuntime {
         return { type: "agent_end" };
       }
 
-      case "turn_start":
-        return { type: "turn_start" };
+      case "turn_start": {
+        // 新一轮开始：递增序号，清空本轮文件改动记录
+        this.turnIndex += 1;
+        this.currentTurnFiles = new Set();
+        return { type: "turn_start", turnIndex: this.turnIndex };
+      }
 
-      case "turn_end":
-        return { type: "turn_end" };
+      case "turn_end": {
+        const filesChanged = [...this.currentTurnFiles];
+        return { type: "turn_end", turnIndex: this.turnIndex, filesChanged };
+      }
 
       case "message_update": {
         const sub = (event as any).assistantMessageEvent;
@@ -552,13 +583,25 @@ export class PiRuntime implements AgentRuntime {
         }
       }
 
-      case "tool_execution_start":
+      case "tool_execution_start": {
+        const toolName: string = (event as any).toolName ?? "unknown";
+        const args: unknown = (event as any).args;
+
+        // 跟踪文件改动：记录 write / edit 操作涉及的路径
+        if ((toolName === 'write' || toolName === 'edit') && args && typeof args === 'object') {
+          const pathValue = (args as Record<string, unknown>).path;
+          if (typeof pathValue === 'string' && pathValue.length > 0) {
+            this.currentTurnFiles.add(pathValue);
+          }
+        }
+
         return {
           type: "tool_call_start",
-          toolCallId: (event as any).toolCallId ?? (event as any).toolName ?? "unknown",
-          toolName: (event as any).toolName ?? "unknown",
-          input: sanitizeToolInput((event as any).args),
+          toolCallId: (event as any).toolCallId ?? toolName,
+          toolName,
+          input: sanitizeToolInput(args),
         };
+      }
 
       case "tool_execution_end":
         return {
@@ -621,4 +664,67 @@ export class PiRuntime implements AgentRuntime {
     await loader.reload();
     return loader;
   }
+}
+
+// ── AskUserQuestion 自定义工具 ──────────────────────────────────────────────
+
+/**
+ * 创建覆盖 Pi SDK 内置 AskUserQuestion 的自定义工具。
+ *
+ * Pi SDK 内置的 AskUserQuestion 依赖 SDK 自有的 UI 层；Contour 前端需要
+ * 通过自己的 UI 展示问题并收集答案。此自定义工具：
+ * 1. 通过 ask-user.ts 模块发出 ask_user SSE 事件
+ * 2. 等待前端 POST /api/ai/ask-user-response 回传答案
+ * 3. 将答案作为工具结果返回给 Agent
+ */
+function createAskUserQuestionTool() {
+  return {
+    name: "AskUserQuestion",
+    label: "向用户提问",
+    description:
+      "当需要用户选择、补充信息或确认偏好时调用。支持三种题型：" +
+      "单选（options 数组 + multiSelect: false）、多选（options 数组 + multiSelect: true）、" +
+      "文本输入（不传 options，由用户自由输入）。",
+    parameters: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              question: { type: "string", description: "要询问用户的问题" },
+              header: { type: "string", description: "简短标题" },
+              options: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string", description: "选项标签" },
+                    description: { type: "string", description: "选项说明" },
+                  },
+                  required: ["label"],
+                },
+                description: "可选项列表；不传则为文本输入题",
+              },
+              multiSelect: { type: "boolean", description: "是否允许多选" },
+            },
+            required: ["question", "header"],
+          },
+        },
+      },
+      required: ["questions"],
+    },
+    execute: async (_toolCallId: string, params: { questions: AskUserQuestionItem[] }) => {
+      const result = await requestAskUser(params.questions);
+      // 将用户答案格式化为工具结果文本
+      const answerText = Object.entries(result.answers)
+        .map(([header, answer]) => `${header}: ${answer}`)
+        .join("\n");
+      return {
+        content: [{ type: "text" as const, text: `用户已回答：\n${answerText}` }],
+        details: {},
+      };
+    },
+  };
 }

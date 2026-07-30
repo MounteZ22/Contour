@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAtom } from 'jotai';
 import { sendChatMessageStream, respondToPermission, toAgentErrorInfo } from '../state/aiApi';
-import type { AgentErrorInfo, ChatMessage, PermissionRequest, ProcessActivity, ToolActivity } from '../state/aiApi';
+import type { AgentErrorInfo, ChatMessage, PermissionRequest, ProcessActivity, ToolActivity, AskUserRequest } from '../state/aiApi';
 import type { AIContextItem } from '../types';
-import { chatDraftsAtom } from '../state/chat';
+import { chatDraftsAtom, planModeEnabledAtom } from '../state/chat';
 
 export type PermissionMode = "readonly" | "review" | "yolo";
+
+/** Plan Mode 状态 */
+export type PlanStatus = 'idle' | 'active' | 'complete';
 
 export interface UseChatReturn {
   messages: ChatMessage[];
@@ -31,6 +34,13 @@ export interface UseChatReturn {
   permissionRequest: PermissionRequest | null;
   /** 响应当前权限请求 */
   handlePermissionResponse: (action: "allow" | "deny", remember: boolean) => Promise<void>;
+  /** Plan Mode 相关 */
+  planModeEnabled: boolean;
+  setPlanModeEnabled: (enabled: boolean) => void;
+  planStatus: PlanStatus;
+  planContent: string;
+  handleApprovePlan: () => void;
+  handleModifyPlan: (feedback: string) => void;
 }
 
 interface UseChatOptions {
@@ -176,13 +186,22 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
     }
 
     // turn_end 作为 assistant 消息边界
-    if (record.type === 'turn_end' && currentAssistantContent) {
-      messages.push({
-        id: `hist_${msgIndex++}`,
-        role: 'assistant',
-        content: currentAssistantContent,
-      });
-      currentAssistantContent = '';
+    if (record.type === 'turn_end') {
+      if (currentAssistantContent) {
+        const turnIndex = typeof record.turnIndex === 'number' ? record.turnIndex : undefined;
+        const filesChanged = Array.isArray(record.filesChanged)
+          ? record.filesChanged.filter((f: unknown): f is string => typeof f === 'string')
+          : undefined;
+        messages.push({
+          id: `hist_${msgIndex++}`,
+          role: 'assistant',
+          content: currentAssistantContent,
+          turnIndex,
+          filesChanged: filesChanged && filesChanged.length > 0 ? filesChanged : undefined,
+        });
+        currentAssistantContent = '';
+      }
+      continue;
     }
   }
 
@@ -204,6 +223,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const { sessionId, projectId, modelSelection } = options;
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
   const [drafts, setDrafts] = useAtom(chatDraftsAtom);
+  const [planModeEnabled, setPlanModeEnabled] = useAtom(planModeEnabledAtom);
   const [transientInputValue, setTransientInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -214,6 +234,10 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const [error, setError] = useState<AgentErrorInfo | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
+  const [planStatus, setPlanStatus] = useState<PlanStatus>('idle');
+  const [planContent, setPlanContent] = useState('');
+  const planContentRef = useRef('');
+  const askUserRequestRef = useRef<AskUserRequest | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const failedMessageRef = useRef<{ message: string; partialContent: string } | null>(null);
@@ -298,16 +322,61 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setTaskActivities([]);
     setProcessActivities([]);
     setError(null);
+    setPlanStatus('idle');
+    setPlanContent('');
+    planContentRef.current = '';
+    askUserRequestRef.current = null;
 
     const currentToolActivities: ToolActivity[] = [];
     const currentProcessActivities: ProcessActivity[] = [];
+
+    // ── Turn 分组追踪 ─────────────────────────────────────────────────────
+    let partialContent = ''; // 当前轮已生成的文本
+    let currentTurnIndex = -1; // 当前轮次序号（-1 表示未进入任何轮次）
+    let currentTurnFilesChanged: string[] = [];
+
+    /** 将当前轮内容刷为一条 assistant ChatMessage */
+    const flushTurnMessage = () => {
+      if (currentTurnIndex < 0) return;
+      const content = partialContent;
+      if (!content && currentToolActivities.length === 0) return;
+
+      const askUserRequest = askUserRequestRef.current;
+      const msg: ChatMessage = {
+        id: `assistant_t${currentTurnIndex}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        role: 'assistant',
+        content,
+        turnIndex: currentTurnIndex,
+        filesChanged: currentTurnFilesChanged.length > 0 ? [...currentTurnFilesChanged] : undefined,
+        toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+        processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
+        askUserRequest: askUserRequest ?? undefined,
+      };
+      updateMessages((prev) => [...prev, msg]);
+
+      // 重置本轮累加器
+      partialContent = '';
+      currentToolActivities.length = 0;
+      currentProcessActivities.length = 0;
+      askUserRequestRef.current = null;
+      setStreamingContent('');
+      setToolActivities([]);
+      setTaskActivities([]);
+      setProcessActivities([]);
+    };
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     try {
       await sendChatMessageStream(trimmed, initialContext || [], {
         onChunk: (delta) => {
+          partialContent += delta;
           setStreamingContent((prev) => prev + delta);
+          // Plan Mode：收集 EnterPlanMode 之后的文本作为计划内容
+          if (planContentRef.current !== null) {
+            planContentRef.current += delta;
+            setPlanContent(planContentRef.current);
+          }
         },
         onToolActivity: (activity) => {
           const existingIdx = currentToolActivities.findIndex(
@@ -358,46 +427,93 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         onPermissionRequest: (request) => {
           setPermissionRequest(request);
         },
-        onComplete: (fullContent) => {
+        onPlan: (event) => {
+          if (event.action === 'enter') {
+            setPlanStatus('active');
+            planContentRef.current = '';
+            setPlanContent('');
+          } else if (event.action === 'exit') {
+            setPlanStatus('complete');
+            planContentRef.current = null as unknown as string;
+          }
+        },
+        onAskUser: (request) => {
+          askUserRequestRef.current = request;
+        },
+        onTurnStart: (turnIndex) => {
+          // 新一轮开始前，先刷出上一轮的内容
+          flushTurnMessage();
+          currentTurnIndex = turnIndex;
+          currentTurnFilesChanged = [];
+        },
+        onTurnEnd: (_turnIndex, filesChanged) => {
+          currentTurnFilesChanged = filesChanged;
+          // 本轮结束，刷出本轮消息
+          flushTurnMessage();
+          currentTurnIndex = -1;
+        },
+        onComplete: (_fullContent) => {
           failedMessageRef.current = null;
-          const assistantMessage: ChatMessage = {
-            id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            role: 'assistant',
-            content: fullContent,
-            toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
-            processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
-          };
-          updateMessages((prev) => [...prev, assistantMessage]);
+          // 如果有未刷出的内容（兼容无 turn 事件的旧版响应或最后一轮未结束）
+          if (currentTurnIndex >= 0) {
+            flushTurnMessage();
+          } else if (_fullContent || partialContent || currentToolActivities.length > 0) {
+            // 兼容无 turn 事件的响应：优先用后端返回的 fullContent
+            const askUserRequest = askUserRequestRef.current;
+            const assistantMessage: ChatMessage = {
+              id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              role: 'assistant',
+              content: _fullContent || partialContent,
+              toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+              processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
+              askUserRequest: askUserRequest ?? undefined,
+            };
+            updateMessages((prev) => [...prev, assistantMessage]);
+            askUserRequestRef.current = null;
+          }
           setStreamingContent('');
           setIsStreaming(false);
           setToolActivities([]);
           setProcessActivities([]);
         },
-        onAborted: (partialContent) => {
+        onAborted: (abortedContent) => {
           failedMessageRef.current = null;
-          const assistantMessage: ChatMessage = {
-            id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            role: 'assistant',
-            content: partialContent,
-            status: 'stopped',
-            toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
-            processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
-          };
-          updateMessages((prev) => [...prev, assistantMessage]);
+          // 有 turn 上下文时刷出当前轮消息
+          if (currentTurnIndex >= 0) {
+            partialContent = abortedContent;
+            flushTurnMessage();
+          } else {
+            const askUserRequest = askUserRequestRef.current;
+            const assistantMessage: ChatMessage = {
+              id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              role: 'assistant',
+              content: abortedContent,
+              status: 'stopped',
+              toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+              processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
+              askUserRequest: askUserRequest ?? undefined,
+            };
+            updateMessages((prev) => [...prev, assistantMessage]);
+            askUserRequestRef.current = null;
+          }
           setStreamingContent('');
           setIsStreaming(false);
           setToolActivities([]);
           setProcessActivities([]);
         },
-        onError: (errorInfo, partialContent = '') => {
-          failedMessageRef.current = { message: trimmed, partialContent };
+        onError: (errorInfo, _partialContent = '') => {
+          failedMessageRef.current = { message: trimmed, partialContent: _partialContent };
+          // 如果有正在进行的轮次，先刷出已生成的内容
+          if (currentTurnIndex >= 0) {
+            flushTurnMessage();
+          }
           setError(errorInfo);
           setIsStreaming(false);
           setStreamingContent('');
           setToolActivities([]);
           setProcessActivities([]);
         },
-      }, permissionMode, projectId, sessionId, abortController.signal, ...(modelSelection ? [modelSelection] : []));
+      }, permissionMode, projectId, sessionId, abortController.signal, ...(modelSelection ? [modelSelection] : []), planModeEnabled);
     } catch (err) {
       failedMessageRef.current = { message: trimmed, partialContent: '' };
       setError(toAgentErrorInfo(err));
@@ -411,7 +527,7 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId, modelSelection]);
+  }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId, modelSelection, planModeEnabled]);
 
   const handleSend = useCallback(
     () => sendMessage(inputValue.trim(), true),
@@ -470,8 +586,30 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setTaskActivities([]);
     setProcessActivities([]);
     setError(null);
+    setPlanStatus('idle');
+    setPlanContent('');
+    planContentRef.current = '';
     failedMessageRef.current = null;
   }, [updateMessages]);
+
+  /** 批准计划并开始执行 */
+  const handleApprovePlan = useCallback(() => {
+    setPlanStatus('idle');
+    setPlanContent('');
+    planContentRef.current = '';
+    void sendMessage('批准计划，开始执行', false);
+  }, [sendMessage]);
+
+  /** 修改计划，发送反馈文本让 Agent 重新规划 */
+  const handleModifyPlan = useCallback((feedback: string) => {
+    setPlanStatus('idle');
+    setPlanContent('');
+    planContentRef.current = '';
+    const message = feedback.trim()
+      ? `修改计划：${feedback}`
+      : '请重新规划';
+    void sendMessage(message, false);
+  }, [sendMessage]);
 
   return {
     messages,
@@ -494,5 +632,11 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
+    planModeEnabled,
+    setPlanModeEnabled,
+    planStatus,
+    planContent,
+    handleApprovePlan,
+    handleModifyPlan,
   };
 }

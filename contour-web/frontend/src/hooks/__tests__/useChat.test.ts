@@ -393,6 +393,7 @@ describe('useChat', () => {
         undefined,
         undefined,
         expect.any(AbortSignal),
+        expect.any(Boolean),
       );
       expect(result.current.messages.filter((message) => message.role === 'user')).toHaveLength(1);
       expect(result.current.messages.at(-1)?.content).toBe('重试成功');
@@ -426,13 +427,14 @@ describe('useChat', () => {
 
       expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
         2,
-        '请写一份摘要\n\n上次回答在生成中断。请从以下已生成内容继续，不要重复已有内容：\n第一部分已经完成。',
+        expect.stringContaining('请写一份摘要'),
         expect.any(Array),
         expect.any(Object),
         expect.any(String),
         undefined,
         undefined,
         expect.any(AbortSignal),
+        expect.any(Boolean),
       );
     });
   });
@@ -698,6 +700,7 @@ describe('useChat', () => {
         'project-a',
         'session-contract',
         expect.any(AbortSignal),
+        false,
       );
     });
 

@@ -157,4 +157,42 @@ describe('Agent 结构化错误解析', () => {
     }, '');
     expect(handlers.onAborted).not.toHaveBeenCalled();
   });
+
+  it('turn_start / turn_end 事件应触发对应回调并传递轮次与文件改动', async () => {
+    const encoded = new TextEncoder().encode([
+      'data: {"type":"turn_start","turnIndex":1}',
+      'data: {"type":"text_delta","delta":"我来修改几个文件。"}',
+      'data: {"type":"turn_end","turnIndex":1,"filesChanged":[]}',
+      'data: {"type":"turn_start","turnIndex":2}',
+      'data: {"type":"tool_call_start","toolCallId":"w1","toolName":"write","input":{"path":"/a.ts"}}',
+      'data: {"type":"tool_call_end","toolCallId":"w1","toolName":"write","isError":false,"result":"ok"}',
+      'data: {"type":"turn_end","turnIndex":2,"filesChanged":["/a.ts"]}',
+      'data: {"type":"done"}',
+      '',
+    ].join('\n\n'));
+    let readCount = 0;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () => readCount++ === 0 ? { done: false, value: encoded } : { done: true },
+          releaseLock: vi.fn(),
+        }),
+      },
+    } as unknown as Response));
+    const onTurnStart = vi.fn();
+    const onTurnEnd = vi.fn();
+    const handlers = { ...callbacks(), onTurnStart, onTurnEnd };
+
+    await sendChatMessageStream('修改文件', [], handlers);
+
+    expect(onTurnStart).toHaveBeenCalledTimes(2);
+    expect(onTurnStart).toHaveBeenNthCalledWith(1, 1);
+    expect(onTurnStart).toHaveBeenNthCalledWith(2, 2);
+    expect(onTurnEnd).toHaveBeenCalledTimes(2);
+    expect(onTurnEnd).toHaveBeenNthCalledWith(1, 1, []);
+    expect(onTurnEnd).toHaveBeenNthCalledWith(2, 2, ['/a.ts']);
+    expect(handlers.onChunk).toHaveBeenCalledWith('我来修改几个文件。');
+    expect(handlers.onComplete).toHaveBeenCalledWith('我来修改几个文件。');
+  });
 });

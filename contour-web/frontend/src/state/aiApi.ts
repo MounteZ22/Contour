@@ -79,14 +79,40 @@ export function toAgentErrorInfo(error: unknown): AgentErrorInfo {
   return NETWORK_ERROR;
 }
 
+/** AskUser 交互问答类型 */
+export interface AskUserOption {
+  label: string;
+  description?: string;
+}
+
+export interface AskUserQuestion {
+  question: string;
+  header: string;
+  options?: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+/** 一次性问答请求（嵌入在消息中） */
+export interface AskUserRequest {
+  requestId: string;
+  questions: AskUserQuestion[];
+  status: 'pending' | 'answered';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** 所属轮次序号（从 1 开始），用于前端按 turn 分组展示 */
+  turnIndex?: number;
+  /** 本轮中 write/edit 操作涉及的文件路径（去重后） */
+  filesChanged?: string[];
   toolActivities?: ToolActivity[];
   /** 可观察的执行状态，不含模型原始推理。 */
   processActivities?: ProcessActivity[];
   status?: 'stopped';
+  /** AskUser 交互问答请求 */
+  askUserRequest?: AskUserRequest;
 }
 
 export interface ToolActivity {
@@ -127,6 +153,14 @@ interface StreamCallbacks {
   onProcessActivity?: (activity: ProcessActivity) => void;
   /** 收到权限确认请求 */
   onPermissionRequest?: (request: PermissionRequest) => void;
+  /** 收到 AskUser 交互问答请求 */
+  onAskUser?: (request: AskUserRequest) => void;
+  /** 收到 Plan Mode 事件 */
+  onPlan?: (event: { action: 'enter' | 'exit' }) => void;
+  /** 新一轮开始，含轮次序号 */
+  onTurnStart?: (turnIndex: number) => void;
+  /** 本轮结束，含文件改动列表 */
+  onTurnEnd?: (turnIndex: number, filesChanged: string[]) => void;
   /** 流式完成 */
   onComplete: (fullContent: string) => void;
   /** 用户主动停止，返回停止前已收到的内容 */
@@ -149,11 +183,13 @@ export async function sendChatMessageStream(
   sessionId?: string,
   signal?: AbortSignal,
   modelSelection?: { channelId: string; model: string },
+  planMode?: boolean,
 ): Promise<void> {
   const body: Record<string, unknown> = { message, contextItems };
   if (permissionMode) body.permissionMode = permissionMode;
   if (projectId) body.projectId = projectId;
   if (sessionId) body.sessionId = sessionId;
+  if (planMode) body.planMode = planMode;
   if (modelSelection) {
     body.channelId = modelSelection.channelId;
     body.model = modelSelection.model;
@@ -244,13 +280,25 @@ export async function sendChatMessageStream(
               });
               break;
 
-            case 'turn_start':
+            case 'turn_start': {
+              const turnIndex = typeof raw.turnIndex === 'number' ? raw.turnIndex : 0;
+              callbacks.onTurnStart?.(turnIndex);
               callbacks.onProcessActivity?.({
                 id: 'turn-start',
                 label: '正在生成回应',
                 status: 'active',
               });
               break;
+            }
+
+            case 'turn_end': {
+              const turnIndex = typeof raw.turnIndex === 'number' ? raw.turnIndex : 0;
+              const filesChanged = Array.isArray(raw.filesChanged)
+                ? raw.filesChanged.filter((f: unknown): f is string => typeof f === 'string')
+                : [];
+              callbacks.onTurnEnd?.(turnIndex, filesChanged);
+              break;
+            }
 
             case 'text_delta':
               if (raw.delta) {
@@ -300,6 +348,24 @@ export async function sendChatMessageStream(
                   toolName: raw.toolName as string,
                   input: raw.input,
                   reason: (raw.reason as string) || `需要确认 ${raw.toolName} 操作`,
+                });
+              }
+              break;
+
+            case 'ask_user':
+              if (callbacks.onAskUser && raw.requestId && Array.isArray(raw.questions)) {
+                callbacks.onAskUser({
+                  requestId: raw.requestId as string,
+                  questions: raw.questions as AskUserQuestion[],
+                  status: 'pending',
+                });
+              }
+              break;
+
+            case 'plan':
+              if (callbacks.onPlan && raw.action) {
+                callbacks.onPlan({
+                  action: raw.action as 'enter' | 'exit',
                 });
               }
               break;
@@ -373,6 +439,30 @@ export async function respondToPermission(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`权限响应失败 (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json() as { success: boolean };
+  return data.success;
+}
+
+/**
+ * 发送用户对 AskUser 问题的答案
+ *
+ * 由 AskUserCard 在用户提交后调用，告知后端用户答案。
+ */
+export async function sendAskUserResponse(
+  requestId: string,
+  answers: Record<string, string>,
+): Promise<boolean> {
+  const res = await fetch('/api/ai/ask-user-response', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, answers }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`问答响应失败 (${res.status}): ${text.slice(0, 200)}`);
   }
 
   const data = await res.json() as { success: boolean };

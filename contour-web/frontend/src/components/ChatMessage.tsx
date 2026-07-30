@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { User, Bot, Brain, ChevronRight, Copy, Loader2, Check, XCircle, Wrench, Square } from 'lucide-react';
 import type { ChatMessage, ProcessActivity, ToolActivity } from '../state/aiApi';
 import { toolPhrase } from '../lib/toolPhrase';
+import { AskUserCard } from './agent/AskUserCard';
 
 function ToolActivityRow({ activity, animate = false, index = 0 }: { activity: ToolActivity; animate?: boolean; index?: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -165,6 +166,11 @@ export function ChatMessageItem({ message, isStreaming = false }: ChatMessagePro
         {/* 工具活动指示器（仅 AI 消息） */}
         {!isUser && message.toolActivities && message.toolActivities.length > 0 && (
           <ToolActivityList activities={message.toolActivities} isStreaming={isStreaming} />
+        )}
+
+        {/* AskUser 交互问答（仅 AI 消息） */}
+        {!isUser && message.askUserRequest && (
+          <AskUserCard askUserRequest={message.askUserRequest} />
         )}
 
         {/* 消息气泡 */}
