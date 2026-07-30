@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { PageSkeleton } from './components/ui/PageSkeleton';
+import { AgentPageSkeleton } from './components/ui/AgentPageSkeleton';
+import { FlowPageSkeleton } from './components/ui/FlowPageSkeleton';
 import { ShellLayout } from './components/shell/ShellLayout';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -31,14 +34,18 @@ const SettingsPage = lazy(() =>
 );
 
 function PageLoadingFallback() {
-  return (
-    <div className="flex h-full min-h-[16rem] items-center justify-center" role="status">
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Loader2 aria-hidden="true" className="animate-spin text-primary" size={18} />
-        <span>正在加载页面...</span>
-      </div>
-    </div>
-  );
+  const location = useLocation();
+
+  // 根据当前路由路径选合适的骨架屏
+  if (location.pathname.startsWith('/agent')) {
+    return <AgentPageSkeleton />;
+  }
+  if (location.pathname.includes('/flows/')) {
+    return <FlowPageSkeleton />;
+  }
+  // 路由级 /project/:projectId/docs/:docId /project/:projectId/claims/:claimId
+  // 以及 /contour、/settings、/* 共用通用页面骨架
+  return <PageSkeleton />;
 }
 
 function LazyRoute({ children }: { children: React.ReactNode }) {

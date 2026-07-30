@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { useSetAtom } from 'jotai';
-import { FolderOpen, Map, Plus, Shield, Trash2 } from 'lucide-react';
+import { FolderOpen, LayoutGrid, Map, Plus, Shield, Trash2 } from 'lucide-react';
 import { showToast } from '../components/Toast';
 import { ContextActionBar } from '../components/ContextActionBar';
-import { ContourMap } from '../components/ContourMap';
+import { ContourMap, type ContourMapHandle } from '../components/ContourMap';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -30,6 +30,8 @@ export function ContourView() {
   const [selectedClaims, setSelectedClaims] = useState<Set<string>>(new Set());
   const [showNewClaim, setShowNewClaim] = useState(false);
   const [newClaimTitle, setNewClaimTitle] = useState('');
+
+  const contourMapRef = useRef<ContourMapHandle>(null);
 
   useEffect(() => {
     setContextSelectMode(false);
@@ -308,6 +310,8 @@ export function ContourView() {
           </div>
 
           <ContourMap
+            ref={contourMapRef}
+            claims={project.claims}
             contextSelectMode={contextSelectMode}
             flows={flows}
             onCreateFlow={handleCreateFlowFromNode}

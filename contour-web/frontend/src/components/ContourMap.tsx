@@ -1,8 +1,9 @@
-import { ArrowRight, Check, GitBranch, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Check, ChevronDown, GitBranch, LayoutGrid, Plus, Shield, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react';
 import { Link } from 'react-router-dom';
-import type { Flow } from '../types';
+import type { Claim, Flow } from '../types';
 import { StatusBadge } from './StatusBadge';
+import { CONFIDENCE_BG_MAP, CONFIDENCE_COLOR_MAP } from '../constants/claimColors';
 
 interface NodePos {
   x: number;
@@ -34,18 +35,96 @@ function drawEdgePath(
   return `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
 }
 
-export function ContourMap({
-  flows,
-  projectId,
-  onDeleteFlow,
-  onCreateFlow,
-  contextSelectMode,
-  selectedFlowIds,
-  onToggleFlowSelection,
-  onPositionSaved,
-}: {
+// ===== DAG 分层布局算法 =====
+
+/**
+ * 使用拓扑排序 + BFS 对 Flow DAG 进行分层布局。
+ * 根节点（无入边）放在第 0 层，子节点逐层向下排列。
+ */
+function computeLayeredLayout(flows: Flow[]): Map<string, NodePos> {
+  const flowIds = new Set(flows.map((f) => f.flowId));
+
+  // 构建邻接表和入度（仅计算 flow 集合内部的父子关系）
+  const children = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+  for (const flow of flows) {
+    inDegree.set(flow.flowId, 0);
+  }
+  for (const flow of flows) {
+    for (const parentId of flow.parentFlows) {
+      if (flowIds.has(parentId)) {
+        inDegree.set(flow.flowId, (inDegree.get(flow.flowId) ?? 0) + 1);
+        if (!children.has(parentId)) children.set(parentId, []);
+        children.get(parentId)!.push(flow.flowId);
+      }
+    }
+  }
+
+  // 拓扑排序 + 分层：每处理一个父节点后入度 -1，入度为 0 时入队
+  const queue: string[] = [];
+  const layer = new Map<string, number>();
+
+  for (const flow of flows) {
+    if (inDegree.get(flow.flowId) === 0) {
+      queue.push(flow.flowId);
+      layer.set(flow.flowId, 0);
+    }
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const currentLayer = layer.get(current)!;
+    for (const childId of children.get(current) ?? []) {
+      // 子节点层号 = max(当前计算值, 父层 + 1)
+      layer.set(childId, Math.max(layer.get(childId) ?? -1, currentLayer + 1));
+      const deg = (inDegree.get(childId) ?? 1) - 1;
+      inDegree.set(childId, deg);
+      if (deg === 0) queue.push(childId);
+    }
+  }
+
+  // 按层分组
+  const layerGroups = new Map<number, string[]>();
+  for (const [id, l] of layer) {
+    if (!layerGroups.has(l)) layerGroups.set(l, []);
+    layerGroups.get(l)!.push(id);
+  }
+
+  // 按层排列节点
+  const positions = new Map<string, NodePos>();
+  const nodeSpacing = 280;    // 同层节点水平间距
+  const layerSpacing = 200;   // 层间垂直间距
+  const margin = 40;          // 画布边距
+
+  for (const [l, ids] of layerGroups) {
+    const totalWidth = (ids.length - 1) * nodeSpacing;
+    const startX = margin;
+    ids.forEach((id, i) => {
+      positions.set(id, {
+        x: startX + i * nodeSpacing,
+        y: margin + l * layerSpacing,
+      });
+    });
+  }
+
+  return positions;
+}
+
+/** 截取文本前 N 行（按 \n 分割） */
+function firstLines(text: string, maxLines: number): string {
+  if (!text) return '';
+  const lines = text.split('\n');
+  return lines.slice(0, maxLines).join('\n');
+}
+
+export interface ContourMapHandle {
+  autoLayout: () => Promise<void>;
+}
+
+export const ContourMap = forwardRef<ContourMapHandle, {
   flows: Flow[];
   projectId: string;
+  claims?: Claim[];
   onDeleteFlow?: (flowId: string, title: string) => void;
   onCreateFlow?: (parentFlowId: string, title: string) => void;
   contextSelectMode?: boolean;
@@ -53,13 +132,38 @@ export function ContourMap({
   onToggleFlowSelection?: (flowId: string) => void;
   /** 位置保存成功后回调，通知父组件同步数据 */
   onPositionSaved?: (flowId: string, x: number, y: number) => void;
-}) {
+}>(function ContourMap({
+  flows,
+  projectId,
+  claims = [],
+  onDeleteFlow,
+  onCreateFlow,
+  contextSelectMode,
+  selectedFlowIds,
+  onToggleFlowSelection,
+  onPositionSaved,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Map<string, NodePos>>(new Map());
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [creatingFromId, setCreatingFromId] = useState<string | null>(null);
   const [createTitle, setCreateTitle] = useState('');
+
+  // ----- Hover 预览状态 -----
+  const [hoveredFlowId, setHoveredFlowId] = useState<string | null>(null);
+  const [hoverPreviewVisible, setHoverPreviewVisible] = useState(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ----- Claims 展开状态 -----
+  const [expandedClaimsFlowId, setExpandedClaimsFlowId] = useState<string | null>(null);
+
+  // 构建 claimId → Claim 的快速查找表
+  const claimsMap = useMemo(() => {
+    const map = new Map<string, Claim>();
+    for (const c of claims) map.set(c.claimId, c);
+    return map;
+  }, [claims]);
 
   // Refs for drag state — avoids re-registering event listeners on every frame
   const positionsRef = useRef(positions);
@@ -121,6 +225,58 @@ export function ContourMap({
       return next;
     });
   }, [flows]);
+
+  // ===== 自动布局 =====
+  const autoLayout = useCallback(async () => {
+    const newPositions = computeLayeredLayout(flows);
+    setPositions(newPositions);
+
+    // 批量保存所有新位置到后端
+    const savePromises = flows.map((flow) => {
+      const pos = newPositions.get(flow.flowId);
+      if (!pos) return Promise.resolve();
+      return fetch(`/api/flows/${flow.flowId}/position`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: Math.round(pos.x), y: Math.round(pos.y), projectId }),
+        keepalive: true,
+      })
+        .then((res) => {
+          if (res.ok) onPositionSaved?.(flow.flowId, Math.round(pos.x), Math.round(pos.y));
+        })
+        .catch((err) => console.error('保存位置失败:', err));
+    });
+    await Promise.all(savePromises);
+  }, [flows, projectId, onPositionSaved]);
+
+  // 暴露 autoLayout 给父组件
+  useImperativeHandle(ref, () => ({ autoLayout }), [autoLayout]);
+
+  // ===== Hover 预览逻辑 =====
+  const handleNodeMouseEnter = useCallback((flowId: string) => {
+    if (contextSelectMode) return; // 多选模式下不显示 hover 预览
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredFlowId(flowId);
+      setHoverPreviewVisible(true);
+    }, 300);
+  }, [contextSelectMode]);
+
+  const handleNodeMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoverPreviewVisible(false);
+    // 延迟清除 hoveredFlowId，让过渡动画完成
+    setTimeout(() => setHoveredFlowId(null), 150);
+  }, []);
+
+  // 清理 hover 定时器
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
 
   const edges = useMemo(() => {
     const list: { from: string; to: string }[] = [];
@@ -270,6 +426,17 @@ export function ContourMap({
         if (!pos) return null;
         const isContextSelected = selectedFlowIds?.has(flow.flowId) ?? false;
         const isDragging = draggingId === flow.flowId;
+        const isHovered = hoveredFlowId === flow.flowId && hoverPreviewVisible;
+
+        // 关联的 Claims
+        const linkedClaimsList = flow.linkedClaims
+          .map((cid) => claimsMap.get(cid))
+          .filter(Boolean) as Claim[];
+        const claimsCount = linkedClaimsList.length;
+
+        // 摘要前 3 行
+        const summaryPreview = firstLines(flow.summary || '', 3);
+        const hasSummary = summaryPreview.length > 0;
 
         const nodeContent = (
           <>
@@ -311,6 +478,37 @@ export function ContourMap({
                   </span>
                 )}
               </div>
+
+              {/* Claims 关联徽标 */}
+              {claimsCount > 0 && (
+                <div className="mt-2">
+                  <button
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium font-mono cursor-pointer transition-colors ${
+                      expandedClaimsFlowId === flow.flowId
+                        ? 'bg-accent-strong/20 text-accent-strong border border-accent-strong/30'
+                        : 'bg-surface-sunken text-text-secondary border border-border/50 hover:bg-accent-subtle-bg hover:text-accent-strong hover:border-accent-strong/25'
+                    }`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setExpandedClaimsFlowId(
+                        expandedClaimsFlowId === flow.flowId ? null : flow.flowId
+                      );
+                    }}
+                    title={`${claimsCount} 个关联 Claim`}
+                    type="button"
+                  >
+                    <Shield size={11} />
+                    {claimsCount} claim{claimsCount > 1 ? 's' : ''}
+                    <ChevronDown
+                      size={10}
+                      className={`transition-transform ${
+                        expandedClaimsFlowId === flow.flowId ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
             </div>
           </>
         );
@@ -322,12 +520,37 @@ export function ContourMap({
             }`}
             key={flow.flowId}
             onMouseDown={(e) => handleMouseDown(e, flow.flowId)}
+            onMouseEnter={() => handleNodeMouseEnter(flow.flowId)}
+            onMouseLeave={handleNodeMouseLeave}
             style={{
               left: pos.x,
               top: pos.y,
               width: nodeWidth,
             }}
           >
+            {/* Hover 预览浮层 */}
+            {isHovered && (
+              <div
+                className="absolute left-full ml-3 top-0 w-52 bg-surface-raised border border-border rounded-lg shadow-lg p-3 z-[60] pointer-events-none animate-in fade-in slide-in-from-left-2"
+                style={{ maxWidth: 240 }}
+              >
+                <p className="text-sm font-semibold text-text-primary font-headline mb-1.5 line-clamp-2">
+                  {flow.title}
+                </p>
+                {hasSummary ? (
+                  <p className="text-[11px] text-text-secondary leading-relaxed line-clamp-3 font-mono mb-1.5 whitespace-pre-line">
+                    {summaryPreview}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-secondary/50 italic mb-1.5 font-mono">暂无摘要</p>
+                )}
+                <p className="text-[10px] text-text-secondary/60 font-mono">
+                  更新于 {flow.updated}
+                </p>
+              </div>
+            )}
+
+            {/* 节点本体或 Link */}
             {contextSelectMode ? (
               <div
                 className={`block relative bg-surface-raised border rounded-lg transition-colors ${
@@ -425,14 +648,77 @@ export function ContourMap({
                 </div>
               </div>
             )}
+
+            {/* 展开的 Claims 列表 */}
+            {expandedClaimsFlowId === flow.flowId && claimsCount > 0 && (
+              <div
+                className="absolute left-0 top-full mt-1 w-[240px] bg-surface-raised border border-accent-strong/20 rounded-lg shadow-lg p-3 z-50"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-text-primary font-mono flex items-center gap-1">
+                    <Shield size={11} />
+                    关联 Claims ({claimsCount})
+                  </span>
+                  <button
+                    className="w-5 h-5 rounded flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary hover:bg-surface-sunken transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedClaimsFlowId(null);
+                    }}
+                    type="button"
+                    title="关闭"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="grid gap-1.5 max-h-48 overflow-y-auto">
+                  {linkedClaimsList.map((claim) => {
+                    const cc = CONFIDENCE_COLOR_MAP[claim.confidence] ?? '#6b7280';
+                    const cb = CONFIDENCE_BG_MAP[claim.confidence] ?? '#f3f4f6';
+                    return (
+                      <Link
+                        key={claim.claimId}
+                        to={`/project/${projectId}/claims/${claim.claimId}`}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-sunken transition-colors text-left"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-semibold font-mono"
+                          style={{ backgroundColor: cb, color: cc, border: `1px solid ${cc}` }}
+                        >
+                          {claim.confidence}
+                        </span>
+                        <span className="text-[11px] text-text-primary font-mono truncate">
+                          {claim.title}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
 
-      {/* 节点数量提示 */}
-      <div className="absolute bottom-3 right-3 text-label font-mono text-text-secondary bg-surface-sunken/80 px-2 py-1 rounded-md">
-        {flows.length} nodes · {edges.length} edges
+      {/* 右下角控制区：节点/边计数 + 自动布局按钮 */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        <span className="text-label font-mono text-text-secondary bg-surface-sunken/80 px-2 py-1 rounded-md">
+          {flows.length} nodes · {edges.length} edges
+        </span>
+        {!contextSelectMode && (
+          <button
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-raised border border-border text-text-secondary text-caption font-medium cursor-pointer transition-colors hover:bg-accent-subtle-bg hover:border-accent-strong/25 hover:text-accent-strong font-mono"
+            onClick={autoLayout}
+            title="自动分层布局 DAG 节点"
+            type="button"
+          >
+            <LayoutGrid size={12} />
+            自动布局
+          </button>
+        )}
       </div>
     </div>
   );
-}
+});
