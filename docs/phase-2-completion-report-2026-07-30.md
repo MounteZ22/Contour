@@ -4,7 +4,7 @@
 >
 > 涉及分支与 PR：
 > - **Part 1**: Phase 2A + 2B → `codex/phase-2a-agent-experience` → **PR #4**（已合入 main）
-> - **Part 2**: Phase 2C → `codex/phase-2c-agent-experience` → **PR #5**（待 Review）
+> - **Part 2**: Phase 2C → `codex/phase-2c-agent-experience` → **PR #5**（已审查并合入 main，merge commit `8101915`）
 
 ---
 
@@ -96,32 +96,41 @@ frontend: npm test                   -> 18 files / 120 tests 通过
 
 ---
 
-## Part 2：Phase 2C（Proma Agent 完成，PR #5 待 Review）
+## Part 2：Phase 2C（审查修复完成，已合入 main）
 
 > 分支 `codex/phase-2c-agent-experience`
 >
-> 3 个 commit：`40c7258` → `1b2ee7c` → `256bc6d`
+> 功能 commit：`40c7258` → `1b2ee7c` → `256bc6d`
 >
-> 8 个协作子 Agent 并行开发 + cross-verification review
+> 审查修复 commit：`53ad480`（PR #5 合并前完成）
+>
+> 8 个协作子 Agent 并行开发；后续由多维度审查、并行修复和两轮独立交叉验证收口。
 
 ### 完成范围
 
 | # | 功能 | 说明 |
 |---|------|------|
-| 1 | **全站 skeleton/loading** | 路由感知骨架屏：通用 `PageSkeleton`、`AgentPageSkeleton`、`FlowPageSkeleton`。替换原有 `Loader2` 旋转图标。纯 Tailwind `animate-pulse`，无新依赖。 |
-| 2 | **权限内联横幅** | `PermissionBanner.tsx` 嵌入对话流，替代弹窗。三个操作：允许本次 / 拒绝 / 本次会话所有同类放行（yolo 模式）。拒绝后横幅保留"已拒绝"状态。不改后端。 |
-| 3 | **AskUser 交互问答** | 后端 `ask-user.ts` 事件桥接 + 自定义 `AskUserQuestion` 工具 + `POST /api/ai/ask-user-response` 端点。前端 `AskUserCard.tsx` 支持单选/多选/文本输入，嵌入对话流。 |
-| 4 | **Turn 分组 + 文件改动汇总** | 后端 `turn_start`/`turn_end` SSE 事件，追踪 write/edit 文件路径并去重。前端 `TurnGroup.tsx` 可折叠分组，显示"第 N 轮 · M 个文件改动"，最新轮默认展开。 |
+| 1 | **全站 skeleton/loading** | 路由感知骨架屏：通用 `PageSkeleton`、`AgentPageSkeleton`、`FlowPageSkeleton`；初次项目加载和路由懒加载均使用骨架屏。纯 Tailwind `animate-pulse`，无新依赖。 |
+| 2 | **权限内联横幅** | `PermissionBanner.tsx` 嵌入对话流，替代弹窗。三个操作：允许本次 / 拒绝 / 本次会话所有同类放行（yolo 模式）。拒绝后横幅保留"已拒绝"状态；提交失败时保留重试入口。 |
+| 3 | **AskUser 交互问答** | 后端实例级、按 prompt generation 隔离的 `AskUserRequestManager` + 自定义 `AskUserQuestion` 工具 + `POST /api/ai/ask-user-response` 端点。前端 `AskUserCard.tsx` 支持单选/多选/文本输入，收到 SSE 后立即嵌入对话流。 |
+| 4 | **Turn 分组 + 文件改动汇总** | 后端 `turn_start`/`turn_end` SSE 事件，按同一轮次分组，并只统计成功 write/edit 的文件路径。前端 `TurnGroup.tsx` 可折叠展示。 |
 | 5 | **@ 提及 Flow/Doc** | `MentionList.tsx` 在输入 `@` 后弹出，搜索项目 Flow/Doc/文件。键盘 ↑↓ Enter Escape 导航。后端 `GET /api/project/:id/search-mentions?q=` 端点。 |
-| 6 | **Plan Mode MVP** | `ChatInputBar` 中 📋 切换开关（`planModeEnabledAtom`）。`PlanCard.tsx` 展示 Markdown 计划 + "批准并执行"/"修改计划"按钮。后端 prompt 注入 Plan Mode 指令 + EnterPlanMode/ExitPlanMode SSE 事件。 |
+| 6 | **Plan Mode MVP** | `ChatInputBar` 中 📋 切换开关（`planModeEnabledAtom`）。`PlanCard.tsx` 展示 Markdown 计划 + "批准并执行"/"修改计划"按钮。后端注册 TypeBox `EnterPlanMode`/`ExitPlanMode` 工具并转为 SSE 事件；批准后的下一轮会关闭 Plan Mode 并进入执行路径。 |
 | 7 | **ContourMap: hover 预览** | Flow 节点 hover 300ms 后显示浮层卡片（标题 + 前 3 行摘要 + 更新时间）。纯 CSS，`pointer-events-none` 不干扰交互。 |
-| 8 | **ContourMap: 自动布局** | `computeLayeredLayout()`：拓扑排序 + BFS 分层，从根节点逐层排列。右下角"自动布局"按钮，批量保存节点位置。 |
+| 8 | **ContourMap: 自动布局** | `computeLayeredLayout()`：Tarjan SCC 缩点后对凝聚 DAG 横向分层；环内节点同层、下游节点继续向右排列。右下角"自动布局"按钮批量保存位置，防重复提交、失败提示并在全部请求结束后只刷新一次。 |
 | 9 | **ContourMap: Claims 关联** | Flow 节点底部 Shield 徽标显示关联 Claims 数量，点击展开/折叠列表，含置信度标签 + 跳转链接。 |
 | 10 | **pi-hermes-memory 调研** | `docs/hermes-memory-assessment.md` 评估报告。结论：暂缓——与 Contour"不采用本地数据库"规则冲突，需 Z 确认策略后再定。 |
 
 ### 🔧 附带修复
 
 - `useChat.ts`：`onError` 回调中 `partialContent` 始终为空的 pre-existing bug（参数被重命名但 body 引用了外层局部变量）
+
+### 审查后修复
+
+- **AskUser 生命周期**：消除卡片不渲染、120 秒 watchdog 中断、并发 Runtime 串流和旧 prompt 清理新请求的问题；用户答案会保存到消息历史。
+- **Plan Mode 闭环**：补齐后端事件工具和输入栏开关，批准计划后显式以普通执行模式发送下一轮请求。
+- **交互健壮性**：权限响应失败保留横幅重试入口；会话切换会中止旧 SSE 并忽略陈旧回调。
+- **ContourMap**：循环关系不再导致节点消失或下游边反向；自动布局避免并发保存和重复项目刷新。
 
 ### Part 2 主要变更位置
 
@@ -139,11 +148,15 @@ frontend: npm test                   -> 18 files / 120 tests 通过
 ### Part 2 验证记录
 
 ```text
-backend:  tsc --noEmit               -> 1 预存错误（flowSummary.ts），零新增
-backend:  npm test                   -> 28 files / 237 tests 通过
-frontend: tsc --noEmit               -> 零错误
-frontend: npm test                   -> 18 files / 120 tests 通过（含新增 MentionList/aiApi/useChat 测试）
+backend:  npm test                   -> 29 files / 246 tests 通过
+backend:  npm run build              -> 1 预存错误（flowSummary.ts:144 TS2367），零新增
+frontend: npm run build              -> 通过（tsc --noEmit + Vite）
+frontend: npm test                   -> 21 files / 136 tests 通过
+runtime:  GET /api/project           -> 200
+runtime:  POST 过期 ask-user 响应    -> 404（符合预期）
 ```
+
+新增回归测试覆盖 AskUser 跨 Runtime 与同 Runtime prompt generation 隔离、HTTP 响应路由、Plan 工具、权限重试、Plan 批准切换、Turn 分组、SCC 布局、批量保存失败和骨架屏无障碍语义。
 
 ---
 
@@ -176,7 +189,7 @@ frontend: npm test                   -> 18 files / 120 tests 通过（含新增 
 4. 从文件面板打开 PDF 和 XLSX，确认懒加载预览、工作表切换、缩放/分页及系统打开回退。
 5. 测试模型切换、停止、复制、草稿恢复、工具详情和任务进度。
 
-### Phase 2C
+### Phase 2C（合并后人工验收）
 
 6. 路由切换时的骨架屏效果（/agent → /flows → /settings）
 7. 权限确认不再弹窗，改为对话流内联横幅
