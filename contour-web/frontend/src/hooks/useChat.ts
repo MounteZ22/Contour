@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAtom } from 'jotai';
 import { sendChatMessageStream, respondToPermission, toAgentErrorInfo } from '../state/aiApi';
-import type { AgentErrorInfo, ChatMessage, PermissionRequest, ToolActivity } from '../state/aiApi';
+import type { AgentErrorInfo, ChatMessage, PermissionRequest, ProcessActivity, ToolActivity } from '../state/aiApi';
 import type { AIContextItem } from '../types';
+import { chatDraftsAtom } from '../state/chat';
 
 export type PermissionMode = "readonly" | "review" | "yolo";
 
@@ -13,8 +15,12 @@ export interface UseChatReturn {
   isStreaming: boolean;
   streamingContent: string;
   toolActivities: ToolActivity[];
+  /** 当前轮的工具活动快照，仅供即时任务进度显示，不会持久化。 */
+  taskActivities: ToolActivity[];
+  processActivities: ProcessActivity[];
   error: AgentErrorInfo | null;
   handleSend: () => Promise<void>;
+  handleSendText: (message: string) => Promise<void>;
   handleRetry: () => Promise<void>;
   handleStop: () => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
@@ -30,6 +36,7 @@ export interface UseChatReturn {
 interface UseChatOptions {
   sessionId?: string;
   projectId?: string;
+  modelSelection?: { channelId: string; model: string };
 }
 
 // ── localStorage 读写 ───────────────────────────────────────────────────────────
@@ -194,19 +201,31 @@ function convertJsonlToChatMessages(records: Record<string, unknown>[]): ChatMes
 // ── Hook ────────────────────────────────────────────────────────────────────────
 
 export function useChat(initialContext: AIContextItem[] = [], options: UseChatOptions = {}): UseChatReturn {
-  const { sessionId, projectId } = options;
+  const { sessionId, projectId, modelSelection } = options;
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredMessages(sessionId));
-  const [inputValue, setInputValue] = useState('');
+  const [drafts, setDrafts] = useAtom(chatDraftsAtom);
+  const [transientInputValue, setTransientInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
+  const [taskActivities, setTaskActivities] = useState<ToolActivity[]>([]);
+  const [processActivities, setProcessActivities] = useState<ProcessActivity[]>([]);
   const [error, setError] = useState<AgentErrorInfo | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('readonly');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const failedMessageRef = useRef<{ message: string; partialContent: string } | null>(null);
+
+  const inputValue = sessionId ? (drafts[sessionId] ?? '') : transientInputValue;
+  const setInputValue = useCallback((value: string) => {
+    if (!sessionId) {
+      setTransientInputValue(value);
+      return;
+    }
+    setDrafts((previous) => previous[sessionId] === value ? previous : { ...previous, [sessionId]: value });
+  }, [sessionId, setDrafts]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,6 +234,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   // ── sessionId / projectId 变化时加载消息历史 ──────────────────────────────
   // 优先从后端 JSONL 加载，失败时降级到 localStorage
   useEffect(() => {
+    // 任务浮层只属于正在进行的这一轮，切换会话时不能继承旧快照。
+    setTaskActivities([]);
     if (!sessionId) {
       setMessages([]);
       return;
@@ -274,9 +295,12 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setIsStreaming(true);
     setStreamingContent('');
     setToolActivities([]);
+    setTaskActivities([]);
+    setProcessActivities([]);
     setError(null);
 
     const currentToolActivities: ToolActivity[] = [];
+    const currentProcessActivities: ProcessActivity[] = [];
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -287,24 +311,48 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
         },
         onToolActivity: (activity) => {
           const existingIdx = currentToolActivities.findIndex(
-            (a) => a.toolName === activity.toolName && a.status === 'running',
+            (a) => (activity.id ? a.id === activity.id : a.toolName === activity.toolName) && a.status === 'running',
           );
           if (existingIdx >= 0) {
-            currentToolActivities[existingIdx] = activity;
+            currentToolActivities[existingIdx] = {
+              ...currentToolActivities[existingIdx],
+              ...activity,
+              input: activity.input ?? currentToolActivities[existingIdx].input,
+            };
           } else {
             currentToolActivities.push(activity);
           }
+          setTaskActivities(currentToolActivities.filter(
+            (item) => item.toolName === 'TaskCreate' || item.toolName === 'TaskUpdate',
+          ));
 
           setToolActivities((prev) => {
             const idx = prev.findIndex(
-              (a) => a.toolName === activity.toolName && a.status === 'running',
+              (a) => (activity.id ? a.id === activity.id : a.toolName === activity.toolName) && a.status === 'running',
             );
             if (idx >= 0) {
               const updated = [...prev];
-              updated[idx] = activity;
+              updated[idx] = {
+                ...updated[idx],
+                ...activity,
+                input: activity.input ?? updated[idx].input,
+              };
               return updated;
             }
             return [...prev, activity];
+          });
+        },
+        onProcessActivity: (activity) => {
+          const existingIdx = currentProcessActivities.findIndex((item) => item.id === activity.id);
+          if (existingIdx >= 0) currentProcessActivities[existingIdx] = activity;
+          else currentProcessActivities.push(activity);
+
+          setProcessActivities((prev) => {
+            const idx = prev.findIndex((item) => item.id === activity.id);
+            if (idx < 0) return [...prev, activity];
+            const updated = [...prev];
+            updated[idx] = activity;
+            return updated;
           });
         },
         onPermissionRequest: (request) => {
@@ -317,11 +365,13 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
             role: 'assistant',
             content: fullContent,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+            processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
           };
           updateMessages((prev) => [...prev, assistantMessage]);
           setStreamingContent('');
           setIsStreaming(false);
           setToolActivities([]);
+          setProcessActivities([]);
         },
         onAborted: (partialContent) => {
           failedMessageRef.current = null;
@@ -331,11 +381,13 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
             content: partialContent,
             status: 'stopped',
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+            processActivities: currentProcessActivities.length > 0 ? [...currentProcessActivities] : undefined,
           };
           updateMessages((prev) => [...prev, assistantMessage]);
           setStreamingContent('');
           setIsStreaming(false);
           setToolActivities([]);
+          setProcessActivities([]);
         },
         onError: (errorInfo, partialContent = '') => {
           failedMessageRef.current = { message: trimmed, partialContent };
@@ -343,8 +395,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
           setIsStreaming(false);
           setStreamingContent('');
           setToolActivities([]);
+          setProcessActivities([]);
         },
-      }, permissionMode, projectId, sessionId, abortController.signal);
+      }, permissionMode, projectId, sessionId, abortController.signal, ...(modelSelection ? [modelSelection] : []));
     } catch (err) {
       failedMessageRef.current = { message: trimmed, partialContent: '' };
       setError(toAgentErrorInfo(err));
@@ -358,11 +411,16 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
       setIsLoading(false);
       setTimeout(scrollToBottom, 50);
     }
-  }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId]);
+  }, [isLoading, initialContext, scrollToBottom, updateMessages, permissionMode, projectId, sessionId, modelSelection]);
 
   const handleSend = useCallback(
     () => sendMessage(inputValue.trim(), true),
     [inputValue, sendMessage],
+  );
+
+  const handleSendText = useCallback(
+    (message: string) => sendMessage(message.trim(), true),
+    [sendMessage],
   );
 
   const handleRetry = useCallback(async () => {
@@ -409,6 +467,8 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     setStreamingContent('');
     setIsStreaming(false);
     setToolActivities([]);
+    setTaskActivities([]);
+    setProcessActivities([]);
     setError(null);
     failedMessageRef.current = null;
   }, [updateMessages]);
@@ -421,8 +481,11 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
     isStreaming,
     streamingContent,
     toolActivities,
+    taskActivities,
+    processActivities,
     error,
     handleSend,
+    handleSendText,
     handleRetry,
     handleStop,
     handleKeyDown,

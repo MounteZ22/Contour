@@ -9,12 +9,16 @@ import { useAgentSessions, type AgentSession } from '../../hooks/useAgentSession
 import { PermissionDialog } from './PermissionDialog';
 import type { ChatMessage } from '../../state/aiApi';
 import { AgentErrorNotice } from './AgentErrorNotice';
+import { useSessionModelSelection } from '../../state/agentModelSelection';
+import { TaskProgressOverlay } from './TaskProgressOverlay';
 
-export function SessionChat({ session }: { session: AgentSession }) {
+export function SessionChat({ session, initialMessage }: { session: AgentSession; initialMessage?: string }) {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
+  const initialMessageRef = useRef(initialMessage?.trim());
   const { updateSession } = useAgentSessions();
+  const modelSelector = useSessionModelSelection(session.id);
 
   const {
     messages,
@@ -24,8 +28,11 @@ export function SessionChat({ session }: { session: AgentSession }) {
     isStreaming,
     streamingContent,
     toolActivities,
+    taskActivities,
+    processActivities,
     error,
     handleSend,
+    handleSendText,
     handleRetry,
     handleStop,
     handleKeyDown,
@@ -34,7 +41,11 @@ export function SessionChat({ session }: { session: AgentSession }) {
     setPermissionMode,
     permissionRequest,
     handlePermissionResponse,
-  } = useChat(session.contextItems, { sessionId: session.id, projectId: session.projectId });
+  } = useChat(session.contextItems, {
+    sessionId: session.id,
+    projectId: session.projectId,
+    modelSelection: modelSelector.selection,
+  });
 
   const { displayedContent: rawSmoothContent } = useSmoothStream({
     content: streamingContent,
@@ -55,6 +66,13 @@ export function SessionChat({ session }: { session: AgentSession }) {
       lastMessage: latest.content.slice(0, 120),
     });
   }, [messages, session.id, updateSession]);
+
+  useEffect(() => {
+    const message = initialMessageRef.current;
+    if (!message) return;
+    initialMessageRef.current = undefined;
+    void handleSendText(message);
+  }, [handleSendText]);
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-background">
@@ -96,14 +114,20 @@ export function SessionChat({ session }: { session: AgentSession }) {
                 <ChatMessageItem key={message.id} isStreaming={false} message={message} />
               ))}
 
-              {smoothContent && (
+              {(smoothContent || toolActivities.length > 0 || processActivities.length > 0) && (
                 <ChatMessageItem
                   isStreaming={isStreaming}
-                  message={{ id: 'streaming', role: 'assistant', content: smoothContent, toolActivities }}
+                  message={{
+                    id: 'streaming',
+                    role: 'assistant',
+                    content: smoothContent,
+                    toolActivities,
+                    processActivities,
+                  }}
                 />
               )}
 
-              {isStreaming && !smoothContent && toolActivities.length === 0 && (
+              {isStreaming && !smoothContent && toolActivities.length === 0 && processActivities.length === 0 && (
                 <div className="flex items-center gap-2 text-text-secondary px-2">
                   <Loader2 size={14} className="animate-spin" />
                   <span className="text-xs">AI 正在思考...</span>
@@ -117,6 +141,11 @@ export function SessionChat({ session }: { session: AgentSession }) {
                   onOpenSettings={() => navigate('/settings')}
                 />
               )}
+              <TaskProgressOverlay
+                activities={taskActivities}
+                isLoading={isLoading}
+                hasError={Boolean(error)}
+              />
             </>
           )}
           <div ref={messagesEndRef} />
@@ -135,6 +164,10 @@ export function SessionChat({ session }: { session: AgentSession }) {
         permissionMode={permissionMode}
         onPermissionModeChange={setPermissionMode}
         contextItems={session.contextItems}
+        modelOptions={modelSelector.options}
+        selectedModel={modelSelector.selectedOption}
+        modelStatus={modelSelector.status}
+        onModelChange={modelSelector.selectModel}
       />
     </div>
   );

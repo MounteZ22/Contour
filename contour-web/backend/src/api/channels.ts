@@ -4,6 +4,7 @@ import {
   createChannel,
   updateChannel,
   deleteChannel,
+  listAgentModelOptions,
   testChannelDirect,
   testChannelById,
   fetchModels,
@@ -18,17 +19,38 @@ import type {
   FetchModelsResult,
 } from '../types.js';
 
+type PublicChannel = Omit<Channel, 'apiKey'>;
+
+function toPublicChannel(channel: Channel): PublicChannel {
+  const { apiKey: _apiKey, ...publicChannel } = channel;
+  return publicChannel;
+}
+
 const router = Router();
 
 // GET /api/channels - 获取所有渠道
 router.get('/', async (req, res) => {
   try {
     const channels = await listChannels();
-    const response: ApiResponse<{ channels: Channel[] }> = { success: true, data: { channels } };
+    const response: ApiResponse<{ channels: PublicChannel[] }> = {
+      success: true,
+      data: { channels: channels.map(toPublicChannel) },
+    };
     res.json(response);
   } catch (err) {
     console.error(`[${req.method} ${req.path}]`, err);
     res.status(500).json({ success: false, error: '获取渠道列表失败' });
+  }
+});
+
+// GET /api/channels/agent-models - Agent 选择器的无凭据可用模型列表
+router.get('/agent-models', async (req, res) => {
+  try {
+    const models = await listAgentModelOptions();
+    res.json({ success: true, data: { models } });
+  } catch (err) {
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '获取可用模型失败' });
   }
 });
 

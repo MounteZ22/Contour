@@ -130,6 +130,7 @@ describe('useAgentSessions', () => {
     });
 
     it('应该支持 projectId', () => {
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
       const { result } = renderHook(() => useAgentSessions());
 
       let session: AgentSession | undefined;
@@ -157,6 +158,25 @@ describe('useAgentSessions', () => {
 
       const updated = result.current.sessions.find((s) => s.id === session!.id);
       expect(updated!.title).toBe('重命名会话');
+    });
+
+    it('重命名项目会话时应同步后端索引', async () => {
+      const fetchMock = vi.fn(() => Promise.resolve({ ok: true }));
+      vi.stubGlobal('fetch', fetchMock);
+      const { result } = renderHook(() => useAgentSessions('project-a'));
+
+      let session: AgentSession | undefined;
+      act(() => {
+        session = result.current.createSession([]);
+      });
+      await act(async () => {
+        result.current.updateSession(session!.id, { title: '后端也要保存' });
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/agent/sessions/project-a/${session!.id}`,
+        expect.objectContaining({ method: 'PATCH' }),
+      );
     });
 
     it('应该更新 lastMessage', () => {

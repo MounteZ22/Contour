@@ -37,6 +37,7 @@ import type { PermissionRequesterFn } from "./permission-extension.js";
 import { classifyAgentError, typedAgentError } from "./typed-error.js";
 import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
 import { applyAgentToolPolicy } from "./tool-policy.js";
+import { createProjectMcpTools, type ProjectMcpTools } from "../tools/project-mcp-tools.js";
 
 // ── 内部类型 ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,105 @@ interface ActivePrompt {
   unsubscribe: () => void;
 }
 
+const MAX_TOOL_PAYLOAD_CHARS = 12_000;
+const MAX_TOOL_PAYLOAD_DEPTH = 6;
+const MAX_TOOL_PAYLOAD_ENTRIES = 50;
+const MAX_TOTAL_NODES = 5_000;
+const SENSITIVE_TOOL_FIELD = /(?:api[_-]?key|token|secret|password|authorization|cookie|credential)/i;
+const SENSITIVE_TEXT_ASSIGNMENT = /\b((?:api[_-]?key|token|secret|password|authorization|cookie|credential)[\w.-]*\s*[:=]\s*)[^\s,;]+/gi;
+const BEARER_TOKEN = /\b(bearer\s+)[^\s,;]+/gi;
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(SENSITIVE_TEXT_ASSIGNMENT, '$1[已隐藏]')
+    .replace(BEARER_TOKEN, '$1[已隐藏]');
+}
+
+/**
+ * 将工具参数和结果转换为可安全展示的 JSON 值。
+ *
+ * 工具结果可能包含循环引用、二进制对象或意外的大段内容；同时部分工具参数也
+ * 可能带有凭据。这里在离开运行时边界前统一裁剪和脱敏，防止它们进入 SSE、
+ * localStorage 或聊天历史。
+ */
+function sanitizeToolPayload(value: unknown, seen = new WeakSet<object>(), depth = 0, nodeCount: { count: number } = { count: 0 }): unknown {
+  if (++nodeCount.count > MAX_TOTAL_NODES) return "[内容过大，已省略]";
+  if (value === null || typeof value === "boolean" || typeof value === "number") return value;
+  if (typeof value === "string") {
+    const redacted = redactSensitiveText(value);
+    return redacted.length <= MAX_TOOL_PAYLOAD_CHARS
+      ? redacted
+      : `${redacted.slice(0, MAX_TOOL_PAYLOAD_CHARS)}\n…（内容已截断）`;
+  }
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "undefined") return "[undefined]";
+  if (typeof value === "function" || typeof value === "symbol") return `[${typeof value}]`;
+  if (value instanceof Error) return { name: value.name, message: value.message };
+  if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return "[层级过深，已省略]";
+  if (typeof value !== "object") return String(value);
+  if (seen.has(value)) return "[循环引用]";
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const items = value.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)
+      .map((item) => sanitizeToolPayload(item, seen, depth + 1, nodeCount));
+    if (value.length > MAX_TOOL_PAYLOAD_ENTRIES) items.push(`…（其余 ${value.length - MAX_TOOL_PAYLOAD_ENTRIES} 项已省略）`);
+    return items;
+  }
+
+  const result: Record<string, unknown> = {};
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, item] of entries.slice(0, MAX_TOOL_PAYLOAD_ENTRIES)) {
+    result[key] = SENSITIVE_TOOL_FIELD.test(key)
+      ? "[已隐藏]"
+      : sanitizeToolPayload(item, seen, depth + 1, nodeCount);
+  }
+  if (entries.length > MAX_TOOL_PAYLOAD_ENTRIES) {
+    result._truncated = `其余 ${entries.length - MAX_TOOL_PAYLOAD_ENTRIES} 个字段已省略`;
+  }
+  return result;
+}
+
+function sanitizeToolInput(value: unknown): Record<string, unknown> | undefined {
+  const sanitized = sanitizeToolPayload(value);
+  if (!sanitized || typeof sanitized !== "object" || Array.isArray(sanitized)) return undefined;
+  return sanitized as Record<string, unknown>;
+}
+
+function extractToolResultText(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const content = (value as { content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .flatMap((block) => {
+      if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+      const candidate = block as { type?: unknown; text?: unknown };
+      return candidate.type === "text" && typeof candidate.text === "string" ? [candidate.text] : [];
+    })
+    .join("\n");
+  return text || undefined;
+}
+
+function formatToolResult(value: unknown): string {
+  // Pi 工具统一返回 { content, details }。前端工具活动应优先展示 content
+  // 中的文本，而不是把整个包装对象再包一层 JSON；这样结构化工具结果（如
+  // { task: ... }）可以被进度视图直接读取，普通文件工具的结果也更易读。
+  const textContent = extractToolResultText(value);
+  if (textContent !== undefined) {
+    return sanitizeToolPayload(textContent) as string;
+  }
+
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(sanitizeToolPayload(value), null, 2) ?? "[undefined]";
+  } catch {
+    serialized = "[工具结果无法序列化]";
+  }
+  return serialized.length <= MAX_TOOL_PAYLOAD_CHARS
+    ? serialized
+    : `${serialized.slice(0, MAX_TOOL_PAYLOAD_CHARS)}\n…（内容已截断）`;
+}
+
 // ── PiRuntime 实现 ───────────────────────────────────────────────────────────
 
 export class PiRuntime implements AgentRuntime {
@@ -63,6 +163,8 @@ export class PiRuntime implements AgentRuntime {
   private activePrompt: ActivePrompt | null = null;
   /** 当前 prompt 会话的权限确认 requester（实例级，避免多实例并发覆盖） */
   private activeRequester: PermissionRequesterFn | null = null;
+  /** 当前运行时建立的外部 MCP 连接，必须随会话释放。 */
+  private projectMcpTools: ProjectMcpTools | null = null;
 
   /**
    * 初始化 Pi 运行时
@@ -156,14 +258,27 @@ export class PiRuntime implements AgentRuntime {
         additionalFiles: config.authorizedFiles,
         allowWrite,
       }) as Array<{ name: string }>;
-    const toolPolicy = applyAgentToolPolicy({
-      requestedTools: config.tools,
-      customTools: config.customTools,
-      contourFileTools,
-      allowWrite,
+    // readonly 不调用 bridge，因此不会启动任何外部 MCP 程序。review/yolo 都会
+    // 创建桥接，但由 ResourceLoader 的强制确认名单确保每次调用先确认。
+    const projectMcpTools = await createProjectMcpTools({
+      projectId,
+      projectDir: config.projectDir,
+      permissionMode,
     });
+    try {
+      const toolPolicy = applyAgentToolPolicy({
+        requestedTools: config.tools,
+        customTools: [...(config.customTools ?? []), ...projectMcpTools.tools],
+        contourFileTools,
+        allowWrite,
+      });
 
-    const { session } = await createAgentSession({
+      const sharedSettings = SettingsManager.inMemory({
+        compaction: { enabled: false },
+        retry: { enabled: true, maxRetries: 1 },
+      });
+
+      const { session } = await createAgentSession({
       cwd: effectiveCwd,
       agentDir: effectiveCwd,
       model: this.model,
@@ -172,16 +287,21 @@ export class PiRuntime implements AgentRuntime {
       modelRegistry: this.modelRegistry,
       tools: toolPolicy.tools,
       customTools: toolPolicy.customTools as any,
-      resourceLoader: await this.createResourceLoader(config, authStorage, effectiveCwd),
+      resourceLoader: await this.createResourceLoader({
+        ...config,
+        mcpConfirmationToolNames: projectMcpTools.reviewConfirmationToolNames,
+      }, authStorage, effectiveCwd, sharedSettings),
       sessionManager,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
-    });
+      settingsManager: sharedSettings,
+      });
 
-    this.session = session;
-    console.log(`[PiRuntime] Session 已创建: ${session.sessionId}`);
+      this.session = session;
+      this.projectMcpTools = projectMcpTools;
+      console.log(`[PiRuntime] Session 已创建: ${session.sessionId}`);
+    } catch (error) {
+      await projectMcpTools.dispose();
+      throw error;
+    }
   }
 
   /**
@@ -348,7 +468,7 @@ export class PiRuntime implements AgentRuntime {
     console.log(`[PiRuntime] 模型已切换: ${provider}/${modelId}`);
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.cleanupActivePrompt();
     if (this.session) {
       this.session.dispose();
@@ -357,6 +477,9 @@ export class PiRuntime implements AgentRuntime {
     this.modelRegistry = null;
     this.model = null;
     this.config = null;
+    const mcpTools = this.projectMcpTools;
+    this.projectMcpTools = null;
+    if (mcpTools) await mcpTools.dispose();
     console.log("[PiRuntime] 资源已释放");
   }
 
@@ -383,7 +506,8 @@ export class PiRuntime implements AgentRuntime {
    * - agent_start / turn_start / turn_end / agent_end → 直接映射
    * - message_update.text_delta → text_delta
    *   （忽略 text_start / text_end，turn_start / turn_end 已承载起止语义）
-   * - message_update.thinking_delta → thinking_delta
+   * - message_update.thinking_delta → 丢弃。该事件承载模型原始推理，不是
+   *   可安全展示的产品摘要，严禁传给前端或写入聊天历史。
    * - tool_execution_start / tool_execution_end → tool_call_start / tool_call_end
    *
    * 不对外暴露的事件（被归并）：
@@ -423,8 +547,6 @@ export class PiRuntime implements AgentRuntime {
         switch (sub.type) {
           case "text_delta":
             return { type: "text_delta", delta: sub.delta };
-          case "thinking_delta":
-            return { type: "thinking_delta", delta: sub.delta };
           default:
             return null;
         }
@@ -433,14 +555,18 @@ export class PiRuntime implements AgentRuntime {
       case "tool_execution_start":
         return {
           type: "tool_call_start",
+          toolCallId: (event as any).toolCallId ?? (event as any).toolName ?? "unknown",
           toolName: (event as any).toolName ?? "unknown",
+          input: sanitizeToolInput((event as any).args),
         };
 
       case "tool_execution_end":
         return {
           type: "tool_call_end",
+          toolCallId: (event as any).toolCallId ?? (event as any).toolName ?? "unknown",
           toolName: (event as any).toolName ?? "unknown",
           isError: !!(event as any).isError,
+          result: formatToolResult((event as any).result),
         };
 
       default:
@@ -453,6 +579,7 @@ export class PiRuntime implements AgentRuntime {
     config: AgentRuntimeConfig,
     _authStorage: AuthStorage,
     effectiveCwd: string,
+    sharedSettings: SettingsManager,
   ): Promise<DefaultResourceLoader> {
     // systemPromptOverride 注入业务上下文（如 Flow/Doc）到 Agent 的 system prompt。
     // 文档第五节已记录：systemPromptOverride 实际是 DefaultResourceLoader 的构造
@@ -472,20 +599,24 @@ export class PiRuntime implements AgentRuntime {
     // createAgentSession 直接参数），且和 customTools 能共存。
     const permissionMode = config.permissionMode ?? "readonly";
     const projectId = config.projectId ?? path.basename(effectiveCwd);
+    const mustConfirmTools = config.mcpConfirmationToolNames ?? [];
     const extensionFactories =
-      permissionMode === "review"
-        ? [createPermissionExtensionFactory("review", config.dataDir, projectId, () => this.activeRequester)]
+      permissionMode === "review" || mustConfirmTools.length > 0
+        ? [createPermissionExtensionFactory(permissionMode, config.dataDir, projectId, () => this.activeRequester, mustConfirmTools)]
         : [];
 
     const loader = new DefaultResourceLoader({
       cwd: effectiveCwd,
       agentDir: effectiveCwd,
+      // Contour 只在 promptBuilder 中受控读取项目根 CLAUDE.md。禁用 Pi 的默认
+      // 祖先扫描，避免会话目录或磁盘父目录中的 AGENTS.md/CLAUDE.md 意外影响 Agent。
+      noContextFiles: true,
+      // 关闭 Pi 的默认/祖先技能发现，只读取 Contour 配置中用户显式启用的目录。
+      noSkills: true,
+      additionalSkillPaths: config.additionalSkillPaths ?? [],
       systemPromptOverride,
       extensionFactories,
-      settingsManager: SettingsManager.inMemory({
-        compaction: { enabled: false },
-        retry: { enabled: true, maxRetries: 1 },
-      }),
+      settingsManager: sharedSettings,
     });
     await loader.reload();
     return loader;

@@ -14,6 +14,54 @@ const callbacks = () => ({
 });
 
 describe('Agent 结构化错误解析', () => {
+  it('传递已脱敏的工具参数和结果，但忽略模型原始推理片段', async () => {
+    const encoded = new TextEncoder().encode([
+      'data: {"type":"agent_start"}',
+      'data: {"type":"thinking_delta","delta":"不应展示的模型原始推理"}',
+      'data: {"type":"tool_call_start","toolCallId":"call-1","toolName":"read","input":{"path":"notes.md","token":"[已隐藏]"}}',
+      'data: {"type":"tool_call_end","toolCallId":"call-1","toolName":"read","isError":false,"result":"{\\n  \\"content\\": \\"ok\\"\\n}"}',
+      'data: {"type":"done"}',
+      '',
+    ].join('\n\n'));
+    let readCount = 0;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () => readCount++ === 0 ? { done: false, value: encoded } : { done: true },
+          releaseLock: vi.fn(),
+        }),
+      },
+    } as unknown as Response));
+    const handlers = {
+      ...callbacks(),
+      onToolActivity: vi.fn(),
+      onProcessActivity: vi.fn(),
+    };
+
+    await sendChatMessageStream('读取文件', [], handlers);
+
+    expect(handlers.onToolActivity).toHaveBeenNthCalledWith(1, {
+      id: 'call-1',
+      toolName: 'read',
+      status: 'running',
+      input: { path: 'notes.md', token: '[已隐藏]' },
+    });
+    expect(handlers.onToolActivity).toHaveBeenNthCalledWith(2, {
+      id: 'call-1',
+      toolName: 'read',
+      status: 'done',
+      result: '{\n  "content": "ok"\n}',
+    });
+    expect(handlers.onProcessActivity).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'agent-start',
+      label: '正在准备回答',
+    }));
+    expect(handlers.onProcessActivity).not.toHaveBeenCalledWith(expect.objectContaining({
+      label: '不应展示的模型原始推理',
+    }));
+  });
+
   it('HTTP 错误保留后端给出的类型和操作建议', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,

@@ -10,7 +10,7 @@ vi.mock('../../config.js', async () => {
   const { join } = await import('node:path');
   testRoot = join(tmpdir(), `contour-agent-files-${Date.now()}`);
   projectsDir = join(testRoot, 'data', 'projects');
-  return { PROJECTS_DIR: projectsDir };
+  return { DATA_DIR: testRoot, PROJECTS_DIR: projectsDir };
 });
 
 const { createAuthorizedFileTools } = await import('../authorized-file-tools.js');

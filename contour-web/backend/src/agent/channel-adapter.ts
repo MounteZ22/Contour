@@ -67,6 +67,36 @@ function getDefaultModelId(models: ChannelModel[]): string {
 }
 
 /**
+ * 校验 Agent 请求选择的渠道与模型。
+ *
+ * 前端只能把它当作用户偏好；真正的授权判断必须在服务端基于最新配置完成，
+ * 避免已禁用渠道或已移除模型仍能继续被调用。
+ */
+export function validateAgentChannelSelection(channel: Channel, model?: string): string {
+  if (!channel.enabled) {
+    throw new Error(`渠道 "${channel.name}" 已被停用，请在设置中启用后重试`);
+  }
+
+  if (!AGENT_COMPATIBLE_PROVIDERS.has(channel.provider)) {
+    throw new Error(
+      `渠道 "${channel.name}" 的供应商类型 "${channel.provider}" 不支持 Agent 模式。` +
+        `当前支持的供应商：${[...AGENT_COMPATIBLE_PROVIDERS].join(", ")}`,
+    );
+  }
+
+  if (!model) return getDefaultModelId(channel.models);
+
+  const selectedModel = channel.models.find((candidate) => candidate.id === model);
+  if (!selectedModel) {
+    throw new Error(`模型 "${model}" 不属于渠道 "${channel.name}"`);
+  }
+  if (!selectedModel.enabled) {
+    throw new Error(`模型 "${selectedModel.name}" 已被停用，请在设置中启用后重试`);
+  }
+  return selectedModel.id;
+}
+
+/**
  * 将 Channel 转换为 AgentRuntimeConfig
  *
  * @param channel  — 渠道配置对象（来自 channelManager）
@@ -98,15 +128,14 @@ export function channelToAgentRuntimeConfig(
     projectId?: string;
     /** 会话 ID（可选），传此值可恢复已有会话的对话历史 */
     sessionId?: string;
+    /** 用户显式启用的项目技能目录。 */
+    additionalSkillPaths?: string[];
+    /** 外部 MCP 工具的逐次确认名单。 */
+    mcpConfirmationToolNames?: string[];
   },
 ): AgentRuntimeConfig {
   // ── 1. 校验 provider 兼容性 ─────────────────────────────────────────────
-  if (!AGENT_COMPATIBLE_PROVIDERS.has(channel.provider)) {
-    throw new Error(
-      `渠道 "${channel.name}" 的供应商类型 "${channel.provider}" 不支持 Agent 模式。` +
-        `当前支持的供应商：${[...AGENT_COMPATIBLE_PROVIDERS].join(", ")}`,
-    );
-  }
+  validateAgentChannelSelection(channel);
 
   // ── 2. 确定 baseUrl（规范化） ───────────────────────────────────────────
   //
@@ -122,7 +151,7 @@ export function channelToAgentRuntimeConfig(
     .replace(/\/messages$/, "");
 
   // ── 3. 确定模型 ─────────────────────────────────────────────────────────
-  const model = overrides?.model ?? getDefaultModelId(channel.models);
+  const model = validateAgentChannelSelection(channel, overrides?.model);
 
   // ── 4. 确定 provider ───────────────────────────────────────────────────
   // channel.provider 已在步骤 1 校验过属于 AGENT_COMPATIBLE_PROVIDERS。
@@ -163,5 +192,7 @@ export function channelToAgentRuntimeConfig(
     tools,
     sessionId: overrides?.sessionId,
     projectId: overrides?.projectId,
+    additionalSkillPaths: overrides?.additionalSkillPaths,
+    mcpConfirmationToolNames: overrides?.mcpConfirmationToolNames,
   };
 }

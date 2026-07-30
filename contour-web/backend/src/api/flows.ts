@@ -16,6 +16,12 @@ import {
   uploadFlowAttachment,
   validateVaultProjectId,
 } from '../services/flowAssets.js';
+import {
+  createFlowSummaryDraft,
+  FlowSummaryError,
+  getFlowSummary,
+  saveFlowSummary,
+} from '../services/flowSummary.js';
 
 const router = Router();
 
@@ -115,6 +121,56 @@ router.get('/:flowId', async (req, res) => {
     }
     console.error(`[${req.method} ${req.path}]`, err);
     res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /api/flows/:flowId/summary?projectId=xxx - 读取完整摘要文本
+router.get('/:flowId/summary', async (req, res) => {
+  try {
+    const content = await getFlowSummary(req.query.projectId, req.params.flowId);
+    res.json({ success: true, data: { content } });
+  } catch (err) {
+    if (err instanceof FlowSummaryError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '读取 Flow 摘要失败' });
+  }
+});
+
+// POST /api/flows/:flowId/summary/draft - 基于服务端重读的完整 Flow 生成草稿
+router.post('/:flowId/summary/draft', async (req, res) => {
+  try {
+    const result = await createFlowSummaryDraft({
+      projectId: req.body?.projectId,
+      flowId: req.params.flowId,
+      channelId: req.body?.channelId,
+      model: req.body?.model,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err instanceof FlowSummaryError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '生成 Flow 摘要失败' });
+  }
+});
+
+// PUT /api/flows/:flowId/summary - 保存用户确认后的摘要
+router.put('/:flowId/summary', async (req, res) => {
+  try {
+    await saveFlowSummary(req.body?.projectId, req.params.flowId, req.body?.content);
+    res.json({ success: true, data: null });
+  } catch (err) {
+    if (err instanceof FlowSummaryError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    console.error(`[${req.method} ${req.path}]`, err);
+    res.status(500).json({ success: false, error: '保存 Flow 摘要失败' });
   }
 });
 

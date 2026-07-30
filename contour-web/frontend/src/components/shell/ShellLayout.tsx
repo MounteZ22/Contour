@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
-import { useAtom, useAtomValue } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { Menu } from 'lucide-react';
 import { LeftSidebar } from './LeftSidebar';
 import { RightSidePanel } from './RightSidePanel';
@@ -26,6 +26,7 @@ export function ShellLayout({
   const { projectId: routeProjectId } = useParams();
   const [currentProjectId, setCurrentProjectId] = useAtom(currentProjectIdAtom);
   const rightPanelOpen = useAtomValue(rightPanelOpenAtom);
+  const setRightPanelOpen = useSetAtom(rightPanelOpenAtom);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
   useEffect(() => {
@@ -98,7 +99,17 @@ export function ShellLayout({
         </main>
       </div>
 
-      {showRightPanel ? <RightSidePanel project={project} /> : null}
+      {showRightPanel ? (
+        <>
+          <button
+            aria-label="关闭文件面板遮罩"
+            className="fixed inset-0 z-40 bg-black/30 md:hidden"
+            onClick={() => setRightPanelOpen(false)}
+            type="button"
+          />
+          <RightSidePanel project={project} />
+        </>
+      ) : null}
     </div>
   );
 }

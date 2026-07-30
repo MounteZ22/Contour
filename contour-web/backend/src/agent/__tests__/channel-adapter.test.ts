@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { channelToAgentRuntimeConfig } from '../channel-adapter.js';
+import { channelToAgentRuntimeConfig, validateAgentChannelSelection } from '../channel-adapter.js';
 import type { Channel, ChannelModel } from '../../types.js';
 
 /** 构造一个最小可用的 Channel 对象 */
@@ -63,12 +63,12 @@ describe('channelToAgentRuntimeConfig', () => {
 
   // ── overrides 覆盖 ──────────────────────────────────────────────────────
   describe('overrides 覆盖', () => {
-    it('overrides.model 应该覆盖默认模型', () => {
+    it('overrides.model 应该使用渠道中已启用的模型', () => {
       const channel = makeChannel();
       const config = channelToAgentRuntimeConfig(channel, {
-        model: 'claude-opus-4-8',
+        model: 'claude-sonnet-5',
       });
-      expect(config.model).toBe('claude-opus-4-8');
+      expect(config.model).toBe('claude-sonnet-5');
     });
 
     it('overrides.cwd 应该覆盖默认 cwd', () => {
@@ -188,6 +188,20 @@ describe('channelToAgentRuntimeConfig', () => {
 
   // ── 模型相关 ────────────────────────────────────────────────────────────
   describe('模型选择', () => {
+    it('Given 非本渠道模型, When 校验选择, Then 拒绝请求', () => {
+      expect(() => validateAgentChannelSelection(makeChannel(), 'claude-opus-4-8'))
+        .toThrow('不属于渠道');
+    });
+
+    it('Given 已停用模型, When 校验选择, Then 拒绝请求', () => {
+      expect(() => validateAgentChannelSelection(makeChannel(), 'claude-haiku-4-5'))
+        .toThrow('已被停用');
+    });
+
+    it('Given 已停用渠道, When 校验选择, Then 拒绝请求', () => {
+      expect(() => validateAgentChannelSelection(makeChannel({ enabled: false })))
+        .toThrow('已被停用');
+    });
     it('所有模型都 disabled 时应该抛出错误', () => {
       expect(() =>
         channelToAgentRuntimeConfig(

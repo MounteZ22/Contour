@@ -123,18 +123,18 @@ export function FlowAssetsPanel({
   const isBusy = busyAction !== null;
 
   return (
-    <section className="rounded-lg bg-surface-sunken px-5 py-4 shadow-sm">
+    <section className="min-w-0 rounded-lg bg-surface-sunken px-4 py-4 shadow-sm sm:px-5">
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-subtle-bg/25 text-accent-strong">
             <Paperclip size={16} />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-label font-mono font-medium uppercase text-accent-strong">Flow 资料</p>
-            <h3 className="text-sm font-semibold text-text-primary">附件与本地文件链接</h3>
+            <h3 className="break-words text-sm font-semibold text-text-primary">附件与本地文件链接</h3>
           </div>
         </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
+        <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:items-center">
           <input
             className="sr-only"
             disabled={isBusy}
@@ -143,7 +143,7 @@ export function FlowAssetsPanel({
             type="file"
           />
           <Button
-            className="min-w-0"
+            className="min-w-0 w-full sm:w-auto"
             disabled={isBusy}
             onClick={() => fileInputRef.current?.click()}
             size="sm"
@@ -155,7 +155,7 @@ export function FlowAssetsPanel({
             上传附件
           </Button>
           <Button
-            className="min-w-0"
+            className="min-w-0 w-full sm:w-auto"
             disabled={isBusy}
             onClick={() => setShowLinkForm((current) => !current)}
             size="sm"

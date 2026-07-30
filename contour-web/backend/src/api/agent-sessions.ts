@@ -16,6 +16,7 @@ import {
   findPiSessionFile,
   getSessionSummary,
   listProductSessions,
+  updateProductSession,
 } from '../agent/session-storage.js';
 
 const router = Router();
@@ -177,6 +178,34 @@ router.get('/:projectId/:sessionId', async (req, res) => {
   } catch (error) {
     console.error('[GET /api/agent/sessions/:projectId/:sessionId]', error);
     res.status(400).json({ success: false, error: '读取会话失败' });
+  }
+});
+
+router.patch('/:projectId/:sessionId', async (req, res) => {
+  try {
+    const { title } = req.body as { title?: unknown };
+    if (typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ success: false, error: '会话标题不能为空' });
+      return;
+    }
+
+    const meta = await updateProductSession(
+      CONFIG.DATA_DIR,
+      req.params.projectId,
+      req.params.sessionId,
+      { title: title.trim() },
+    );
+    const data: SessionSummary = {
+      id: meta.id,
+      title: meta.title,
+      lastMessage: meta.lastMessage || '空会话',
+      updatedAt: meta.updatedAt,
+      messageCount: getSessionSummary(CONFIG.DATA_DIR, req.params.projectId, meta.id)?.messageCount ?? 0,
+    };
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('[PATCH /api/agent/sessions/:projectId/:sessionId]', error);
+    res.status(404).json({ success: false, error: '会话不存在或参数无效' });
   }
 });
 

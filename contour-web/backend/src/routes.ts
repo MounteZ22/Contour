@@ -8,6 +8,7 @@ import flowsRouter from './api/flows.js';
 import filesRouter from './api/files.js';
 import projectRouter from './api/project.js';
 import projectConfigRouter from './api/project-config.js';
+import projectPluginsRouter from './api/project-plugins.js';
 import settingsRouter from './api/settings.js';
 
 const router = Router();
@@ -15,6 +16,7 @@ const router = Router();
 router.use('/agent/sessions', agentSessionsRouter);
 router.use('/project', projectRouter);
 router.use('/projects', projectConfigRouter);
+router.use('/projects', projectPluginsRouter);
 router.use('/flows', flowsRouter);
 router.use('/files', filesRouter);
 router.use('/claims', claimsRouter);
