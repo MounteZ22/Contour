@@ -1,8 +1,10 @@
 import { app, BrowserWindow, shell, Tray } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { createWebHostContext } from '../../../web/backend/src/host.js';
-import { startServer, type StartedWebServer } from '../../../web/backend/src/app.js';
+import { createWebHostContext } from '@contour/web-backend/host';
+import { startServer, type StartedWebServer } from '@contour/web-backend/app';
+import { resolveRuntimeConfig } from '@contour/web-backend/runtime';
 import { registerIpcHandlers } from './ipc.js';
 import { loopbackUrl, normalizeWindowState, shouldHideOnClose, type SavedWindowState } from './lifecycle.js';
 import { createTray, type RecentProject } from './tray.js';
@@ -75,14 +77,13 @@ async function waitForHttp(url: string, timeoutMs = 30_000): Promise<void> {
 
 async function startProductionHost(): Promise<string> {
   if (webServer) return loopbackUrl(webServer.port);
-  const userData = app.getPath('userData');
-  const context = createWebHostContext({
-    dataDir: userData,
-    projectsDir: path.join(userData, 'projects'),
-    vaultsDir: path.join(userData, 'vaults'),
-    legacyVault: path.join(userData, 'legacy-vault'),
+  const resolved = resolveRuntimeConfig({
     isDevelopment: false,
-  }, {
+    homeDir: app.getPath('home') || os.homedir(),
+    legacyVault: path.join(app.getPath('home') || os.homedir(), '.contour', 'legacy-vault'),
+    readSettingsFile: (filePath) => readFileSync(filePath, 'utf-8'),
+  });
+  const context = createWebHostContext(resolved.coreConfig, {
     port: 0,
     mode: 'production',
     staticDir: path.join(__dirname, 'renderer'),
@@ -130,10 +131,13 @@ async function createMainWindow(): Promise<void> {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== origin) {
-      event.preventDefault();
-      openExternal(url);
+    try {
+      if (new URL(url).origin === origin) return;
+    } catch {
+      // A malformed navigation cannot be trusted or loaded in the renderer.
     }
+    event.preventDefault();
+    openExternal(url);
   });
   mainWindow.on('close', (event) => {
     if (shouldHideOnClose(isQuitting)) {

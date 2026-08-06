@@ -7,7 +7,9 @@
   "scripts": {
     "build:main": "esbuild src/main/index.ts --bundle --platform=node --format=cjs --outfile=dist/main.cjs --external:electron --external:@earendil-works/pi-coding-agent --external:@earendil-works/pi-agent-core --external:@earendil-works/pi-ai",
     "build:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --outfile=dist/preload.cjs --external:electron",
-    "build": "npm run build:main && npm run build:preload",
+    "build": "npm run build:main && npm run build:preload && npm run sync:runtime-deps && npm run check:runtime-deps",
+    "sync:runtime-deps": "node scripts/sync-runtime-deps.mjs",
+    "check:runtime-deps": "node scripts/check-runtime-deps.mjs",
     "dev": "npm run build && electronmon .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./app": "./dist/app.js",
-    "./host": "./dist/host.js"
+    "./app": { "types": "./dist/app.d.ts", "import": "./dist/app.js" },
+    "./host": { "types": "./dist/host.d.ts", "import": "./dist/host.js" },
+    "./runtime": { "types": "./dist/runtime.d.ts", "import": "./dist/runtime.js" }
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",

@@ -14,7 +14,7 @@
     "test": "npm run build -w @contour/shared && npm run test --workspaces --if-present",
     "build": "npm run build -w @contour/shared && npm run build --workspaces --if-present",
     "web:dev": "npm run build -w @contour/shared && concurrently -k -n backend,frontend \"npm run dev -w @contour/web-backend\" \"npm run dev -w @contour/web-frontend\"",
-    "desktop:dev": "npm run build -w @contour/shared && npm run build -w @contour/core && npm run build -w @contour/desktop && concurrently -k -n backend,frontend,electron \"npm run dev -w @contour/web-backend\" \"npm run dev -w @contour/web-frontend\" \"npm run dev -w @contour/desktop\"",
+    "desktop:dev": "npm run build -w @contour/shared && npm run build -w @contour/core && npm run build -w @contour/web-backend && npm run build -w @contour/desktop && concurrently -k -n backend,frontend,electron \"npm run dev -w @contour/web-backend\" \"npm run dev -w @contour/web-frontend\" \"npm run dev -w @contour/desktop\"",
     "desktop:build": "npm run build -w @contour/shared && npm run build -w @contour/core && npm run build -w @contour/web-backend && npm run build -w @contour/web-frontend -- --outDir ../../desktop/dist/renderer && npm run dist -w @contour/desktop"
   },
   "devDependencies": {
