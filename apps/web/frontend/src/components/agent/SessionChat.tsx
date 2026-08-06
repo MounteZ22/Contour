@@ -14,6 +14,7 @@ import { AgentErrorNotice } from './AgentErrorNotice';
 import { useSessionModelSelection } from '../../state/agentModelSelection';
 import { TaskProgressOverlay } from './TaskProgressOverlay';
 import { TurnGroup } from './TurnGroup';
+import { VirtualChatHistory } from './VirtualChatHistory';
 
 type ChatDisplayItem =
   | { type: 'message'; message: ChatMessage }
@@ -52,6 +53,7 @@ export async function confirmPermissionDenial(
 
 export function SessionChat({ session, initialMessage }: { session: AgentSession; initialMessage?: string }) {
   const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
   const initialMessageRef = useRef(initialMessage?.trim());
@@ -149,8 +151,8 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
   return (
     <div className="h-full min-h-0 flex flex-col bg-background">
       {/* 权限确认弹窗已移除 — 改用内联横幅，嵌入下方消息流中 */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-        <div className="max-w-[720px] mx-auto flex flex-col gap-5">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+        <div className="max-w-[720px] mx-auto">
           {messages.length === 0 && !isStreaming ? (
             <div className="min-h-[45vh] rounded-2xl border border-dashed border-border bg-surface/70 p-8 flex flex-col items-center justify-center text-center">
               <div className="w-12 h-12 rounded-2xl bg-accent-subtle-bg text-accent-strong flex items-center justify-center">
@@ -180,29 +182,40 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                 // 将消息按 turn 分组：连续带 turnIndex 的消息归入一个 TurnGroup
                 const items = groupMessagesByTurn(messages);
 
-                // 渲染分组后的项目列表
-                return items.map((item, idx) => {
-                  if (item.type === 'message') {
-                    return (
-                      <ChatMessageItem
-                        key={item.message.id}
-                        isStreaming={false}
-                        message={item.message}
-                        onAskUserAnswered={handleAskUserAnswered}
-                      />
-                    );
-                  }
-                  return (
-                    <TurnGroup
-                      key={`turn-${item.turnMessages[0]?.turnIndex ?? idx}`}
-                      turnMessages={item.turnMessages}
-                      defaultExpanded={item.isLatest}
-                      onAskUserAnswered={handleAskUserAnswered}
-                    />
-                  );
-                });
+                // 历史消息走虚拟滚动：只挂载视口附近的条目，长历史不卡顿
+                return (
+                  <VirtualChatHistory
+                    items={items}
+                    scrollRef={scrollRef}
+                    getItemKey={(item) =>
+                      item.type === 'message'
+                        ? `msg-${item.message.id}`
+                        : `turn-${item.turnMessages[0]?.turnIndex ?? 'group'}`
+                    }
+                    renderItem={(item) => {
+                      if (item.type === 'message') {
+                        return (
+                          <ChatMessageItem
+                            isStreaming={false}
+                            message={item.message}
+                            onAskUserAnswered={handleAskUserAnswered}
+                          />
+                        );
+                      }
+                      return (
+                        <TurnGroup
+                          turnMessages={item.turnMessages}
+                          defaultExpanded={item.isLatest}
+                          onAskUserAnswered={handleAskUserAnswered}
+                        />
+                      );
+                    }}
+                  />
+                );
               })()}
 
+              {/* 实时流与横幅不参与虚拟滚动，始终渲染在历史消息下方 */}
+              <div className="flex flex-col gap-5">
               {/* Plan Mode：显示执行计划卡片 */}
               {(planStatus === 'active' || planStatus === 'complete' || planStatus === 'approved') && planContent && (
                 <PlanCard
@@ -269,6 +282,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                 isLoading={isLoading}
                 hasError={Boolean(error)}
               />
+              </div>
             </>
           )}
           <div ref={messagesEndRef} />

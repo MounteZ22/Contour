@@ -767,19 +767,24 @@ describe('useChat', () => {
     });
   });
 
-  // ── localStorage 持久化 ─────────────────────────────────────────────────
-  describe('localStorage 持久化', () => {
-    it('应从 Pi v3 message 记录恢复用户和助手历史', async () => {
+  // ── 历史消息恢复（新 /messages 结构化端点） ───────────────────────────────
+  describe('历史消息恢复', () => {
+    it('后端成功时应直接采用结构化 ChatMessage[]（含 toolActivities 与 filesChanged）', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           success: true,
           data: [
-            { type: 'session', version: 3, id: 'sdk-id' },
-            { type: 'message', id: 'u1', message: { role: 'user', content: '旧问题' } },
+            { id: 'u1', role: 'user', content: '旧问题' },
             {
-              type: 'message', id: 'a1',
-              message: { role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
+              id: 'a1',
+              role: 'assistant',
+              content: '旧回答',
+              turnIndex: 1,
+              filesChanged: ['notes.md'],
+              toolActivities: [
+                { id: 'tool-1', toolName: 'Write', status: 'done', input: { path: 'notes.md' }, result: '已写入' },
+              ],
             },
           ],
         }),
@@ -791,8 +796,88 @@ describe('useChat', () => {
 
       await waitFor(() => expect(result.current.messages).toHaveLength(2));
       expect(result.current.messages.map((message) => message.content)).toEqual(['旧问题', '旧回答']);
+      expect(result.current.messages[1]).toMatchObject({
+        turnIndex: 1,
+        filesChanged: ['notes.md'],
+        toolActivities: [{ id: 'tool-1', toolName: 'Write', status: 'done' }],
+      });
     });
 
+    it('后端成功但为空会话时应显示空，而不降级到 localStorage', async () => {
+      // 预置 localStorage 旧缓存，验证空会话不会被它覆盖
+      localStorageStore['contour:chat:product-session'] = JSON.stringify([
+        { id: 'stale', role: 'user', content: '过期缓存' },
+      ]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: [] }),
+      } as Response));
+
+      const { result } = renderHook(() =>
+        useChat([], { sessionId: 'product-session', projectId: 'project-a' }),
+      );
+
+      await waitFor(() => expect(result.current.messages).toEqual([]));
+    });
+
+    it('后端失败（非 2xx）时应降级到 localStorage', async () => {
+      localStorageStore['contour:chat:product-session'] = JSON.stringify([
+        { id: 'local-1', role: 'user', content: '本地缓存' },
+      ]);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false } as Response));
+
+      const { result } = renderHook(() =>
+        useChat([], { sessionId: 'product-session', projectId: 'project-a' }),
+      );
+
+      await waitFor(() => expect(result.current.messages).toHaveLength(1));
+      expect(result.current.messages[0]).toMatchObject({ id: 'local-1', content: '本地缓存' });
+    });
+
+    it('快速切换会话时，过期请求不应覆盖新会话消息', async () => {
+      // 第一个会话的响应延迟返回（直到被 abort），第二个会话立即返回
+      const deferred = (() => {
+        let resolve: (value: Response) => void = () => {};
+        let reject: (reason?: unknown) => void = () => {};
+        const promise = new Promise<Response>((res, rej) => {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise, resolve, reject };
+      })();
+
+      const fetchMock = vi.fn()
+        .mockImplementationOnce((_url: string, init?: RequestInit) => {
+          // 第一个请求挂起，切换后应被 abort
+          const onAbort = () => deferred.reject(new DOMException('aborted', 'AbortError'));
+          init?.signal?.addEventListener('abort', onAbort, { once: true });
+          return deferred.promise;
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: [{ id: 'b1', role: 'user', content: '新会话消息' }],
+          }),
+        } as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { result, rerender } = renderHook(
+        ({ sessionId }: { sessionId: string }) =>
+          useChat([], { sessionId, projectId: 'project-a' }),
+        { initialProps: { sessionId: 'session-a' } },
+      );
+
+      // 切到 session-b：a 的请求被取消，b 的消息被采用
+      rerender({ sessionId: 'session-b' });
+      await waitFor(() => expect(result.current.messages).toEqual([
+        { id: 'b1', role: 'user', content: '新会话消息' },
+      ]));
+    });
+  });
+
+  // ── localStorage 持久化 ─────────────────────────────────────────────────
+  describe('localStorage 持久化', () => {
     it('发送消息时应把当前 sessionId 传给后端', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false } as Response));
       const { result } = renderHook(() =>

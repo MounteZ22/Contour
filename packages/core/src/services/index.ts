@@ -1,4 +1,5 @@
 export * from "./core-services.js";
+export * from "./message-history.js";
 export * from "./audit-log.js";
 export * from "./authorizedPaths.js";
 export * from "./channelManager.js";

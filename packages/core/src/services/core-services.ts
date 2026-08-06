@@ -14,6 +14,7 @@ import { createContourCustomTools } from '../tools/pi-vault-tools.js';
 import { createChannelAdapter } from '../agent/channel-adapter.js';
 import { createFlowAssets } from './flowAssets.js';
 import { createFlowSummary } from './flowSummary.js';
+import { createMessageHistoryService } from './message-history.js';
 
 /**
  * The Core composition root. Every file-backed Core capability closes over the
@@ -44,6 +45,7 @@ export function createCoreServices(input: CoreRuntimeConfig) {
   const agent = createChannelAdapter(channels);
   const flowAssets = createFlowAssets(locator, loader);
   const flowSummary = createFlowSummary(locator, loader, channels, agent);
+  const messageHistory = createMessageHistoryService(config);
 
   return Object.freeze({
     config,
@@ -61,6 +63,7 @@ export function createCoreServices(input: CoreRuntimeConfig) {
     agent,
     flowAssets,
     flowSummary,
+    messageHistory,
   });
 }
 

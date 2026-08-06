@@ -10,6 +10,8 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
+import { coreServices } from '../core.js';
+import type { ChatMessage } from '@contour/shared';
 import {
   deleteProductSession,
   ensureProductSession,
@@ -158,6 +160,27 @@ router.post('/:projectId', async (req, res) => {
   } catch (error) {
     console.error('[POST /api/agent/sessions/:projectId]', error);
     res.status(400).json({ success: false, error: '创建会话失败：项目或会话 ID 无效' });
+  }
+});
+
+router.get('/:projectId/:sessionId/messages', async (req, res) => {
+  try {
+    const productSession = listProductSessions(CONFIG.DATA_DIR, req.params.projectId)
+      .find((session) => session.id === req.params.sessionId);
+    if (!productSession) {
+      res.status(404).json({ success: false, error: '会话不存在' });
+      return;
+    }
+    const messages = await coreServices.messageHistory.readSessionMessages(
+      req.params.projectId,
+      req.params.sessionId,
+    );
+    // 无 Pi 会话文件时按空会话处理（success + []），前端不应降级到 localStorage
+    const response: ApiResponse<ChatMessage[]> = { success: true, data: messages ?? [] };
+    res.json(response);
+  } catch (error) {
+    console.error('[GET /api/agent/sessions/:projectId/:sessionId/messages]', error);
+    res.status(400).json({ success: false, error: '读取会话消息失败' });
   }
 });
 
