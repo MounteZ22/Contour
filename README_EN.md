@@ -52,7 +52,7 @@ Project (a project)
 
 ## Product Form
 
-Contour is a locally running web application with three core pages:
+Contour is a locally running Web application and an Electron desktop MVP that share the same backend and business-data locations. The Web application has three core pages:
 
 | Page | Function |
 |------|----------|
@@ -64,29 +64,40 @@ All data is stored as Markdown + YAML frontmatter in your local file system. You
 
 ## Quick Start
 
+The project uses npm workspaces. Install dependencies from the repository root:
+
 ```bash
 # Clone the repository
 git clone https://github.com/MounteZ22/Contour.git
 cd Contour
-
-# Start backend (port 3001)
-cd contour-web/backend
 npm install
-npm run dev
-
-# In another terminal, start frontend (port 3000, auto-proxies API to backend)
-cd contour-web/frontend
-npm install
-npm run dev
 ```
 
-Open `http://localhost:3000`. Vault data is read from `D:\Contour` (Windows) or `~/Contour` (macOS/Linux) by default.
+Start the Web development environment (backend on `127.0.0.1:3001`, frontend on `127.0.0.1:3000`):
 
-The directory is created automatically on first launch. To customize the path, edit `~/.contour/settings.json`:
+```bash
+npm run web:dev
+```
+
+Open `http://127.0.0.1:3000`. Vault data is read from `D:\Contour` (Windows) or `~/Contour` (macOS/Linux) by default. The configuration directory and default Vault path are created on first launch. To customize the path, edit `~/.contour/settings.json`:
 
 ```json
 { "vaultsPath": "your vault path" }
 ```
+
+Run the Electron desktop development environment:
+
+```bash
+npm run desktop:dev
+```
+
+A production desktop build packages the frontend with a same-origin API server bound only to `127.0.0.1`:
+
+```bash
+npm run desktop:build
+```
+
+The Electron window state is stored in Electron's `userData` directory. Business configuration, Agent session history, and Vault data continue to use the existing `~/.contour` and `vaultsPath` configuration.
 
 ## Tech Stack
 
@@ -110,4 +121,4 @@ The directory is created automatically on first launch. To customize the path, e
 
 ## License
 
-MIT
+AGPL-3.0. See the complete terms in the root [LICENSE](LICENSE) file.
