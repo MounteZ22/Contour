@@ -9,11 +9,7 @@ import fs from 'node:fs/promises';
 import { realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { Type, type Static } from 'typebox';
-import {
-  authorizeProjectPath,
-  authorizeProjectWritePath,
-  type AuthorizedPathKind,
-} from '../services/authorizedPaths.js';
+import type { AuthorizedPaths, AuthorizedPathKind } from '../services/authorizedPaths.js';
 import { ValidationError } from '../vault/validate.js';
 import { invalidateCache } from '../vault/loader.js';
 import { isInside, comparisonKey } from '../vault/path-utils.js';
@@ -40,6 +36,7 @@ export interface AuthorizedFileToolOptions {
   additionalFiles?: string[];
   /** 是否提供受路径白名单保护的 write/edit 工具。 */
   allowWrite?: boolean;
+  authorizedPaths: AuthorizedPaths;
 }
 
 const readParams = Type.Object({
@@ -157,12 +154,12 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
     if (kind === 'directory' && !stats.isDirectory()) throw new ValidationError('目标不是文件夹');
 
     if (isInside(workspaceRoot, canonical)) return canonical;
-    return authorizeProjectPath(options.projectId, canonical, kind, additionalFiles);
+    return options.authorizedPaths.authorizeProjectPath(options.projectId, canonical, kind, additionalFiles);
   };
 
   const authorizeWrite = (inputPath: string): string => {
     const candidate = resolveInput(inputPath);
-    return authorizeProjectWritePath(
+    return options.authorizedPaths.authorizeProjectWritePath(
       options.projectId,
       candidate,
       additionalFiles,

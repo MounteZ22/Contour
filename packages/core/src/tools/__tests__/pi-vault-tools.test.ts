@@ -2,18 +2,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-let testRoot!: string;
-let vaultsDir!: string;
-let legacyDir!: string;
+import os from 'node:os';
+import { createCoreServices } from '../../services/core-services.js';
 
-vi.mock('../../runtime/config.js', async () => {
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  testRoot = join(tmpdir(), `contour-vault-tools-${Date.now()}`);
-  vaultsDir = join(testRoot, 'vaults');
-  legacyDir = join(testRoot, 'legacy');
-  return { CONFIG: { VAULTS_DIR: vaultsDir, LEGACY_VAULT: legacyDir } };
-});
+const testRoot = path.join(os.tmpdir(), `contour-vault-tools-${Date.now()}`);
+const vaultsDir = path.join(testRoot, 'vaults');
+const legacyDir = path.join(testRoot, 'legacy');
+const core = createCoreServices({ dataDir: path.join(testRoot, 'data'), projectsDir: path.join(testRoot, 'data', 'projects'), vaultsDir, legacyVault: legacyDir, isDevelopment: true });
 
 const { createContourCustomTools } = await import('../pi-vault-tools.js');
 
@@ -28,7 +23,7 @@ async function createProject(projectId: string, marker: string): Promise<void> {
 }
 
 function findTool(projectId: string, name: string) {
-  return createContourCustomTools(projectId).find((item) => item.name === name)! as {
+  return core.tools.createContourCustomTools(projectId).find((item) => item.name === name)! as {
     execute: (...args: any[]) => Promise<{ content: Array<{ text: string }> }>;
   };
 }

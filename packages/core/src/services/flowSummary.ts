@@ -2,9 +2,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PROVIDER_DEFAULT_URLS } from '@contour/shared';
 import type { Channel } from '@contour/shared';
-import { findDefaultAgentChannel, validateAgentChannelSelection } from '../agent/channel-adapter.js';
-import { getChannelById, normalizeBaseUrl } from './channelManager.js';
-import { findFlowDir, findProjectDir } from '../vault/locate.js';
+import { validateAgentChannelSelection } from '../agent/channel-adapter.js';
+import type { ChannelAdapter } from '../agent/channel-adapter.js';
+import { normalizeBaseUrl } from './channelManager.js';
+import type { ChannelManager } from './channelManager.js';
+import type { VaultLocator } from '../vault/locate.js';
 import { atomicWriteFile } from '../vault/atomic.js';
 import { validateId, ValidationError } from '../vault/validate.js';
 import { validateVaultProjectId } from './flowAssets.js';
@@ -41,7 +43,7 @@ interface ResolvedFlow {
  * 摘要属于 Flow 的派生产物；只有项目和 Flow 标识以及用户选择的模型可以来自
  * 请求，正文始终以此处读取到的当前文件为准。
  */
-async function readFullFlow(projectId: unknown, flowId: unknown, enforceInputLimit = false): Promise<ResolvedFlow> {
+async function readFullFlow(locator: VaultLocator, projectId: unknown, flowId: unknown, enforceInputLimit = false): Promise<ResolvedFlow> {
   try {
     validateVaultProjectId(projectId);
     validateId(flowId, 'flowId');
@@ -50,9 +52,9 @@ async function readFullFlow(projectId: unknown, flowId: unknown, enforceInputLim
     throw error;
   }
 
-  const projectDir = await findProjectDir(projectId);
+  const projectDir = await locator.findProjectDir(projectId);
   if (!projectDir) throw new FlowSummaryError('Project not found', 404);
-  const flowDir = await findFlowDir(projectDir, flowId);
+  const flowDir = await locator.findFlowDir(projectDir, flowId);
   if (!flowDir) throw new FlowSummaryError('Flow not found', 404);
 
   const flowPath = path.join(flowDir, 'flow.md');
@@ -101,7 +103,7 @@ async function readFullFlow(projectId: unknown, flowId: unknown, enforceInputLim
   return { flowDir, flowMarkdown, source };
 }
 
-async function resolveChannel(channelId: unknown, model: unknown): Promise<{ channel: Channel; modelId: string }> {
+async function resolveChannel(channels: Pick<ChannelManager, "getChannelById">, adapter: Pick<ChannelAdapter, "findDefaultAgentChannel">, channelId: unknown, model: unknown): Promise<{ channel: Channel; modelId: string }> {
   if (channelId !== undefined && typeof channelId !== 'string') {
     throw new FlowSummaryError('channelId 必须是字符串', 400);
   }
@@ -109,7 +111,7 @@ async function resolveChannel(channelId: unknown, model: unknown): Promise<{ cha
     throw new FlowSummaryError('model 必须是字符串', 400);
   }
 
-  const channel = channelId ? await getChannelById(channelId) : await findDefaultAgentChannel();
+  const channel = channelId ? await channels.getChannelById(channelId) : await adapter.findDefaultAgentChannel();
   if (!channel) {
     throw new FlowSummaryError(
       channelId ? '渠道不存在' : '没有已启用的 Agent 兼容渠道，请先在设置中配置模型',
@@ -200,14 +202,14 @@ async function requestSummary(channel: Channel, model: string, source: string): 
   return summary;
 }
 
-export async function createFlowSummaryDraft(selection: FlowSummarySelection): Promise<{ draft: string; model: string }> {
-  const flow = await readFullFlow(selection.projectId, selection.flowId, true);
-  const { channel, modelId } = await resolveChannel(selection.channelId, selection.model);
+export async function createFlowSummaryDraft(locator: VaultLocator, channels: Pick<ChannelManager, "getChannelById">, adapter: Pick<ChannelAdapter, "findDefaultAgentChannel">, selection: FlowSummarySelection): Promise<{ draft: string; model: string }> {
+  const flow = await readFullFlow(locator, selection.projectId, selection.flowId, true);
+  const { channel, modelId } = await resolveChannel(channels, adapter, selection.channelId, selection.model);
   return { draft: await requestSummary(channel, modelId, flow.source), model: modelId };
 }
 
-export async function getFlowSummary(projectId: unknown, flowId: unknown): Promise<string> {
-  const { flowDir } = await readFullFlow(projectId, flowId);
+export async function getFlowSummary(locator: VaultLocator, projectId: unknown, flowId: unknown): Promise<string> {
+  const { flowDir } = await readFullFlow(locator, projectId, flowId);
   try {
     return await fs.readFile(path.join(flowDir, FLOW_SUMMARY_FILE), 'utf-8');
   } catch (error) {
@@ -216,13 +218,13 @@ export async function getFlowSummary(projectId: unknown, flowId: unknown): Promi
   }
 }
 
-export async function saveFlowSummary(projectId: unknown, flowId: unknown, content: unknown): Promise<void> {
+export async function saveFlowSummary(locator: VaultLocator, projectId: unknown, flowId: unknown, content: unknown): Promise<void> {
   if (typeof content !== 'string') throw new FlowSummaryError('content 必须是字符串', 400);
   if (content.length > MAX_SUMMARY_CHARS) {
     throw new FlowSummaryError(`摘要不能超过 ${MAX_SUMMARY_CHARS.toLocaleString()} 个字符`, 400);
   }
 
-  const { flowDir, flowMarkdown } = await readFullFlow(projectId, flowId);
+  const { flowDir, flowMarkdown } = await readFullFlow(locator, projectId, flowId);
   const parsed = parseFrontmatter(flowMarkdown);
   if (!parsed) throw new FlowSummaryError('flow.md frontmatter 无效，未保存摘要', 422);
 
@@ -236,5 +238,15 @@ export async function saveFlowSummary(projectId: unknown, flowId: unknown, conte
   await atomicWriteFile(path.join(flowDir, 'flow.md'), stringifyWithFrontmatter(parsed.fm, parsed.body));
   invalidateCache();
 }
+
+export function createFlowSummary(locator: VaultLocator, channels: Pick<ChannelManager, "getChannelById">, adapter: Pick<ChannelAdapter, "findDefaultAgentChannel">) {
+  return {
+    createFlowSummaryDraft: (selection: FlowSummarySelection) => createFlowSummaryDraft(locator, channels, adapter, selection),
+    getFlowSummary: (projectId: unknown, flowId: unknown) => getFlowSummary(locator, projectId, flowId),
+    saveFlowSummary: (projectId: unknown, flowId: unknown, content: unknown) => saveFlowSummary(locator, projectId, flowId, content),
+  };
+}
+
+export type FlowSummary = ReturnType<typeof createFlowSummary>;
 
 export const FLOW_SUMMARY_LIMITS = { MAX_FLOW_INPUT_CHARS, MAX_SUMMARY_CHARS } as const;

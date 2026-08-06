@@ -1,24 +1,25 @@
 import { Router, type Response } from 'express';
 import { testLLMConnection } from '../services/aiService.js';
-import { buildAgentPrompt } from '@contour/core/services';
-import type { AIContextItem } from '@contour/shared';
-import { getChannelById } from '@contour/core/services';
-import { channelToAgentRuntimeConfig, findDefaultAgentChannel, validateAgentChannelSelection } from '@contour/core/agent';
+import { coreServices } from '../core.js';
+import { channelToAgentRuntimeConfig, validateAgentChannelSelection } from '@contour/core/agent';
 import { PiRuntime } from '@contour/core/agent';
 import { CONFIG } from '../config.js';
-import { createContourCustomTools } from '@contour/core/tools';
 import { createTaskProgressTools } from '@contour/core/tools';
 import { createWebSearchTools } from '@contour/core/tools';
-import { getWebSearchRuntimeConfig } from '@contour/core/services';
 import { resolvePermissionRequest } from '@contour/core/agent';
 import type { AskUserRequestManager } from '@contour/core/agent';
-import { findProjectDir } from '@contour/core/vault';
-import { ensureProjectDir } from '@contour/core/services';
-import { getEnabledProjectSkillDirectories } from '@contour/core/services';
-import path from 'node:path';
 import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '@contour/core/agent';
-import { loadProjects } from '@contour/core/vault';
+import type { AIContextItem } from '@contour/shared';
+import path from 'node:path';
 
+const { buildAgentPrompt } = coreServices.prompt;
+const { getChannelById } = coreServices.channels;
+const { findDefaultAgentChannel } = coreServices.agent;
+const { getWebSearchRuntimeConfig } = coreServices.settings;
+const { findProjectDir, loadProjects } = coreServices.vault;
+const { ensureProjectDir } = coreServices.projects;
+const { getEnabledProjectSkillDirectories } = coreServices.plugins;
+const { createContourCustomTools } = coreServices.tools;
 
 const router = Router();
 
@@ -203,7 +204,7 @@ router.post('/pi-chat', async (req, res) => {
     // 必须确保 config.json 被写入。
     ensureProjectDir(projectName, projectDir);
 
-    const currentProject = (await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT))
+    const currentProject = (await loadProjects())
       .find((project) => project.projectId === projectName || project.projectId === body.projectId);
     const selectedFlowIds = new Set((Array.isArray(body.contextItems) ? body.contextItems : [])
       .filter((item): item is AIContextItem => Boolean(item) && item.type === 'flow' && typeof item.id === 'string')
@@ -262,6 +263,9 @@ router.post('/pi-chat', async (req, res) => {
 
     // 6. 通过 PiRuntime 初始化并发送消息
     runtime = new PiRuntime({
+      authorizedPaths: coreServices.authorizedPaths,
+      plugins: coreServices.plugins,
+      auditLog: coreServices.auditLog,
       askUserLifecycle: {
         onCreated: (requestId, manager) => askUserManagers.set(requestId, manager),
         onSettled: (requestId, manager) => {

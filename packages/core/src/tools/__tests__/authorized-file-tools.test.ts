@@ -2,16 +2,12 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-let testRoot!: string;
-let projectsDir!: string;
+import os from 'node:os';
+import { createCoreServices } from '../../services/core-services.js';
 
-vi.mock('../../runtime/config.js', async () => {
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  testRoot = join(tmpdir(), `contour-agent-files-${Date.now()}`);
-  projectsDir = join(testRoot, 'data', 'projects');
-  return { CONFIG: { DATA_DIR: testRoot, PROJECTS_DIR: projectsDir, CONFIG_DIR: testRoot, VAULTS_DIR: testRoot, LEGACY_VAULT: testRoot } };
-});
+const testRoot = path.join(os.tmpdir(), `contour-agent-files-${Date.now()}`);
+const projectsDir = path.join(testRoot, 'data', 'projects');
+const core = createCoreServices({ dataDir: testRoot, projectsDir, vaultsDir: testRoot, legacyVault: testRoot, isDevelopment: true });
 
 const { createAuthorizedFileTools } = await import('../authorized-file-tools.js');
 
@@ -23,7 +19,7 @@ let exactFile: string;
 let outsideFile: string;
 
 function tool(name: string, additionalFiles: string[] = [], allowWrite = false) {
-  return createAuthorizedFileTools({ projectId, workspaceDir, additionalFiles, allowWrite })
+  return createAuthorizedFileTools({ projectId, workspaceDir, additionalFiles, allowWrite, authorizedPaths: core.authorizedPaths })
     .find((item) => item.name === name)! as { execute: (...args: any[]) => Promise<any> };
 }
 

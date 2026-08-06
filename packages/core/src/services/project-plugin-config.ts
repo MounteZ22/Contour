@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { CONFIG } from "../runtime/config.js";
+import type { CoreRuntimeConfig } from "../runtime/config.js";
 import { ValidationError } from "../vault/validate.js";
 import { comparisonKey } from "../vault/path-utils.js";
 import { validateProjectId } from "./projectManager.js";
@@ -74,9 +74,9 @@ const EMPTY_CONFIG: ProjectPluginConfig = {
   skillDirectories: [],
 };
 
-function projectDataDir(storageId: string): string {
+function projectDataDir(runtime: Readonly<CoreRuntimeConfig>, storageId: string): string {
   validateProjectId(storageId);
-  const root = path.resolve(CONFIG.PROJECTS_DIR);
+  const root = path.resolve(runtime.projectsDir);
   const target = path.resolve(root, storageId);
   const relative = path.relative(root, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -85,8 +85,8 @@ function projectDataDir(storageId: string): string {
   return target;
 }
 
-function pluginsFilePath(storageId: string): string {
-  return path.join(projectDataDir(storageId), "plugins.json");
+function pluginsFilePath(runtime: Readonly<CoreRuntimeConfig>, storageId: string): string {
+  return path.join(projectDataDir(runtime, storageId), "plugins.json");
 }
 
 function cloneEmptyConfig(): ProjectPluginConfig {
@@ -232,8 +232,8 @@ function atomicWrite(filePath: string, config: ProjectPluginConfig): void {
   }
 }
 
-export function getProjectPluginConfig(storageId: string): ProjectPluginConfig {
-  const filePath = pluginsFilePath(storageId);
+export function getProjectPluginConfig(runtime: Readonly<CoreRuntimeConfig>, storageId: string): ProjectPluginConfig {
+  const filePath = pluginsFilePath(runtime, storageId);
   if (!existsSync(filePath)) return cloneEmptyConfig();
   try {
     return normalizeStoredConfig(JSON.parse(readFileSync(filePath, "utf-8")));
@@ -242,14 +242,14 @@ export function getProjectPluginConfig(storageId: string): ProjectPluginConfig {
   }
 }
 
-function saveProjectPluginConfig(storageId: string, config: ProjectPluginConfig): ProjectPluginConfig {
+function saveProjectPluginConfig(runtime: Readonly<CoreRuntimeConfig>, storageId: string, config: ProjectPluginConfig): ProjectPluginConfig {
   assertToolBudget(config.mcpServers);
-  atomicWrite(pluginsFilePath(storageId), config);
+  atomicWrite(pluginsFilePath(runtime, storageId), config);
   return config;
 }
 
-export function addMcpServer(storageId: string, input: AddMcpServerInput): ProjectPluginConfig {
-  const config = getProjectPluginConfig(storageId);
+export function addMcpServer(runtime: Readonly<CoreRuntimeConfig>, storageId: string, input: AddMcpServerInput): ProjectPluginConfig {
+  const config = getProjectPluginConfig(runtime, storageId);
   if (config.mcpServers.length >= MAX_MCP_SERVERS) {
     throw new ValidationError(`每个项目最多添加 ${MAX_MCP_SERVERS} 个 MCP 服务`);
   }
@@ -263,29 +263,29 @@ export function addMcpServer(storageId: string, input: AddMcpServerInput): Proje
     toolLimit: validateToolLimit(input.toolLimit),
   };
   assertToolBudget([...config.mcpServers, server]);
-  return saveProjectPluginConfig(storageId, { ...config, mcpServers: [...config.mcpServers, server] });
+  return saveProjectPluginConfig(runtime, storageId, { ...config, mcpServers: [...config.mcpServers, server] });
 }
 
-export function removeMcpServer(storageId: string, serverId: string): ProjectPluginConfig {
-  const config = getProjectPluginConfig(storageId);
-  return saveProjectPluginConfig(storageId, {
+export function removeMcpServer(runtime: Readonly<CoreRuntimeConfig>, storageId: string, serverId: string): ProjectPluginConfig {
+  const config = getProjectPluginConfig(runtime, storageId);
+  return saveProjectPluginConfig(runtime, storageId, {
     ...config,
     mcpServers: config.mcpServers.filter((server) => server.id !== serverId),
   });
 }
 
-export function setMcpServerEnabled(storageId: string, serverId: string, enabled: unknown): ProjectPluginConfig {
+export function setMcpServerEnabled(runtime: Readonly<CoreRuntimeConfig>, storageId: string, serverId: string, enabled: unknown): ProjectPluginConfig {
   if (typeof enabled !== "boolean") throw new ValidationError("enabled 必须是布尔值");
-  const config = getProjectPluginConfig(storageId);
+  const config = getProjectPluginConfig(runtime, storageId);
   if (!config.mcpServers.some((server) => server.id === serverId)) throw new ValidationError("MCP 服务不存在");
-  return saveProjectPluginConfig(storageId, {
+  return saveProjectPluginConfig(runtime, storageId, {
     ...config,
     mcpServers: config.mcpServers.map((server) => server.id === serverId ? { ...server, enabled } : server),
   });
 }
 
-export function addSkillDirectory(storageId: string, directory: unknown): ProjectPluginConfig {
-  const config = getProjectPluginConfig(storageId);
+export function addSkillDirectory(runtime: Readonly<CoreRuntimeConfig>, storageId: string, directory: unknown): ProjectPluginConfig {
+  const config = getProjectPluginConfig(runtime, storageId);
   if (config.skillDirectories.length >= MAX_SKILLS) {
     throw new ValidationError(`每个项目最多添加 ${MAX_SKILLS} 个技能目录`);
   }
@@ -293,25 +293,25 @@ export function addSkillDirectory(storageId: string, directory: unknown): Projec
   if (config.skillDirectories.some((skill) => comparisonKey(skill.path) === comparisonKey(canonicalPath))) {
     throw new ValidationError("该技能目录已经添加");
   }
-  return saveProjectPluginConfig(storageId, {
+  return saveProjectPluginConfig(runtime, storageId, {
     ...config,
     skillDirectories: [...config.skillDirectories, { id: randomUUID(), path: canonicalPath, enabled: false }],
   });
 }
 
-export function removeSkillDirectory(storageId: string, skillId: string): ProjectPluginConfig {
-  const config = getProjectPluginConfig(storageId);
-  return saveProjectPluginConfig(storageId, {
+export function removeSkillDirectory(runtime: Readonly<CoreRuntimeConfig>, storageId: string, skillId: string): ProjectPluginConfig {
+  const config = getProjectPluginConfig(runtime, storageId);
+  return saveProjectPluginConfig(runtime, storageId, {
     ...config,
     skillDirectories: config.skillDirectories.filter((skill) => skill.id !== skillId),
   });
 }
 
-export function setSkillDirectoryEnabled(storageId: string, skillId: string, enabled: unknown): ProjectPluginConfig {
+export function setSkillDirectoryEnabled(runtime: Readonly<CoreRuntimeConfig>, storageId: string, skillId: string, enabled: unknown): ProjectPluginConfig {
   if (typeof enabled !== "boolean") throw new ValidationError("enabled 必须是布尔值");
-  const config = getProjectPluginConfig(storageId);
+  const config = getProjectPluginConfig(runtime, storageId);
   if (!config.skillDirectories.some((skill) => skill.id === skillId)) throw new ValidationError("技能目录不存在");
-  return saveProjectPluginConfig(storageId, {
+  return saveProjectPluginConfig(runtime, storageId, {
     ...config,
     skillDirectories: config.skillDirectories.map((skill) => skill.id === skillId ? { ...skill, enabled } : skill),
   });
@@ -321,8 +321,8 @@ export function setSkillDirectoryEnabled(storageId: string, skillId: string, ena
  * 在 Agent 启动时重新校验启用项。配置文件可被用户手动编辑，因此不能只信任
  * 添加时的校验结果；任何失效或被符号链接替换的项目都不会进入运行时。
  */
-export function getEnabledProjectMcpServers(storageId: string): McpServerConfig[] {
-  return getProjectPluginConfig(storageId).mcpServers.flatMap((server) => {
+export function getEnabledProjectMcpServers(runtime: Readonly<CoreRuntimeConfig>, storageId: string): McpServerConfig[] {
+  return getProjectPluginConfig(runtime, storageId).mcpServers.flatMap((server) => {
     if (!server.enabled) return [];
     try {
       const command = canonicalExecutable(server.command);
@@ -341,8 +341,8 @@ export function getEnabledProjectMcpServers(storageId: string): McpServerConfig[
 }
 
 /** 返回经过 realpath 二次确认的、用户显式启用的技能目录。 */
-export function getEnabledProjectSkillDirectories(storageId: string): string[] {
-  return getProjectPluginConfig(storageId).skillDirectories.flatMap((skill) => {
+export function getEnabledProjectSkillDirectories(runtime: Readonly<CoreRuntimeConfig>, storageId: string): string[] {
+  return getProjectPluginConfig(runtime, storageId).skillDirectories.flatMap((skill) => {
     if (!skill.enabled) return [];
     try {
       const resolved = canonicalSkillDirectory(skill.path);
@@ -352,3 +352,19 @@ export function getEnabledProjectSkillDirectories(storageId: string): string[] {
     }
   });
 }
+
+export function createProjectPluginConfig(runtime: Readonly<CoreRuntimeConfig>) {
+  return {
+    getProjectPluginConfig: (storageId: string) => getProjectPluginConfig(runtime, storageId),
+    addMcpServer: (storageId: string, input: AddMcpServerInput) => addMcpServer(runtime, storageId, input),
+    removeMcpServer: (storageId: string, serverId: string) => removeMcpServer(runtime, storageId, serverId),
+    setMcpServerEnabled: (storageId: string, serverId: string, enabled: unknown) => setMcpServerEnabled(runtime, storageId, serverId, enabled),
+    addSkillDirectory: (storageId: string, directory: unknown) => addSkillDirectory(runtime, storageId, directory),
+    removeSkillDirectory: (storageId: string, skillId: string) => removeSkillDirectory(runtime, storageId, skillId),
+    setSkillDirectoryEnabled: (storageId: string, skillId: string, enabled: unknown) => setSkillDirectoryEnabled(runtime, storageId, skillId, enabled),
+    getEnabledProjectMcpServers: (storageId: string) => getEnabledProjectMcpServers(runtime, storageId),
+    getEnabledProjectSkillDirectories: (storageId: string) => getEnabledProjectSkillDirectories(runtime, storageId),
+  };
+}
+
+export type ProjectPluginConfigService = ReturnType<typeof createProjectPluginConfig>;

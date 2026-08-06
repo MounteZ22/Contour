@@ -31,6 +31,7 @@ describe("项目 MCP stdio 桥接", () => {
   it("Given readonly 会话, When 初始化桥接, Then 不读取配置、不启动外部程序也不暴露工具", async () => {
     const result = await createProjectMcpTools({
       projectId: "P01", projectDir: "D:\\project", permissionMode: "readonly",
+      plugins: { getEnabledProjectMcpServers },
     });
 
     expect(getEnabledProjectMcpServers).not.toHaveBeenCalled();
@@ -50,6 +51,7 @@ describe("项目 MCP stdio 桥接", () => {
       projectDir: "D:\\project",
       permissionMode: "yolo",
       createClient: () => client,
+      plugins: { getEnabledProjectMcpServers },
     });
 
     expect(client.connect).toHaveBeenCalledTimes(1);

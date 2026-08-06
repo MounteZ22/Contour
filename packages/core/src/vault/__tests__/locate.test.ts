@@ -2,35 +2,27 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-// ── 在导入被测模块之前 mock config ─────────────────────────────────────────
-// 使用异步 factory，内部用动态 import 获取 os/path
 let testDir: string;
 let vaultsDir: string;
 let legacyDir: string;
 
-vi.mock('../../runtime/config.js', async () => {
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  testDir = join(tmpdir(), `contour-locate-test-${Date.now()}`);
-  vaultsDir = join(testDir, 'vaults');
-  legacyDir = join(testDir, 'legacy-vault');
-  return {
-    CONFIG: { CONFIG_DIR: testDir, DATA_DIR: testDir, PROJECTS_DIR: testDir, 
-      VAULTS_DIR: vaultsDir,
-      LEGACY_VAULT: legacyDir,
-    },
-  };
-});
+testDir = path.join('/tmp', `contour-locate-test-${Date.now()}`);
+vaultsDir = path.join(testDir, 'vaults');
+legacyDir = path.join(testDir, 'legacy-vault');
 
-// 动态导入被测模块（在 mock 生效后）
-const locateModule = await import('../locate.js');
+const { extractFrontmatterText, createVaultLocator } = await import('../locate.js');
 const {
-  extractFrontmatterText,
   findProjectDir,
   findProjectDirForFlow,
   findProjectDirForDoc,
   findProjectDirForClaim,
-} = locateModule;
+} = createVaultLocator({
+  dataDir: testDir,
+  projectsDir: path.join(testDir, 'projects'),
+  vaultsDir,
+  legacyVault: legacyDir,
+  isDevelopment: true,
+});
 
 beforeAll(async () => {
   // 创建测试 vault 结构

@@ -1,14 +1,5 @@
 import { Router } from 'express';
-import {
-  listChannels,
-  createChannel,
-  updateChannel,
-  deleteChannel,
-  listAgentModelOptions,
-  testChannelDirect,
-  testChannelById,
-  fetchModels,
-} from '@contour/core/services';
+import { coreServices } from '../core.js';
 import type {
   Channel,
   ChannelCreateInput,
@@ -27,6 +18,8 @@ function toPublicChannel(channel: Channel): PublicChannel {
   const { apiKey: _apiKey, ...publicChannel } = channel;
   return publicChannel;
 }
+
+const { listChannels, createChannel, updateChannel, deleteChannel, listAgentModelOptions, testChannelDirect, testChannelById, fetchModels } = coreServices.channels;
 
 const router = Router();
 

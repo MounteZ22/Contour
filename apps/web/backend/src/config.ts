@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { configureCoreRuntime } from '@contour/core/runtime';
+import type { CoreRuntimeConfig } from '@contour/core/runtime';
 
 const isDev = process.env.NODE_ENV !== 'production'; // 默认开发模式，设置 NODE_ENV=production 切换
 const userHome = os.homedir(); // e.g. C:\Users\Z
@@ -59,13 +59,13 @@ export const CONFIG = {
   PROJECTS_DIR,
 };
 
-configureCoreRuntime({
+export const CORE_RUNTIME_CONFIG: CoreRuntimeConfig = {
   dataDir: DATA_DIR,
   projectsDir: PROJECTS_DIR,
   vaultsDir,
   legacyVault: path.join(contourRoot, 'example_vault'),
   isDevelopment: isDev,
-});
+};
 
 console.log(`[Contour] Vault path: ${CONFIG.VAULTS_DIR}`);
 console.log(`[Contour] Config file: ${CONFIG.CONFIG_FILE}`);

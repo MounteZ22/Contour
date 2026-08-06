@@ -3,18 +3,20 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { coreServices } from '../core.js';
 import { validateId, validateDocId, ValidationError } from '@contour/core/vault';
-import { findProjectDir, extractFrontmatterText } from '@contour/core/vault';
+import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
+
+const { invalidateCache, loadProjects, findProjectDir } = coreServices.vault;
 
 const router = Router();
 
 // GET /api/docs - 列出所有文档
 router.get('/', async (_req, res) => {
   try {
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     const docs = projects.flatMap((p) =>
       p.docs.map((d) => ({ ...d, projectId: p.projectId, projectName: p.title }))
     );
@@ -36,7 +38,7 @@ router.get('/:docId', async (req, res) => {
     const { docId } = req.params;
     validateDocId(docId, 'docId');
 
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
     const project = projects.find((p) => p.docs.some((d) => d.id === docId));
     if (!project) {
@@ -192,7 +194,7 @@ router.put('/:docId', async (req, res) => {
     }
 
     // 无 projectId：回退到全局搜索（向后兼容）
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
     const project = projects.find((p) => p.docs.some((d) => d.id === docId));
     if (!project) {
@@ -267,7 +269,7 @@ router.delete('/:docId', async (req, res) => {
     }
 
     // 无 projectId：回退到全局搜索（向后兼容）
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     // 从已加载的项目列表中直接查找包含该文档的项目，避免二次扫描
     const project = projects.find((p) => p.docs.some((d) => d.id === docId));
     if (!project) {

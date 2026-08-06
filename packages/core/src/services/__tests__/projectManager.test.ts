@@ -2,17 +2,12 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-let testRoot!: string;
-let projectsDir!: string;
+import os from "node:os";
 
-vi.mock("../../runtime/config.js", async () => {
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  testRoot = join(tmpdir(), `contour-project-manager-${Date.now()}`);
-  projectsDir = join(testRoot, "data", "projects");
-  return { CONFIG: { PROJECTS_DIR: projectsDir, DATA_DIR: testRoot, CONFIG_DIR: testRoot, VAULTS_DIR: testRoot, LEGACY_VAULT: testRoot } };
-});
+const testRoot = path.join(os.tmpdir(), `contour-project-manager-${Date.now()}`);
+const projectsDir = path.join(testRoot, "data", "projects");
 
+const { createProjectManager, validateProjectId } = await import("../projectManager.js");
 const {
   attachDirectory,
   attachFile,
@@ -21,8 +16,13 @@ const {
   getProjectConfig,
   getProjectConfigStatus,
   saveProjectConfig,
-  validateProjectId,
-} = await import("../projectManager.js");
+} = createProjectManager({
+  dataDir: testRoot,
+  projectsDir,
+  vaultsDir: testRoot,
+  legacyVault: testRoot,
+  isDevelopment: true,
+});
 
 const attachmentRoot = path.join(testRoot, "external");
 const projectId = "膜实验_2026";

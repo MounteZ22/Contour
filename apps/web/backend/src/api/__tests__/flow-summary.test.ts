@@ -28,46 +28,11 @@ vi.mock('../../config.js', async () => {
   };
 });
 
-vi.mock('../../services/channelManager.js', () => ({
-  getChannelById: vi.fn(async (id: string) => {
-    if (id === 'summary-channel') return {
-      id,
-      name: '摘要渠道',
-      provider: 'anthropic',
-      baseUrl: 'https://summary.example.test/v1',
-      apiKey: 'test-key',
-      enabled: true,
-      models: [{ id: 'summary-model', name: '摘要模型', enabled: true }],
-      createdAt: 0,
-      updatedAt: 0,
-    };
-    if (id === 'kimi-channel') return {
-      id,
-      name: 'Kimi Coding',
-      provider: 'kimi-coding',
-      baseUrl: 'https://api.kimi.com/coding/v1',
-      apiKey: 'test-key',
-      enabled: true,
-      models: [{ id: 'kimi-for-coding', name: 'Kimi', enabled: true }],
-      createdAt: 0,
-      updatedAt: 0,
-    };
-    if (id === 'deepseek-channel') return {
-      id,
-      name: 'DeepSeek',
-      provider: 'deepseek',
-      baseUrl: 'https://api.deepseek.com/anthropic',
-      apiKey: 'test-key',
-      enabled: true,
-      models: [{ id: 'deepseek-chat', name: 'DeepSeek', enabled: true }],
-      createdAt: 0,
-      updatedAt: 0,
-    };
-    return undefined;
-  }),
-  listChannels: vi.fn(async () => []),
-  normalizeBaseUrl: (value: string) => value.trim().replace(/\/+$/, ''),
-}));
+const testChannels = [
+  { id: 'summary-channel', name: '摘要渠道', provider: 'anthropic', baseUrl: 'https://summary.example.test/v1', apiKey: 'test-key', enabled: true, models: [{ id: 'summary-model', name: '摘要模型', enabled: true }], createdAt: 0, updatedAt: 0 },
+  { id: 'kimi-channel', name: 'Kimi Coding', provider: 'kimi-coding', baseUrl: 'https://api.kimi.com/coding/v1', apiKey: 'test-key', enabled: true, models: [{ id: 'kimi-for-coding', name: 'Kimi', enabled: true }], createdAt: 0, updatedAt: 0 },
+  { id: 'deepseek-channel', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://api.deepseek.com/anthropic', apiKey: 'test-key', enabled: true, models: [{ id: 'deepseek-chat', name: 'DeepSeek', enabled: true }], createdAt: 0, updatedAt: 0 },
+];
 
 const flowsRouter = (await import('../flows.js')).default;
 
@@ -85,6 +50,8 @@ async function createFlow(projectId: string, flowId: string, title: string): Pro
 }
 
 beforeAll(async () => {
+  await fs.mkdir(testDir, { recursive: true });
+  await fs.writeFile(path.join(testDir, 'channels.json'), JSON.stringify({ version: 1, channels: testChannels }));
   await createFlow('summary-project', 'F001', '服务端摘要测试');
   await fs.mkdir(path.join(vaultsDir, 'other-project', 'flows'), { recursive: true });
 });

@@ -4,12 +4,14 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ProjectData } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
-import { findProjectDir } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue } from '@contour/core/vault';
-import { ensureProjectDir, getProjectConfig } from '@contour/core/services';
+import { validateProjectId } from '@contour/core/services';
+
+const { invalidateCache, loadProjects, findProjectDir } = coreServices.vault;
+const { ensureProjectDir, getProjectConfig } = coreServices.projects;
 
 const router = Router();
 
@@ -47,7 +49,7 @@ async function moveToTrash(projectDir: string, projectName: string): Promise<voi
 // GET /api/project - 返回所有项目
 router.get('/', async (req, res) => {
   try {
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     const response: ApiResponse<{ projects: ProjectData[] }> = { success: true, data: { projects } };
     res.json(response);
   } catch (err) {
@@ -218,7 +220,7 @@ router.get('/:projectId/search-mentions', async (req, res) => {
 
     // 1. 搜索项目 Flows
     try {
-      const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+      const projects = await loadProjects();
       const project = projects.find((p) => p.projectId === projectId);
       if (project) {
         // Flows

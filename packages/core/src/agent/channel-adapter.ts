@@ -10,10 +10,8 @@
 
 import { AGENT_COMPATIBLE_PROVIDERS, PROVIDER_DEFAULT_URLS } from "../types.js";
 import type { Channel, ChannelModel } from "../types.js";
-import {
-  listChannels,
-  normalizeBaseUrl,
-} from "../services/channelManager.js";
+import { normalizeBaseUrl } from "../services/channelManager.js";
+import type { ChannelManager } from "../services/channelManager.js";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
 
 /** readonly 模式下开放的内置工具（全部只读） */
@@ -38,9 +36,9 @@ const FULL_BUILTIN_TOOLS = [
  *
  * @returns 第一个可用的 agent 兼容渠道，没有则返回 undefined
  */
-export async function findDefaultAgentChannel(): Promise<Channel | undefined> {
-  const channels = await listChannels();
-  return channels.find(
+export async function findDefaultAgentChannel(channels: Pick<ChannelManager, "listChannels">): Promise<Channel | undefined> {
+  const configuredChannels = await channels.listChannels();
+  return configuredChannels.find(
     (c) => c.enabled && AGENT_COMPATIBLE_PROVIDERS.has(c.provider),
   );
 }
@@ -196,3 +194,13 @@ export function channelToAgentRuntimeConfig(
     mcpConfirmationToolNames: overrides?.mcpConfirmationToolNames,
   };
 }
+
+export function createChannelAdapter(channels: Pick<ChannelManager, "listChannels">) {
+  return {
+    findDefaultAgentChannel: () => findDefaultAgentChannel(channels),
+    channelToAgentRuntimeConfig,
+    validateAgentChannelSelection,
+  };
+}
+
+export type ChannelAdapter = ReturnType<typeof createChannelAdapter>;

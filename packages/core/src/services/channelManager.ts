@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { CONFIG } from '../runtime/config.js';
+import type { CoreRuntimeConfig } from '../runtime/config.js';
 import {
   PROVIDER_DEFAULT_URLS,
 } from '@contour/shared';
@@ -23,16 +23,34 @@ import type {
   FetchModelsInput,
 } from '../types.js';
 
-const CONFIG_VERSION = 1;
-const CHANNELS_FILE = path.join(CONFIG.CONFIG_DIR, 'channels.json');
+export function normalizeAnthropicBaseUrl(baseUrl: string): string {
+  let url = baseUrl.trim().replace(/\/+$/, '');
+  url = url.replace(/\/messages$/, '');
+  if (!url.match(/\/v\d+$/)) {
+    try {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/' || pathname === '') url = `${url}/v1`;
+    } catch {
+      url = `${url}/v1`;
+    }
+  }
+  return url;
+}
 
-/** 供 Agent 模型选择器使用的安全展示数据，绝不包含渠道凭据。 */
+export function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, '');
+}
+
 export interface AgentModelOption {
   channelId: string;
   channelName: string;
   modelId: string;
   modelName: string;
 }
+
+const CONFIG_VERSION = 1;
+export function createChannelManager(runtime: Readonly<CoreRuntimeConfig>) {
+const CHANNELS_FILE = path.join(runtime.dataDir, 'channels.json');
 
 /** 读取渠道配置文件 */
 async function readConfig(): Promise<ChannelsConfig> {
@@ -51,8 +69,8 @@ async function readConfig(): Promise<ChannelsConfig> {
 /** 写入渠道配置文件 */
 async function writeConfig(config: ChannelsConfig): Promise<void> {
   try {
-    if (!existsSync(CONFIG.CONFIG_DIR)) {
-      mkdirSync(CONFIG.CONFIG_DIR, { recursive: true });
+    if (!existsSync(runtime.dataDir)) {
+      mkdirSync(runtime.dataDir, { recursive: true });
     }
     await fs.writeFile(CHANNELS_FILE, JSON.stringify(config, null, 2), 'utf-8');
   } catch (error) {
@@ -62,7 +80,7 @@ async function writeConfig(config: ChannelsConfig): Promise<void> {
 }
 
 /** 规范化 Anthropic Base URL */
-export function normalizeAnthropicBaseUrl(baseUrl: string): string {
+function normalizeAnthropicBaseUrl(baseUrl: string): string {
   let url = baseUrl.trim().replace(/\/+$/, '');
   url = url.replace(/\/messages$/, '');
   if (!url.match(/\/v\d+$/)) {
@@ -79,7 +97,7 @@ export function normalizeAnthropicBaseUrl(baseUrl: string): string {
 }
 
 /** 规范化通用 Base URL */
-export function normalizeBaseUrl(baseUrl: string): string {
+function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
@@ -99,18 +117,18 @@ function getTestModel(provider: ProviderType): string {
 
 // ===== 渠道 CRUD =====
 
-export async function listChannels(): Promise<Channel[]> {
+async function listChannels(): Promise<Channel[]> {
   const config = await readConfig();
   return config.channels;
 }
 
-export async function getChannelById(id: string): Promise<Channel | undefined> {
+async function getChannelById(id: string): Promise<Channel | undefined> {
   const config = await readConfig();
   return config.channels.find((c) => c.id === id);
 }
 
 /** 返回所有可用于 Agent 的已启用模型，不向调用方暴露 API Key 或 Base URL。 */
-export async function listAgentModelOptions(): Promise<AgentModelOption[]> {
+async function listAgentModelOptions(): Promise<AgentModelOption[]> {
   const channels = await listChannels();
   return channels.flatMap((channel) => {
     if (!channel.enabled || !AGENT_COMPATIBLE_PROVIDERS.has(channel.provider)) return [];
@@ -125,7 +143,7 @@ export async function listAgentModelOptions(): Promise<AgentModelOption[]> {
   });
 }
 
-export async function createChannel(input: ChannelCreateInput): Promise<Channel> {
+async function createChannel(input: ChannelCreateInput): Promise<Channel> {
   const config = await readConfig();
   const now = Date.now();
 
@@ -147,7 +165,7 @@ export async function createChannel(input: ChannelCreateInput): Promise<Channel>
   return channel;
 }
 
-export async function updateChannel(id: string, input: ChannelUpdateInput): Promise<Channel> {
+async function updateChannel(id: string, input: ChannelUpdateInput): Promise<Channel> {
   const config = await readConfig();
   const index = config.channels.findIndex((c) => c.id === id);
   if (index === -1) {
@@ -172,7 +190,7 @@ export async function updateChannel(id: string, input: ChannelUpdateInput): Prom
   return updated;
 }
 
-export async function deleteChannel(id: string): Promise<void> {
+async function deleteChannel(id: string): Promise<void> {
   const config = await readConfig();
   const index = config.channels.findIndex((c) => c.id === id);
   if (index === -1) {
@@ -186,7 +204,7 @@ export async function deleteChannel(id: string): Promise<void> {
 
 // ===== 测试连接 =====
 
-export async function testChannelDirect(
+async function testChannelDirect(
   input: FetchModelsInput,
 ): Promise<ChannelTestResult> {
   try {
@@ -200,7 +218,7 @@ export async function testChannelDirect(
   }
 }
 
-export async function testChannelById(channelId: string): Promise<ChannelTestResult> {
+async function testChannelById(channelId: string): Promise<ChannelTestResult> {
   const channel = await getChannelById(channelId);
   if (!channel) {
     return { success: false, message: '渠道不存在' };
@@ -268,7 +286,7 @@ async function testAnthropicCompatible(
 
 // ===== 拉取模型列表 =====
 
-export async function fetchModels(
+async function fetchModels(
   input: FetchModelsInput,
 ): Promise<FetchModelsResult> {
   try {
@@ -340,3 +358,8 @@ async function fetchAnthropicCompatibleModels(
     models,
   };
 }
+
+  return { listChannels, getChannelById, listAgentModelOptions, createChannel, updateChannel, deleteChannel, testChannelDirect, testChannelById, fetchModels };
+}
+
+export type ChannelManager = ReturnType<typeof createChannelManager>;

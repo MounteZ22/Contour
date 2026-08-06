@@ -1,12 +1,9 @@
 import { Router } from 'express';
-import {
-  getSettings,
-  getWebSearchSettingsStatus,
-  updateSettings,
-  updateWebSearchSettings,
-} from '@contour/core/services';
+import { coreServices } from '../core.js';
 import type { AppSettings } from '@contour/shared';
 import type { ApiResponse, WebSearchSettingsStatus } from '../types.js';
+
+const { getSettings, getWebSearchSettingsStatus, updateSettings, updateWebSearchSettings } = coreServices.settings;
 
 const router = Router();
 

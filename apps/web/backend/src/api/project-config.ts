@@ -2,16 +2,11 @@
 
 import { Router, type Response } from "express";
 import { ValidationError } from "@contour/core/vault";
-import {
-  attachDirectory,
-  attachFile,
-  detachDirectory,
-  detachFile,
-  getProjectConfigStatus,
-  validateProjectId,
-} from "@contour/core/services";
-import { ensureProjectDir } from "@contour/core/services";
-import { findProjectDir } from "@contour/core/vault";
+import { coreServices } from '../core.js';
+import { validateProjectId } from '@contour/core/services';
+
+const { attachDirectory, attachFile, detachDirectory, detachFile, getProjectConfigStatus, ensureProjectDir } = coreServices.projects;
+const { findProjectDir } = coreServices.vault;
 
 const router = Router();
 

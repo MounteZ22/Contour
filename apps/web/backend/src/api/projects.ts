@@ -9,11 +9,9 @@ import { Router } from "express";
 import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import {
-  getAttachedDirectories,
-  attachDirectory,
-  detachDirectory,
-} from "@contour/core/services";
+import { coreServices } from '../core.js';
+
+const { getAttachedDirectories, attachDirectory, detachDirectory } = coreServices.projects;
 
 const router = Router();
 

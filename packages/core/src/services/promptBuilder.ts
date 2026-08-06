@@ -1,11 +1,8 @@
 import path from "node:path";
-import { CONFIG } from "../runtime/config.js";
+import type { CoreRuntimeConfig } from "../runtime/config.js";
 import type { AIContextItem, ProjectData } from "../types.js";
 import { getSessionWorkspaceDir } from "../agent/session-storage.js";
-import {
-  getProjectConfigStatus,
-  type ProjectConfigStatus,
-} from "./projectManager.js";
+import type { ProjectManager, ProjectConfigStatus } from "./projectManager.js";
 import { loadProjects } from "../vault/loader.js";
 import { ROLE_PROMPT } from "./prompts/role.js";
 import { TOOL_GUIDELINES_PROMPT } from "./prompts/tool-guidelines.js";
@@ -34,13 +31,9 @@ export interface DynamicContextOptions {
 
 export interface PromptBuilderDependencies {
   loadProjects: typeof loadProjects;
-  getProjectConfigStatus: typeof getProjectConfigStatus;
+  getProjectConfigStatus: ProjectManager["getProjectConfigStatus"];
 }
 
-const DEFAULT_DEPENDENCIES: PromptBuilderDependencies = {
-  loadProjects,
-  getProjectConfigStatus,
-};
 
 const STATIC_SYSTEM_PROMPT = [
   ROLE_PROMPT,
@@ -106,10 +99,11 @@ function renderProjectGuidance(instructions: ProjectGuidanceInstructions[]): str
 
 /** 每条用户消息前重新读取项目、路径状态和已选资料。 */
 export async function buildDynamicContext(
+  runtime: Readonly<CoreRuntimeConfig>,
   options: DynamicContextOptions,
-  dependencies: PromptBuilderDependencies = DEFAULT_DEPENDENCIES,
+  dependencies: PromptBuilderDependencies,
 ): Promise<string> {
-  const projects = await dependencies.loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  const projects = await dependencies.loadProjects(runtime.vaultsDir, runtime.legacyVault);
   const project = findCurrentProject(projects, options);
   let config = unavailableConfig(options.projectDir);
   let configWarning: string | undefined;
@@ -119,7 +113,7 @@ export async function buildDynamicContext(
     configWarning = error instanceof Error ? error.message : "项目配置暂时无法读取";
   }
 
-  const dataDir = options.dataDir ?? CONFIG.DATA_DIR;
+  const dataDir = options.dataDir ?? runtime.dataDir;
   const sessionWorkspacePath = options.sessionId
     ? getSessionWorkspaceDir(dataDir, options.projectStorageId, options.sessionId)
     : path.join(dataDir, "projects", options.projectStorageId, "sessions", "（未提供 sessionId）");
@@ -150,11 +144,22 @@ export async function buildDynamicContext(
 
 /** Pi 默认 Prompt 之外的 Contour Prompt 总入口。 */
 export async function buildAgentPrompt(
+  runtime: Readonly<CoreRuntimeConfig>,
   options: DynamicContextOptions,
-  dependencies: PromptBuilderDependencies = DEFAULT_DEPENDENCIES,
+  dependencies: PromptBuilderDependencies,
 ): Promise<string> {
-  return `${buildSystemPrompt()}\n\n${await buildDynamicContext(options, dependencies)}`;
+  return `${buildSystemPrompt()}\n\n${await buildDynamicContext(runtime, options, dependencies)}`;
 }
+
+export function createPromptBuilder(runtime: Readonly<CoreRuntimeConfig>, dependencies: PromptBuilderDependencies) {
+  return {
+    buildSystemPrompt,
+    buildDynamicContext: (options: DynamicContextOptions) => buildDynamicContext(runtime, options, dependencies),
+    buildAgentPrompt: (options: DynamicContextOptions) => buildAgentPrompt(runtime, options, dependencies),
+  };
+}
+
+export type PromptBuilder = ReturnType<typeof createPromptBuilder>;
 
 export { ROLE_PROMPT } from "./prompts/role.js";
 export { TOOL_GUIDELINES_PROMPT } from "./prompts/tool-guidelines.js";

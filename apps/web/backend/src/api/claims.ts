@@ -4,18 +4,20 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { Claim } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { loadProjects } from '@contour/core/vault';
+import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
-import { findProjectDir, findProjectDirForClaim, extractFrontmatterText } from '@contour/core/vault';
+import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
+
+const { loadProjects, findProjectDir, findProjectDirForClaim } = coreServices.vault;
 
 const router = Router();
 
 // GET /api/claims - 所有 claims
 router.get('/', async (req, res) => {
   try {
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     const claims = projects.flatMap((p) => p.claims);
     const response: ApiResponse<{ claims: Claim[] }> = { success: true, data: { claims } };
     res.json(response);
@@ -34,7 +36,7 @@ router.get('/:claimId', async (req, res) => {
   try {
     const { claimId } = req.params;
     const { projectId } = req.query;
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
 
     let claim: Claim | undefined;
     if (projectId && typeof projectId === 'string') {

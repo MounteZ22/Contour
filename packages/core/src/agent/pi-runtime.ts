@@ -36,6 +36,9 @@ import { createOrResumePiSession } from "./session-storage.js";
 import { createPermissionExtensionFactory, createPermissionRequest, rejectAllPendingRequests } from "./permission-extension.js";
 import type { PermissionRequesterFn } from "./permission-extension.js";
 import { classifyAgentError, typedAgentError } from "./typed-error.js";
+import type { AuthorizedPaths } from "../services/authorizedPaths.js";
+import type { ProjectPluginConfigService } from "../services/project-plugin-config.js";
+import type { AuditLog } from "../services/audit-log.js";
 import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
 import { applyAgentToolPolicy } from "./tool-policy.js";
 import { createProjectMcpTools, type ProjectMcpTools } from "../tools/project-mcp-tools.js";
@@ -68,6 +71,9 @@ const BEARER_TOKEN = /\b(bearer\s+)[^\s,;]+/gi;
 export interface PiRuntimeOptions {
   /** AskUser 请求进入和离开时的路由生命周期回调。 */
   askUserLifecycle?: AskUserRequestLifecycle;
+  authorizedPaths?: AuthorizedPaths;
+  plugins?: Pick<ProjectPluginConfigService, "getEnabledProjectMcpServers">;
+  auditLog?: AuditLog;
 }
 
 function redactSensitiveText(value: string): string {
@@ -175,6 +181,7 @@ export class PiRuntime implements AgentRuntime {
   /** 当前运行时建立的外部 MCP 连接，必须随会话释放。 */
   private projectMcpTools: ProjectMcpTools | null = null;
   /** 仅属于此运行时的 AskUser 请求和 SSE 通道。 */
+  private readonly options: PiRuntimeOptions;
   private readonly askUserManager: AskUserRequestManager;
 
   /** 当前轮次序号（从 0 开始，每次 turn_start 递增） */
@@ -186,6 +193,7 @@ export class PiRuntime implements AgentRuntime {
   private pendingTurnFileWrites = new Map<string, string>();
 
   constructor(options: PiRuntimeOptions = {}) {
+    this.options = options;
     this.askUserManager = new AskUserRequestManager(options.askUserLifecycle);
   }
 
@@ -275,11 +283,15 @@ export class PiRuntime implements AgentRuntime {
       throw new Error("[PiRuntime] 权限模式无效");
     }
     const allowWrite = permissionMode === "review" || permissionMode === "yolo";
+    if (!this.options.authorizedPaths || !this.options.plugins) {
+      throw new Error("PiRuntime requires Core service dependencies");
+    }
     const contourFileTools = createAuthorizedFileTools({
         projectId,
         workspaceDir: effectiveCwd,
         additionalFiles: config.authorizedFiles,
         allowWrite,
+        authorizedPaths: this.options.authorizedPaths,
       }) as Array<{ name: string }>;
     // readonly 不调用 bridge，因此不会启动任何外部 MCP 程序。review/yolo 都会
     // 创建桥接，但由 ResourceLoader 的强制确认名单确保每次调用先确认。
@@ -287,6 +299,7 @@ export class PiRuntime implements AgentRuntime {
       projectId,
       projectDir: config.projectDir,
       permissionMode,
+      plugins: this.options.plugins,
     });
     try {
       const toolPolicy = applyAgentToolPolicy({
@@ -682,7 +695,7 @@ export class PiRuntime implements AgentRuntime {
     const mustConfirmTools = config.mcpConfirmationToolNames ?? [];
     const extensionFactories =
       permissionMode === "review" || mustConfirmTools.length > 0
-        ? [createPermissionExtensionFactory(permissionMode, config.dataDir, projectId, () => this.activeRequester, mustConfirmTools)]
+        ? [createPermissionExtensionFactory(permissionMode, config.dataDir, projectId, () => this.activeRequester, mustConfirmTools, this.options.auditLog)]
         : [];
 
     const loader = new DefaultResourceLoader({

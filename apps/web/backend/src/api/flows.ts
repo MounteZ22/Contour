@@ -4,25 +4,20 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { Flow } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
-import { findFlowDir, findProjectDir, extractFrontmatterText } from '@contour/core/vault';
+import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicCreateFile, atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 import {
-  addFlowLink,
-  deleteFlowAttachment,
   FlowAssetError,
-  removeFlowLink,
-  uploadFlowAttachment,
   validateVaultProjectId,
 } from '@contour/core/services';
-import {
-  createFlowSummaryDraft,
-  FlowSummaryError,
-  getFlowSummary,
-  saveFlowSummary,
-} from '@contour/core/services';
+import { FlowSummaryError } from '@contour/core/services';
+
+const { loadProjects, invalidateCache, findFlowDir, findProjectDir } = coreServices.vault;
+const { addFlowLink, deleteFlowAttachment, removeFlowLink, uploadFlowAttachment } = coreServices.flowAssets;
+const { createFlowSummaryDraft, getFlowSummary, saveFlowSummary } = coreServices.flowSummary;
 
 const router = Router();
 
@@ -62,7 +57,7 @@ function requireProjectId(value: unknown): string {
 // GET /api/flows - 所有 flow 列表（不含 sections 全文）
 router.get('/', async (req, res) => {
   try {
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     const flows = projects.flatMap((p) =>
       p.flows.map((f) => ({
         flowId: f.flowId,
@@ -97,7 +92,7 @@ router.get('/:flowId', async (req, res) => {
   try {
     const { flowId } = req.params;
     const { projectId } = req.query;
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
 
     let flow: Flow | undefined;
     if (projectId && typeof projectId === 'string') {
@@ -202,7 +197,7 @@ router.post('/', async (req, res) => {
     validateVaultProjectId(projectId);
     validateId(flowId, 'flowId');
 
-    const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+    const projects = await loadProjects();
     const project = projects.find((p) => p.projectId === projectId);
     if (!project) {
       const response: ApiResponse<never> = { success: false, error: 'Project not found' };

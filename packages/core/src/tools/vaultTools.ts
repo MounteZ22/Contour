@@ -1,99 +1,46 @@
-import { CONFIG } from '../runtime/config.js';
+import type { CoreRuntimeConfig } from '../runtime/config.js';
 import { loadProjects } from '../vault/loader.js';
 import { validateId } from '../vault/validate.js';
 import type { Flow, ProjectDoc } from '@contour/shared';
 
-async function scopedProjects(projectId?: string) {
-  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
-  return projectId ? projects.filter((project) => project.projectId === projectId) : projects;
-}
-
-/** 读取指定 Flow 的完整内容 */
-export async function getFlowDetail(flowId: string, projectId?: string): Promise<string> {
-  validateId(flowId, 'flowId');
-
-  const projects = await scopedProjects(projectId);
-  const flow = projects.flatMap((p) => p.flows).find((f) => f.flowId === flowId);
-
-  if (!flow) {
-    return JSON.stringify({ error: `Flow "${flowId}" 不存在` });
+export function createVaultTools(config: Readonly<CoreRuntimeConfig>) {
+  async function scopedProjects(projectId?: string) {
+    const projects = await loadProjects(config.vaultsDir, config.legacyVault);
+    return projectId ? projects.filter((project) => project.projectId === projectId) : projects;
   }
 
-  return formatFlow(flow);
-}
-
-/** 按关键词搜索 Flow */
-export async function searchFlows(query: string, projectId?: string): Promise<string> {
-  if (!query || typeof query !== 'string') {
-    return JSON.stringify({ error: '搜索关键词不能为空' });
+  async function getFlowDetail(flowId: string, projectId?: string): Promise<string> {
+    validateId(flowId, 'flowId');
+    const flow = (await scopedProjects(projectId)).flatMap((project) => project.flows).find((item) => item.flowId === flowId);
+    return flow ? formatFlow(flow) : JSON.stringify({ error: `Flow "${flowId}" 不存在` });
   }
 
-  const projects = await scopedProjects(projectId);
-  const allFlows = projects.flatMap((p) => p.flows);
-  const q = query.toLowerCase();
-
-  const matches = allFlows.filter(
-    (f) =>
-      f.title.toLowerCase().includes(q) ||
-      f.summary.toLowerCase().includes(q) ||
-      f.tags.some((t) => t.toLowerCase().includes(q)) ||
-      f.flowId.toLowerCase().includes(q),
-  );
-
-  if (matches.length === 0) {
-    return JSON.stringify({ results: [], message: `未找到匹配 "${query}" 的 Flow` });
+  async function searchFlows(query: string, projectId?: string): Promise<string> {
+    if (!query || typeof query !== 'string') return JSON.stringify({ error: '搜索关键词不能为空' });
+    const q = query.toLowerCase();
+    const matches = (await scopedProjects(projectId)).flatMap((project) => project.flows).filter((flow) =>
+      flow.title.toLowerCase().includes(q) || flow.summary.toLowerCase().includes(q) || flow.tags.some((tag) => tag.toLowerCase().includes(q)) || flow.flowId.toLowerCase().includes(q));
+    if (matches.length === 0) return JSON.stringify({ results: [], message: `未找到匹配 "${query}" 的 Flow` });
+    return JSON.stringify({ results: matches.map((flow) => ({ flowId: flow.flowId, title: flow.title, status: flow.status, summary: flow.summary, tags: flow.tags, openUncertainties: flow.openUncertainties, sectionCount: flow.sections.length })) }, null, 2);
   }
 
-  // 返回摘要信息（不含 section 内容，避免过长）
-  const summaries = matches.map((f) => ({
-    flowId: f.flowId,
-    title: f.title,
-    status: f.status,
-    summary: f.summary,
-    tags: f.tags,
-    openUncertainties: f.openUncertainties,
-    sectionCount: f.sections.length,
-  }));
-
-  return JSON.stringify({ results: summaries }, null, 2);
-}
-
-/** 读取指定 Doc 的完整内容 */
-export async function getDoc(docId: string, projectId?: string): Promise<string> {
-  validateId(docId, 'docId');
-
-  const projects = await scopedProjects(projectId);
-  const doc = projects.flatMap((p) => p.docs).find((d) => d.id === docId);
-
-  if (!doc) {
-    return JSON.stringify({ error: `文档 "${docId}" 不存在` });
+  async function getDoc(docId: string, projectId?: string): Promise<string> {
+    validateId(docId, 'docId');
+    const doc = (await scopedProjects(projectId)).flatMap((project) => project.docs).find((item) => item.id === docId);
+    return doc ? formatDoc(doc) : JSON.stringify({ error: `文档 "${docId}" 不存在` });
   }
 
-  return formatDoc(doc);
+  return { getFlowDetail, searchFlows, getDoc };
 }
 
 function formatFlow(flow: Flow): string {
-  let result = `# ${flow.title} (${flow.flowId})\n`;
-  result += `- 状态：${flow.status}\n`;
-  result += `- 摘要：${flow.summary}\n`;
-  result += `- 标签：${flow.tags.join(', ') || '无'}\n`;
-  result += `- 未解决问题：${flow.openUncertainties.join(', ') || '无'}\n\n`;
-  result += `- 附件：${flow.attachments.join(', ') || '无'}\n`;
-  result += `- 外部链接：${flow.links.map((link) => `${link.label} (${link.path})`).join(', ') || '无'}\n\n`;
-
-  for (const section of flow.sections) {
-    result += `## ${section.title}\n${section.content}\n\n`;
-  }
-
+  let result = `# ${flow.title} (${flow.flowId})\n- 状态：${flow.status}\n- 摘要：${flow.summary}\n- 标签：${flow.tags.join(', ') || '无'}\n- 未解决问题：${flow.openUncertainties.join(', ') || '无'}\n\n- 附件：${flow.attachments.join(', ') || '无'}\n- 外部链接：${flow.links.map((link) => `${link.label} (${link.path})`).join(', ') || '无'}\n\n`;
+  for (const section of flow.sections) result += `## ${section.title}\n${section.content}\n\n`;
   return result;
 }
 
 function formatDoc(doc: ProjectDoc): string {
-  let result = `# ${doc.title} (${doc.id})\n`;
-  if (doc.tags && doc.tags.length > 0) {
-    result += `- 标签：${doc.tags.join(', ')}\n`;
-  }
-  result += `- 摘要：${doc.summary}\n\n`;
-  result += doc.content;
-  return result;
+  return `# ${doc.title} (${doc.id})\n${doc.tags?.length ? `- 标签：${doc.tags.join(', ')}\n` : ''}- 摘要：${doc.summary}\n\n${doc.content}`;
 }
+
+export type VaultTools = ReturnType<typeof createVaultTools>;

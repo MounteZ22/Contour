@@ -18,7 +18,8 @@
 
 import { PiRuntime } from "./pi-runtime.js";
 import type { AgentStreamEvent } from "./agent-runtime.js";
-import { CONFIG } from "../runtime/config.js";
+import { createCoreServices } from "../services/core-services.js";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN;
@@ -38,8 +39,21 @@ console.log("🌐 Base URL:", BASE_URL);
 console.log("📁 CWD:", process.cwd());
 console.log("");
 
+const dataDir = process.env.CONTOUR_DATA_DIR ?? path.join(process.cwd(), ".contour-manual");
+const coreServices = createCoreServices({
+  dataDir,
+  projectsDir: path.join(dataDir, "projects"),
+  vaultsDir: process.cwd(),
+  legacyVault: process.cwd(),
+  isDevelopment: true,
+});
+
 async function main() {
-  const runtime = new PiRuntime();
+  const runtime = new PiRuntime({
+    authorizedPaths: coreServices.authorizedPaths,
+    plugins: coreServices.plugins,
+    auditLog: coreServices.auditLog,
+  });
 
   try {
     // ── Step 1: Init ──────────────────────────────────────────────────────
@@ -48,7 +62,7 @@ async function main() {
       apiKey: API_KEY!,
       baseUrl: BASE_URL!,
       model: "claude-sonnet-5",
-      dataDir: CONFIG.DATA_DIR,
+      dataDir,
       projectDir: process.cwd(),
       cwd: process.cwd(),
       tools: ["read"],

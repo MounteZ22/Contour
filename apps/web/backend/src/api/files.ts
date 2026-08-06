@@ -1,11 +1,13 @@
 import { Router, type Response } from 'express';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { authorizeProjectPath, PathNotAuthorizedError } from '@contour/core/services';
+import { PathNotAuthorizedError } from '@contour/core/services';
+import { coreServices } from '../core.js';
 import { openWithSystem, revealInFileManager } from '../services/hostFileActions.js';
 import { ValidationError } from '@contour/core/vault';
-import { CONFIG } from '../config.js';
-import { loadProjects } from '@contour/core/vault';
+
+const { authorizeProjectPath } = coreServices.authorizedPaths;
+const { loadProjects } = coreServices.vault;
 
 const router = Router();
 
@@ -47,7 +49,7 @@ async function projectAccess(projectId: string, flowId: unknown): Promise<{
   linkedFiles: string[];
   projectDir?: string;
 }> {
-  const projects = await loadProjects(CONFIG.VAULTS_DIR, CONFIG.LEGACY_VAULT);
+  const projects = await loadProjects();
   const project = projects.find((item) => item.projectId === projectId);
   if (!project) throw new PathNotAuthorizedError();
   if (flowId === undefined) return { linkedFiles: [], projectDir: project.projectDir };

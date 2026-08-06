@@ -16,7 +16,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync, rmSync 
 import path from "node:path";
 import crypto from "node:crypto";
 import type { AgentRuntimeConfig } from "./agent-runtime.js";
-import { auditLog } from "../services/audit-log.js";
+import type { AuditLog } from "../services/audit-log.js";
 
 // ── 类型 ───────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ function loadRules(dataDir: string, projectId: string): PermissionRule[] {
 /**
  * 追加一条规则（原子写入）
  */
-function persistRule(dataDir: string, projectId: string, rule: PermissionRule): void {
+function persistRule(dataDir: string, projectId: string, rule: PermissionRule, auditLog: AuditLog): void {
   try {
     const filePath = rulesFilePath(dataDir, projectId);
     const dir = path.dirname(filePath);
@@ -271,6 +271,7 @@ export function createPermissionExtensionFactory(
   projectId: string,
   getRequester: () => PermissionRequesterFn | null,
   alwaysConfirmToolNames: readonly string[] = [],
+  auditLog: AuditLog = () => {},
 ): (pi: any) => void {
   return (pi: any) => {
     const forcedTools = new Set(alwaysConfirmToolNames);
@@ -334,7 +335,7 @@ export function createPermissionExtensionFactory(
               toolName: event.toolName,
               pattern: inputStr.slice(0, 200),
               action: result.action,
-            });
+            }, auditLog);
           }
 
           if (result.action === "deny") {

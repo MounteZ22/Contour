@@ -8,7 +8,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Type } from "typebox";
-import { getEnabledProjectMcpServers, type McpServerConfig } from "../services/project-plugin-config.js";
+import type { McpServerConfig, ProjectPluginConfigService } from "../services/project-plugin-config.js";
 
 const CONNECT_TIMEOUT_MS = 30_000;
 const CALL_TIMEOUT_MS = 60_000;
@@ -57,6 +57,7 @@ export interface CreateProjectMcpToolsOptions {
   /** 测试注入点；生产环境始终使用 MCP Client。 */
   createClient?: () => McpClientLike;
   createTransport?: (server: McpServerConfig, environment: Record<string, string>) => StdioClientTransport;
+  plugins: Pick<ProjectPluginConfigService, "getEnabledProjectMcpServers">;
 }
 
 function truncate(text: string, limit: number): string {
@@ -151,7 +152,7 @@ export async function createProjectMcpTools(options: CreateProjectMcpToolsOption
     return { tools: [], reviewConfirmationToolNames: [], dispose: async () => {} };
   }
 
-  const servers = getEnabledProjectMcpServers(options.projectId).slice(0, 3);
+  const servers = options.plugins.getEnabledProjectMcpServers(options.projectId).slice(0, 3);
   const clients: McpClientLike[] = [];
   const tools: ProjectMcpTools["tools"] = [];
   const reviewConfirmationToolNames: string[] = [];

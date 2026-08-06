@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { CONFIG } from "../runtime/config.js";
+import type { CoreRuntimeConfig } from "../runtime/config.js";
 import { ValidationError } from "../vault/validate.js";
 import { isInside, comparisonKey } from "../vault/path-utils.js";
 
@@ -73,9 +73,9 @@ export function validateProjectId(projectId: unknown): asserts projectId is stri
   }
 }
 
-function projectDataDir(projectId: string): string {
+function projectDataDir(runtime: Readonly<CoreRuntimeConfig>, projectId: string): string {
   validateProjectId(projectId);
-  const root = path.resolve(CONFIG.PROJECTS_DIR);
+  const root = path.resolve(runtime.projectsDir);
   const target = path.resolve(root, projectId);
   const relative = path.relative(root, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -84,8 +84,8 @@ function projectDataDir(projectId: string): string {
   return target;
 }
 
-function configFilePath(projectId: string): string {
-  return path.join(projectDataDir(projectId), "config.json");
+function configFilePath(runtime: Readonly<CoreRuntimeConfig>, projectId: string): string {
+  return path.join(projectDataDir(runtime, projectId), "config.json");
 }
 
 function normalizedAbsolutePath(value: string): string {
@@ -112,7 +112,7 @@ function normalizeStoredPaths(value: unknown): string[] {
   return paths;
 }
 
-function validateAttachmentTarget(inputPath: string, kind: AttachmentKind): string {
+function validateAttachmentTarget(runtime: Readonly<CoreRuntimeConfig>, inputPath: string, kind: AttachmentKind): string {
   const normalized = normalizedAbsolutePath(inputPath);
   let canonicalPath: string;
   let stats;
@@ -135,7 +135,7 @@ function validateAttachmentTarget(inputPath: string, kind: AttachmentKind): stri
     throw new ValidationError("不允许附加磁盘根目录");
   }
 
-  const contourDataRoot = path.dirname(path.resolve(CONFIG.PROJECTS_DIR));
+  const contourDataRoot = path.dirname(path.resolve(runtime.projectsDir));
   if (isInside(contourDataRoot, canonicalPath)) {
     throw new ValidationError("不允许附加 Contour 自身的数据目录或文件");
   }
@@ -166,25 +166,25 @@ function atomicWriteConfig(filePath: string, config: ProjectConfig): void {
 }
 
 /** 确保项目数据目录与 config.json 存在。 */
-export function ensureProjectDir(projectId: string, projectDir?: string): string {
-  const dir = projectDataDir(projectId);
-  const configPath = configFilePath(projectId);
+export function ensureProjectDir(runtime: Readonly<CoreRuntimeConfig>, projectId: string, projectDir?: string): string {
+  const dir = projectDataDir(runtime, projectId);
+  const configPath = configFilePath(runtime, projectId);
   mkdirSync(dir, { recursive: true });
 
   if (!existsSync(configPath)) {
-    saveProjectConfig({ ...DEFAULT_CONFIG, projectDir: projectDir ?? "" }, projectId);
+    saveProjectConfig(runtime, { ...DEFAULT_CONFIG, projectDir: projectDir ?? "" }, projectId);
   } else if (projectDir) {
-    const existing = getProjectConfig(projectId);
+    const existing = getProjectConfig(runtime, projectId);
     if (existing.projectDir !== projectDir) {
-      saveProjectConfig({ ...existing, projectDir }, projectId);
+      saveProjectConfig(runtime, { ...existing, projectDir }, projectId);
     }
   }
   return dir;
 }
 
 /** 读取项目配置；旧配置缺少 attachedFiles 时自动按空数组处理。 */
-export function getProjectConfig(projectId: string): ProjectConfig {
-  const filePath = configFilePath(projectId);
+export function getProjectConfig(runtime: Readonly<CoreRuntimeConfig>, projectId: string): ProjectConfig {
+  const filePath = configFilePath(runtime, projectId);
   if (!existsSync(filePath)) return emptyConfig();
 
   let parsed: Partial<ProjectConfig>;
@@ -201,18 +201,18 @@ export function getProjectConfig(projectId: string): ProjectConfig {
 }
 
 /** 以临时文件 + 重命名方式原子保存，避免进程中断留下半个 JSON。 */
-export function saveProjectConfig(config: ProjectConfig, projectId: string): void {
+export function saveProjectConfig(runtime: Readonly<CoreRuntimeConfig>, config: ProjectConfig, projectId: string): void {
   const normalized: ProjectConfig = {
     projectDir: typeof config.projectDir === "string" ? config.projectDir : "",
     attachedDirectories: normalizeStoredPaths(config.attachedDirectories),
     attachedFiles: normalizeStoredPaths(config.attachedFiles),
   };
-  atomicWriteConfig(configFilePath(projectId), normalized);
+  atomicWriteConfig(configFilePath(runtime, projectId), normalized);
 }
 
 /** 返回全部已配置路径及其当前可用状态，不删除或隐藏离线路径。 */
-export function getProjectConfigStatus(projectId: string): ProjectConfigStatus {
-  const config = getProjectConfig(projectId);
+export function getProjectConfigStatus(runtime: Readonly<CoreRuntimeConfig>, projectId: string): ProjectConfigStatus {
+  const config = getProjectConfig(runtime, projectId);
   return {
     projectDir: config.projectDir,
     attachedDirectories: config.attachedDirectories.map((itemPath) => ({
@@ -227,42 +227,42 @@ export function getProjectConfigStatus(projectId: string): ProjectConfigStatus {
 }
 
 /** 兼容旧调用：返回全部已配置目录，包括暂时离线的目录。 */
-export function getAttachedDirectories(projectId: string): string[] {
-  return getProjectConfig(projectId).attachedDirectories;
+export function getAttachedDirectories(runtime: Readonly<CoreRuntimeConfig>, projectId: string): string[] {
+  return getProjectConfig(runtime, projectId).attachedDirectories;
 }
 
-export function attachDirectory(dirPath: string, projectId: string): ProjectConfig {
-  return attachPath(dirPath, projectId, "directory");
+export function attachDirectory(runtime: Readonly<CoreRuntimeConfig>, dirPath: string, projectId: string): ProjectConfig {
+  return attachPath(runtime, dirPath, projectId, "directory");
 }
 
-export function attachFile(filePath: string, projectId: string): ProjectConfig {
-  return attachPath(filePath, projectId, "file");
+export function attachFile(runtime: Readonly<CoreRuntimeConfig>, filePath: string, projectId: string): ProjectConfig {
+  return attachPath(runtime, filePath, projectId, "file");
 }
 
-function attachPath(inputPath: string, projectId: string, kind: AttachmentKind): ProjectConfig {
-  const canonicalPath = validateAttachmentTarget(inputPath, kind);
-  const config = getProjectConfig(projectId);
+function attachPath(runtime: Readonly<CoreRuntimeConfig>, inputPath: string, projectId: string, kind: AttachmentKind): ProjectConfig {
+  const canonicalPath = validateAttachmentTarget(runtime, inputPath, kind);
+  const config = getProjectConfig(runtime, projectId);
   const target = kind === "directory" ? config.attachedDirectories : config.attachedFiles;
   const key = comparisonKey(canonicalPath);
   if (!target.some((existing) => comparisonKey(existing) === key)) {
     target.push(canonicalPath);
-    saveProjectConfig(config, projectId);
+    saveProjectConfig(runtime, config, projectId);
   }
   return config;
 }
 
-export function detachDirectory(dirPath: string, projectId: string): ProjectConfig {
-  return detachPath(dirPath, projectId, "directory");
+export function detachDirectory(runtime: Readonly<CoreRuntimeConfig>, dirPath: string, projectId: string): ProjectConfig {
+  return detachPath(runtime, dirPath, projectId, "directory");
 }
 
-export function detachFile(filePath: string, projectId: string): ProjectConfig {
-  return detachPath(filePath, projectId, "file");
+export function detachFile(runtime: Readonly<CoreRuntimeConfig>, filePath: string, projectId: string): ProjectConfig {
+  return detachPath(runtime, filePath, projectId, "file");
 }
 
-function detachPath(inputPath: string, projectId: string, kind: AttachmentKind): ProjectConfig {
+function detachPath(runtime: Readonly<CoreRuntimeConfig>, inputPath: string, projectId: string, kind: AttachmentKind): ProjectConfig {
   const normalized = normalizedAbsolutePath(inputPath);
   const key = comparisonKey(normalized);
-  const config = getProjectConfig(projectId);
+  const config = getProjectConfig(runtime, projectId);
   if (kind === "directory") {
     config.attachedDirectories = config.attachedDirectories.filter(
       (existing) => comparisonKey(existing) !== key,
@@ -272,18 +272,35 @@ function detachPath(inputPath: string, projectId: string, kind: AttachmentKind):
       (existing) => comparisonKey(existing) !== key,
     );
   }
-  saveProjectConfig(config, projectId);
+  saveProjectConfig(runtime, config, projectId);
   return config;
 }
 
 /** 列出所有已存在的项目数据目录。 */
-export function listProjects(): string[] {
+export function listProjects(runtime: Readonly<CoreRuntimeConfig>): string[] {
   try {
-    if (!existsSync(CONFIG.PROJECTS_DIR)) return [];
-    return readdirSync(CONFIG.PROJECTS_DIR, { withFileTypes: true })
+    if (!existsSync(runtime.projectsDir)) return [];
+    return readdirSync(runtime.projectsDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {
     return [];
   }
 }
+
+export function createProjectManager(runtime: Readonly<CoreRuntimeConfig>) {
+  return {
+    ensureProjectDir: (projectId: string, projectDir?: string) => ensureProjectDir(runtime, projectId, projectDir),
+    getProjectConfig: (projectId: string) => getProjectConfig(runtime, projectId),
+    saveProjectConfig: (config: ProjectConfig, projectId: string) => saveProjectConfig(runtime, config, projectId),
+    getProjectConfigStatus: (projectId: string) => getProjectConfigStatus(runtime, projectId),
+    getAttachedDirectories: (projectId: string) => getAttachedDirectories(runtime, projectId),
+    attachDirectory: (dirPath: string, projectId: string) => attachDirectory(runtime, dirPath, projectId),
+    attachFile: (filePath: string, projectId: string) => attachFile(runtime, filePath, projectId),
+    detachDirectory: (dirPath: string, projectId: string) => detachDirectory(runtime, dirPath, projectId),
+    detachFile: (filePath: string, projectId: string) => detachFile(runtime, filePath, projectId),
+    listProjects: () => listProjects(runtime),
+  };
+}
+
+export type ProjectManager = ReturnType<typeof createProjectManager>;

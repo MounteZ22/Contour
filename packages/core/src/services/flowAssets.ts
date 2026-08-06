@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { FlowLink } from '@contour/shared';
 import { atomicCreateFile, atomicWriteFile } from '../vault/atomic.js';
 import { invalidateCache } from '../vault/loader.js';
-import { findFlowDir, findProjectDir } from '../vault/locate.js';
+import type { VaultLocator } from '../vault/locate.js';
 import { getFlowLinks } from '../vault/parser.js';
 import { ValidationError, validateId } from '../vault/validate.js';
 import { parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
@@ -113,11 +113,11 @@ function pathComparisonKey(value: string): string {
   return process.platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
 }
 
-async function requireFlowDir(flowId: string, projectId: unknown): Promise<string> {
+async function requireFlowDir(locator: VaultLocator, flowId: string, projectId: unknown): Promise<string> {
   validateId(flowId, 'flowId');
   validateVaultProjectId(projectId);
-  const projectDir = await findProjectDir(projectId);
-  const flowDir = projectDir ? await findFlowDir(projectDir, flowId) : null;
+  const projectDir = await locator.findProjectDir(projectId);
+  const flowDir = projectDir ? await locator.findFlowDir(projectDir, flowId) : null;
   if (!flowDir) throw new FlowAssetError('Flow not found', 404);
   return flowDir;
 }
@@ -171,7 +171,7 @@ async function readFlowDocument(flowDir: string): Promise<{
   }
 }
 
-export async function uploadFlowAttachment(input: {
+export async function uploadFlowAttachment(locator: VaultLocator, input: {
   flowId: string;
   projectId: unknown;
   filename: unknown;
@@ -180,7 +180,7 @@ export async function uploadFlowAttachment(input: {
   const filename = input.filename;
   validateAttachmentFilename(filename);
   const content = decodeAttachment(input.contentBase64);
-  const flowDir = await requireFlowDir(input.flowId, input.projectId);
+  const flowDir = await requireFlowDir(locator, input.flowId, input.projectId);
   return withFlowMutationLock(flowDir, async () => {
     const attachmentsDir = await ensureAttachmentsDir(flowDir);
     const targetFile = path.join(attachmentsDir, filename);
@@ -198,14 +198,14 @@ export async function uploadFlowAttachment(input: {
   });
 }
 
-export async function deleteFlowAttachment(input: {
+export async function deleteFlowAttachment(locator: VaultLocator, input: {
   flowId: string;
   projectId: unknown;
   filename: unknown;
 }): Promise<{ attachments: string[] }> {
   const filename = input.filename;
   validateAttachmentFilename(filename);
-  const flowDir = await requireFlowDir(input.flowId, input.projectId);
+  const flowDir = await requireFlowDir(locator, input.flowId, input.projectId);
   return withFlowMutationLock(flowDir, async () => {
     const attachmentsDir = path.join(flowDir, 'attachments');
     try {
@@ -236,7 +236,7 @@ export async function deleteFlowAttachment(input: {
   });
 }
 
-export async function addFlowLink(input: {
+export async function addFlowLink(locator: VaultLocator, input: {
   flowId: string;
   projectId: unknown;
   path: unknown;
@@ -244,7 +244,7 @@ export async function addFlowLink(input: {
 }): Promise<{ links: FlowLink[]; created: boolean }> {
   const linkPath = normalizeLinkPath(input.path);
   const label = validateLinkLabel(input.label);
-  const flowDir = await requireFlowDir(input.flowId, input.projectId);
+  const flowDir = await requireFlowDir(locator, input.flowId, input.projectId);
   return withFlowMutationLock(flowDir, async () => {
     const document = await readFlowDocument(flowDir);
     if (!document) throw new FlowAssetError('flow.md frontmatter 无效', 422);
@@ -264,13 +264,13 @@ export async function addFlowLink(input: {
   });
 }
 
-export async function removeFlowLink(input: {
+export async function removeFlowLink(locator: VaultLocator, input: {
   flowId: string;
   projectId: unknown;
   path: unknown;
 }): Promise<{ links: FlowLink[] }> {
   const linkPath = normalizeLinkPath(input.path);
-  const flowDir = await requireFlowDir(input.flowId, input.projectId);
+  const flowDir = await requireFlowDir(locator, input.flowId, input.projectId);
   return withFlowMutationLock(flowDir, async () => {
     const document = await readFlowDocument(flowDir);
     if (!document) throw new FlowAssetError('flow.md frontmatter 无效', 422);
@@ -285,3 +285,14 @@ export async function removeFlowLink(input: {
     return { links: nextLinks };
   });
 }
+
+export function createFlowAssets(locator: VaultLocator) {
+  return {
+    uploadFlowAttachment: (input: Parameters<typeof uploadFlowAttachment>[1]) => uploadFlowAttachment(locator, input),
+    deleteFlowAttachment: (input: Parameters<typeof deleteFlowAttachment>[1]) => deleteFlowAttachment(locator, input),
+    addFlowLink: (input: Parameters<typeof addFlowLink>[1]) => addFlowLink(locator, input),
+    removeFlowLink: (input: Parameters<typeof removeFlowLink>[1]) => removeFlowLink(locator, input),
+  };
+}
+
+export type FlowAssets = ReturnType<typeof createFlowAssets>;

@@ -2,17 +2,12 @@
 
 import { Router, type Response } from "express";
 import { ValidationError } from "@contour/core/vault";
-import { findProjectDir } from "@contour/core/vault";
-import { ensureProjectDir, validateProjectId } from "@contour/core/services";
-import {
-  addMcpServer,
-  addSkillDirectory,
-  getProjectPluginConfig,
-  removeMcpServer,
-  removeSkillDirectory,
-  setMcpServerEnabled,
-  setSkillDirectoryEnabled,
-} from "@contour/core/services";
+import { validateProjectId } from '@contour/core/services';
+import { coreServices } from '../core.js';
+
+const { findProjectDir } = coreServices.vault;
+const { ensureProjectDir } = coreServices.projects;
+const { addMcpServer, addSkillDirectory, getProjectPluginConfig, removeMcpServer, removeSkillDirectory, setMcpServerEnabled, setSkillDirectoryEnabled } = coreServices.plugins;
 
 const router = Router();
 

@@ -15,7 +15,7 @@
  */
 
 import { Type, type Static } from "typebox";
-import { executeTool } from "./toolRegistry.js";
+import type { ToolRegistry } from "./toolRegistry.js";
 
 // ── 参数 schema ─────────────────────────────────────────────────────────────
 
@@ -45,11 +45,12 @@ const getDocParams = Type.Object({
  * 一致的"工具成功执行但返回错误内容"语义）。
  */
 async function runVaultTool(
+  toolRegistry: ToolRegistry,
   toolName: "getFlowDetail" | "searchFlows" | "getDoc",
   params: Record<string, unknown>,
   projectId?: string,
 ) {
-  const result = await executeTool(toolName, params, projectId);
+  const result = await toolRegistry.executeTool(toolName, params, projectId);
   return {
     content: [{ type: "text" as const, text: result }],
     details: {},
@@ -85,7 +86,7 @@ Contour 的 Flow 和 Doc 通过以下业务工具提供结构化导航。用户�
  * 类型上不强标 PiToolDefinition（泛型签名复杂），由 createAgentSession 的
  * customTools 参数做结构校验，tsc 会拦截不匹配。
  */
-export function createContourCustomTools(projectId?: string) {
+export function createContourCustomTools(toolRegistry: ToolRegistry, projectId?: string) {
   return [
   {
     name: "getFlowDetail",
@@ -94,7 +95,7 @@ export function createContourCustomTools(projectId?: string) {
       "读取指定研究脉络（Flow）的完整内容，包括所有章节。需要深入了解某个研究方向的详细信息时调用。",
     parameters: getFlowDetailParams,
     execute: async (_toolCallId: string, params: Static<typeof getFlowDetailParams>) =>
-      runVaultTool("getFlowDetail", params, projectId),
+      runVaultTool(toolRegistry, "getFlowDetail", params, projectId),
   },
   {
     name: "searchFlows",
@@ -103,7 +104,7 @@ export function createContourCustomTools(projectId?: string) {
       "按关键词搜索研究脉络（Flow）。在标题、摘要、标签中匹配。返回匹配的 Flow 摘要列表。需要查找相关内容但不确定具体 Flow ID 时调用。",
     parameters: searchFlowsParams,
     execute: async (_toolCallId: string, params: Static<typeof searchFlowsParams>) =>
-      runVaultTool("searchFlows", params, projectId),
+      runVaultTool(toolRegistry, "searchFlows", params, projectId),
   },
   {
     name: "getDoc",
@@ -112,10 +113,7 @@ export function createContourCustomTools(projectId?: string) {
       "读取指定文档（Doc）的完整内容。需要查看项目文档、研究计划、术语表等详细信息时调用。",
     parameters: getDocParams,
     execute: async (_toolCallId: string, params: Static<typeof getDocParams>) =>
-      runVaultTool("getDoc", params, projectId),
+      runVaultTool(toolRegistry, "getDoc", params, projectId),
   },
   ];
 }
-
-/** @deprecated 新的 Agent 请求应使用 createContourCustomTools(projectId)。 */
-export const contourCustomTools = createContourCustomTools();
