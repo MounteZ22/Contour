@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createMessageHistoryService, parseSessionJsonl } from '../message-history.js';
+import { createMessageHistoryService, parseSessionJsonl, parseSessionJsonlStream } from '../message-history.js';
 
 // ── 测试用 fixture（仓库内联构造，不含真实用户数据）────────────────────────────
 
@@ -245,6 +245,47 @@ describe('parseSessionJsonl 容错', () => {
   });
 });
 
+// ── 解析器：fallback id 唯一性 ─────────────────────────────────────────────────
+
+describe('parseSessionJsonl fallback id', () => {
+  it('Given 多条记录缺 id 且与带 id 记录混排, When 解析, Then 兜底 id 全局唯一', () => {
+    const noId = (message: Record<string, unknown>): string =>
+      JSON.stringify({ type: 'message', message });
+    const jsonl = [
+      noId(textContent('问题一')),
+      messageRecord('a1', { role: 'assistant', content: [textBlock('回答一')] }),
+      noId(textContent('问题二')),
+      noId({ role: 'assistant', content: [textBlock('回答二')] }),
+      messageRecord('a3', { role: 'assistant', content: [textBlock('回答三')] }),
+      noId({ role: 'assistant', content: [textBlock('回答四')] }),
+    ].join('\n');
+
+    const messages = parseSessionJsonl(jsonl);
+    const ids = messages.map((message) => message.id);
+
+    expect(ids).toHaveLength(6);
+    // 带 id 的记录保留原始 id；缺 id 记录使用 hist_N 且互不重复
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.filter((id) => id.startsWith('hist_')).sort()).toEqual(['hist_0', 'hist_1', 'hist_2', 'hist_3']);
+  });
+
+  it('Given 全部记录缺 id, When 解析, Then 兜底 id 从 0 开始递增且唯一', () => {
+    const noId = (message: Record<string, unknown>): string =>
+      JSON.stringify({ type: 'message', message });
+    const jsonl = [
+      noId(textContent('问题一')),
+      noId({ role: 'assistant', content: [textBlock('回答一')] }),
+      noId(textContent('问题二')),
+      noId({ role: 'assistant', content: [textBlock('回答二')] }),
+    ].join('\n');
+
+    const messages = parseSessionJsonl(jsonl);
+    const ids = messages.map((message) => message.id);
+
+    expect(ids).toEqual(['hist_0', 'hist_1', 'hist_2', 'hist_3']);
+  });
+});
+
 // ── 服务：文件读取 + 缓存 ──────────────────────────────────────────────────────
 
 describe('createMessageHistoryService 缓存', () => {
@@ -362,5 +403,70 @@ describe('createMessageHistoryService 缓存', () => {
     const result = await service.readSessionMessages('project-a', 'session-1');
 
     expect(result).toBeNull();
+  });
+});
+
+// ── 流式解析：与纯函数映射一致，且不依赖整文件读入 ─────────────────────────────
+
+describe('parseSessionJsonlStream 流式读取', () => {
+  it('Given 包含文本/多工具/错误结果/损坏行的会话文件, When 流式解析, Then 与 parseSessionJsonl 纯函数结果完全一致', async () => {
+    const dir = path.join(tmpRoot, 'stream-equivalence');
+    const sessionDir = path.join(dir, 'projects', 'project-a', 'sessions', 'session-1');
+    await fs.mkdir(sessionDir, { recursive: true });
+
+    const jsonl = [
+      JSON.stringify({ type: 'session', version: 3, id: 'sdk-stream' }),
+      messageRecord('u1', textContent('并行探索')),
+      messageRecord('a1', {
+        role: 'assistant',
+        content: [
+          textBlock('我来查看'),
+          toolCallBlock('tool-S1', 'ls', { path: 'src' }),
+          toolCallBlock('tool-S2', 'grep', { pattern: 'TODO' }),
+        ],
+      }),
+      toolResultRecord('r1', 'tool-S1', 'ls', 'src/index.ts'),
+      toolResultRecord('r2', 'tool-S2', 'grep', 'ENOENT: 失败', true),
+      messageRecord('a2', { role: 'assistant', content: [textBlock('结论')] }),
+      '{ not valid json',
+      messageRecord('u2', textContent('再来一轮')),
+    ].join('\n');
+    const filePath = path.join(sessionDir, 'stream.jsonl');
+    await fs.writeFile(filePath, jsonl, 'utf-8');
+
+    const streamed = await parseSessionJsonlStream(filePath);
+    const pure = parseSessionJsonl(jsonl);
+
+    expect(streamed).toEqual(pure);
+    expect(streamed).toHaveLength(4);
+    expect(streamed[1]!.toolActivities).toHaveLength(2);
+    expect(streamed[1]!.toolActivities![0]).toMatchObject({ id: 'tool-S1', status: 'done', result: 'src/index.ts' });
+    expect(streamed[1]!.toolActivities![1]).toMatchObject({ id: 'tool-S2', status: 'error', result: 'ENOENT: 失败' });
+  });
+
+  it('Given 文件中存在缺 id 记录, When 流式解析, Then 兜底 id 与纯函数一致且唯一', async () => {
+    const dir = path.join(tmpRoot, 'stream-fallback-id');
+    const sessionDir = path.join(dir, 'projects', 'project-a', 'sessions', 'session-1');
+    await fs.mkdir(sessionDir, { recursive: true });
+
+    const noId = (message: Record<string, unknown>): string =>
+      JSON.stringify({ type: 'message', message });
+    const jsonl = [
+      JSON.stringify({ type: 'session', version: 3, id: 'sdk-stream-fb' }),
+      noId(textContent('问题')),
+      noId({ role: 'assistant', content: [textBlock('回答')] }),
+    ].join('\n');
+    const filePath = path.join(sessionDir, 'stream.jsonl');
+    await fs.writeFile(filePath, jsonl, 'utf-8');
+
+    const streamed = await parseSessionJsonlStream(filePath);
+    const ids = streamed.map((message) => message.id);
+
+    expect(ids).toEqual(['hist_0', 'hist_1']);
+  });
+
+  it('Given 文件不存在, When 流式解析, Then 拒绝并带清晰的底层错误', async () => {
+    const filePath = path.join(tmpRoot, 'stream-missing', 'nope.jsonl');
+    await expect(parseSessionJsonlStream(filePath)).rejects.toThrow();
   });
 });
