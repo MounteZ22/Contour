@@ -4,7 +4,7 @@ import {
   getWebSearchSettingsStatus,
   updateSettings,
   updateWebSearchSettings,
-} from '../services/settingsService.js';
+} from '@contour/core/services';
 import type { AppSettings } from '@contour/shared';
 import type { ApiResponse, WebSearchSettingsStatus } from '../types.js';
 

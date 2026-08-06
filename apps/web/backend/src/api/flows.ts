@@ -4,11 +4,11 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { Flow } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '../vault/loader.js';
-import { validateId, ValidationError } from '../vault/validate.js';
-import { findFlowDir, findProjectDir, extractFrontmatterText } from '../vault/locate.js';
-import { atomicCreateFile, atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
+import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { validateId, ValidationError } from '@contour/core/vault';
+import { findFlowDir, findProjectDir, extractFrontmatterText } from '@contour/core/vault';
+import { atomicCreateFile, atomicWriteFile } from '@contour/core/vault';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 import {
   addFlowLink,
   deleteFlowAttachment,
@@ -16,13 +16,13 @@ import {
   removeFlowLink,
   uploadFlowAttachment,
   validateVaultProjectId,
-} from '../services/flowAssets.js';
+} from '@contour/core/services';
 import {
   createFlowSummaryDraft,
   FlowSummaryError,
   getFlowSummary,
   saveFlowSummary,
-} from '../services/flowSummary.js';
+} from '@contour/core/services';
 
 const router = Router();
 

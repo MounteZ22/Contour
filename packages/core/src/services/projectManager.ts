@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { PROJECTS_DIR } from "../config.js";
+import { CONFIG } from "../runtime/config.js";
 import { ValidationError } from "../vault/validate.js";
 import { isInside, comparisonKey } from "../vault/path-utils.js";
 
@@ -75,7 +75,7 @@ export function validateProjectId(projectId: unknown): asserts projectId is stri
 
 function projectDataDir(projectId: string): string {
   validateProjectId(projectId);
-  const root = path.resolve(PROJECTS_DIR);
+  const root = path.resolve(CONFIG.PROJECTS_DIR);
   const target = path.resolve(root, projectId);
   const relative = path.relative(root, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -135,7 +135,7 @@ function validateAttachmentTarget(inputPath: string, kind: AttachmentKind): stri
     throw new ValidationError("不允许附加磁盘根目录");
   }
 
-  const contourDataRoot = path.dirname(path.resolve(PROJECTS_DIR));
+  const contourDataRoot = path.dirname(path.resolve(CONFIG.PROJECTS_DIR));
   if (isInside(contourDataRoot, canonicalPath)) {
     throw new ValidationError("不允许附加 Contour 自身的数据目录或文件");
   }
@@ -279,8 +279,8 @@ function detachPath(inputPath: string, projectId: string, kind: AttachmentKind):
 /** 列出所有已存在的项目数据目录。 */
 export function listProjects(): string[] {
   try {
-    if (!existsSync(PROJECTS_DIR)) return [];
-    return readdirSync(PROJECTS_DIR, { withFileTypes: true })
+    if (!existsSync(CONFIG.PROJECTS_DIR)) return [];
+    return readdirSync(CONFIG.PROJECTS_DIR, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {

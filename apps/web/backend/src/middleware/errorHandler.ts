@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ValidationError } from '../vault/validate.js';
+import { ValidationError } from '@contour/core/vault';
 
 /**
  * Express 全局错误处理中间件

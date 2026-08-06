@@ -4,11 +4,11 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { Claim } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { loadProjects } from '../vault/loader.js';
-import { validateId, ValidationError } from '../vault/validate.js';
-import { findProjectDir, findProjectDirForClaim, extractFrontmatterText } from '../vault/locate.js';
-import { atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
+import { loadProjects } from '@contour/core/vault';
+import { validateId, ValidationError } from '@contour/core/vault';
+import { findProjectDir, findProjectDirForClaim, extractFrontmatterText } from '@contour/core/vault';
+import { atomicWriteFile } from '@contour/core/vault';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 
 const router = Router();
 
@@ -104,7 +104,7 @@ tags: []
 `;
     await atomicWriteFile(path.join(claimsDir, `${claimId}.md`), content);
 
-    const { invalidateCache } = await import('../vault/loader.js');
+    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<{ claimId: string }> = { success: true, data: { claimId } };
@@ -170,7 +170,7 @@ router.put('/:claimId', async (req, res) => {
 
     await atomicWriteFile(targetFile, finalContent);
 
-    const { invalidateCache } = await import('../vault/loader.js');
+    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<null> = { success: true, data: null };
@@ -205,7 +205,7 @@ router.delete('/:claimId', async (req, res) => {
       // 文件不存在，忽略
     }
 
-    const { invalidateCache } = await import('../vault/loader.js');
+    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<null> = { success: true, data: null };

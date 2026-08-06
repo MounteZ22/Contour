@@ -1,11 +1,11 @@
 import { Router, type Response } from 'express';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { authorizeProjectPath, PathNotAuthorizedError } from '../services/authorizedPaths.js';
+import { authorizeProjectPath, PathNotAuthorizedError } from '@contour/core/services';
 import { openWithSystem, revealInFileManager } from '../services/hostFileActions.js';
-import { ValidationError } from '../vault/validate.js';
+import { ValidationError } from '@contour/core/vault';
 import { CONFIG } from '../config.js';
-import { loadProjects } from '../vault/loader.js';
+import { loadProjects } from '@contour/core/vault';
 
 const router = Router();
 

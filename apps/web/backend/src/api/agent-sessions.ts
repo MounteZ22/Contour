@@ -17,7 +17,7 @@ import {
   getSessionSummary,
   listProductSessions,
   updateProductSession,
-} from '../agent/session-storage.js';
+} from '@contour/core/agent';
 
 const router = Router();
 

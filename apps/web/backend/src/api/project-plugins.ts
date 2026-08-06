@@ -1,9 +1,9 @@
 /** 项目插件配置 API。仅管理声明，绝不在此路由中启动 MCP 或加载技能。 */
 
 import { Router, type Response } from "express";
-import { ValidationError } from "../vault/validate.js";
-import { findProjectDir } from "../vault/locate.js";
-import { ensureProjectDir, validateProjectId } from "../services/projectManager.js";
+import { ValidationError } from "@contour/core/vault";
+import { findProjectDir } from "@contour/core/vault";
+import { ensureProjectDir, validateProjectId } from "@contour/core/services";
 import {
   addMcpServer,
   addSkillDirectory,
@@ -12,7 +12,7 @@ import {
   removeSkillDirectory,
   setMcpServerEnabled,
   setSkillDirectoryEnabled,
-} from "../services/project-plugin-config.js";
+} from "@contour/core/services";
 
 const router = Router();
 

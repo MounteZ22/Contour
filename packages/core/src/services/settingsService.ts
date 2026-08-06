@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../runtime/config.js';
 import type { AppSettings } from '@contour/shared';
 import type { WebSearchSettingsStatus } from '../types.js';
 

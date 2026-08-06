@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CONFIG } from "../config.js";
+import { CONFIG } from "../runtime/config.js";
 import type { AIContextItem, ProjectData } from "../types.js";
 import { getSessionWorkspaceDir } from "../agent/session-storage.js";
 import {

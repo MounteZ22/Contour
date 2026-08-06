@@ -3,11 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '../vault/loader.js';
-import { validateId, validateDocId, ValidationError } from '../vault/validate.js';
-import { findProjectDir, extractFrontmatterText } from '../vault/locate.js';
-import { atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
+import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { validateId, validateDocId, ValidationError } from '@contour/core/vault';
+import { findProjectDir, extractFrontmatterText } from '@contour/core/vault';
+import { atomicWriteFile } from '@contour/core/vault';
+import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 
 const router = Router();
 

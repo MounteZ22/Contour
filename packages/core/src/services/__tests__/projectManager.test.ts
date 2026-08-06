@@ -5,12 +5,12 @@ import path from "node:path";
 let testRoot!: string;
 let projectsDir!: string;
 
-vi.mock("../../config.js", async () => {
+vi.mock("../../runtime/config.js", async () => {
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   testRoot = join(tmpdir(), `contour-project-manager-${Date.now()}`);
   projectsDir = join(testRoot, "data", "projects");
-  return { PROJECTS_DIR: projectsDir };
+  return { CONFIG: { PROJECTS_DIR: projectsDir, DATA_DIR: testRoot, CONFIG_DIR: testRoot, VAULTS_DIR: testRoot, LEGACY_VAULT: testRoot } };
 });
 
 const {

@@ -1,7 +1,7 @@
 /** 项目本机配置 API：管理外部文件夹与文件授权范围。 */
 
 import { Router, type Response } from "express";
-import { ValidationError } from "../vault/validate.js";
+import { ValidationError } from "@contour/core/vault";
 import {
   attachDirectory,
   attachFile,
@@ -9,9 +9,9 @@ import {
   detachFile,
   getProjectConfigStatus,
   validateProjectId,
-} from "../services/projectManager.js";
-import { ensureProjectDir } from "../services/projectManager.js";
-import { findProjectDir } from "../vault/locate.js";
+} from "@contour/core/services";
+import { ensureProjectDir } from "@contour/core/services";
+import { findProjectDir } from "@contour/core/vault";
 
 const router = Router();
 

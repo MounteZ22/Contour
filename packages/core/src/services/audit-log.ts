@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DATA_DIR } from "../config.js";
+import { CONFIG } from "../runtime/config.js";
 
-const logDir = path.join(DATA_DIR, "audit-logs");
+const logDir = path.join(CONFIG.DATA_DIR, "audit-logs");
 
 /**
  * 写入一条审计日志。

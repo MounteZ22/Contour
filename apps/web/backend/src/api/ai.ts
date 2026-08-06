@@ -1,23 +1,23 @@
 import { Router, type Response } from 'express';
 import { testLLMConnection } from '../services/aiService.js';
-import { buildAgentPrompt } from '../services/promptBuilder.js';
+import { buildAgentPrompt } from '@contour/core/services';
 import type { AIContextItem } from '@contour/shared';
-import { getChannelById } from '../services/channelManager.js';
-import { channelToAgentRuntimeConfig, findDefaultAgentChannel, validateAgentChannelSelection } from '../agent/channel-adapter.js';
-import { PiRuntime } from '../agent/pi-runtime.js';
+import { getChannelById } from '@contour/core/services';
+import { channelToAgentRuntimeConfig, findDefaultAgentChannel, validateAgentChannelSelection } from '@contour/core/agent';
+import { PiRuntime } from '@contour/core/agent';
 import { CONFIG } from '../config.js';
-import { createContourCustomTools } from '../tools/pi-vault-tools.js';
-import { createTaskProgressTools } from '../tools/task-progress-tools.js';
-import { createWebSearchTools } from '../tools/web-search-tools.js';
-import { getWebSearchRuntimeConfig } from '../services/settingsService.js';
-import { resolvePermissionRequest } from '../agent/permission-extension.js';
-import type { AskUserRequestManager } from '../agent/ask-user.js';
-import { findProjectDir } from '../vault/locate.js';
-import { ensureProjectDir } from '../services/projectManager.js';
-import { getEnabledProjectSkillDirectories } from '../services/project-plugin-config.js';
+import { createContourCustomTools } from '@contour/core/tools';
+import { createTaskProgressTools } from '@contour/core/tools';
+import { createWebSearchTools } from '@contour/core/tools';
+import { getWebSearchRuntimeConfig } from '@contour/core/services';
+import { resolvePermissionRequest } from '@contour/core/agent';
+import type { AskUserRequestManager } from '@contour/core/agent';
+import { findProjectDir } from '@contour/core/vault';
+import { ensureProjectDir } from '@contour/core/services';
+import { getEnabledProjectSkillDirectories } from '@contour/core/services';
 import path from 'node:path';
-import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '../agent/typed-error.js';
-import { loadProjects } from '../vault/loader.js';
+import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '@contour/core/agent';
+import { loadProjects } from '@contour/core/vault';
 
 
 const router = Router();

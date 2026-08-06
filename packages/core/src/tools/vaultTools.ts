@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../runtime/config.js';
 import { loadProjects } from '../vault/loader.js';
 import { validateId } from '../vault/validate.js';
 import type { Flow, ProjectDoc } from '@contour/shared';

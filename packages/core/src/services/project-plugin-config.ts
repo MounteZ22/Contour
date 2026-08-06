@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { PROJECTS_DIR } from "../config.js";
+import { CONFIG } from "../runtime/config.js";
 import { ValidationError } from "../vault/validate.js";
 import { comparisonKey } from "../vault/path-utils.js";
 import { validateProjectId } from "./projectManager.js";
@@ -76,7 +76,7 @@ const EMPTY_CONFIG: ProjectPluginConfig = {
 
 function projectDataDir(storageId: string): string {
   validateProjectId(storageId);
-  const root = path.resolve(PROJECTS_DIR);
+  const root = path.resolve(CONFIG.PROJECTS_DIR);
   const target = path.resolve(root, storageId);
   const relative = path.relative(root, target);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {

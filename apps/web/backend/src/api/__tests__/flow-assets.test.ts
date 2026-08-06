@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
-import { parseFrontmatter } from '../../vault/yaml-utils.js';
+import { parseFrontmatter } from '@contour/core/vault';
 
 let testDir: string;
 let vaultsDir: string;

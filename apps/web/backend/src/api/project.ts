@@ -4,12 +4,12 @@ import path from 'node:path';
 import { CONFIG } from '../config.js';
 import type { ProjectData } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { invalidateCache, loadProjects } from '../vault/loader.js';
-import { validateId, ValidationError } from '../vault/validate.js';
-import { findProjectDir } from '../vault/locate.js';
-import { atomicWriteFile } from '../vault/atomic.js';
-import { yamlSafeValue } from '../vault/yaml-utils.js';
-import { ensureProjectDir, getProjectConfig } from '../services/projectManager.js';
+import { invalidateCache, loadProjects } from '@contour/core/vault';
+import { validateId, ValidationError } from '@contour/core/vault';
+import { findProjectDir } from '@contour/core/vault';
+import { atomicWriteFile } from '@contour/core/vault';
+import { yamlSafeValue } from '@contour/core/vault';
+import { ensureProjectDir, getProjectConfig } from '@contour/core/services';
 
 const router = Router();
 

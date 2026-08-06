@@ -1,4 +1,4 @@
-import { listChannels } from './channelManager.js';
+import { listChannels } from '@contour/core/services';
 
 /** 获取第一个启用的渠道 */
 async function getDefaultChannel() {
@@ -13,7 +13,7 @@ export async function testLLMConnection(): Promise<{ success: boolean; message: 
     return { success: false, message: '未配置可用的 AI 渠道' };
   }
 
-  const { testChannelDirect } = await import('./channelManager.js');
+  const { testChannelDirect } = await import('@contour/core/services');
   return testChannelDirect({
     provider: channel.provider,
     baseUrl: channel.baseUrl,

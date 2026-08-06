@@ -6,7 +6,7 @@ let testRoot!: string;
 let vaultsDir!: string;
 let legacyDir!: string;
 
-vi.mock('../../config.js', async () => {
+vi.mock('../../runtime/config.js', async () => {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   testRoot = join(tmpdir(), `contour-vault-tools-${Date.now()}`);

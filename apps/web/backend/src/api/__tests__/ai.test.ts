@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import aiRouter, { __testOnlyAskUserResponseRegistry } from '../ai.js';
-import { AskUserRequestManager } from '../../agent/ask-user.js';
+import { AskUserRequestManager } from '@contour/core/agent';
 
 const app = express();
 app.use(express.json());

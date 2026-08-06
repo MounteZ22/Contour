@@ -1,0 +1,25 @@
+{
+  "name": "@contour/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./runtime": { "types": "./dist/runtime/index.d.ts", "import": "./dist/runtime/index.js" },
+    "./vault": { "types": "./dist/vault/index.d.ts", "import": "./dist/vault/index.js" },
+    "./agent": { "types": "./dist/agent/index.d.ts", "import": "./dist/agent/index.js" },
+    "./tools": { "types": "./dist/tools/index.d.ts", "import": "./dist/tools/index.js" },
+    "./services": { "types": "./dist/services/index.d.ts", "import": "./dist/services/index.js" }
+  },
+  "scripts": { "build": "tsc", "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": {
+    "@contour/shared": "0.1.0",
+    "@earendil-works/pi-ai": "0.80.3",
+    "@earendil-works/pi-coding-agent": "0.80.3",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@sinclair/typebox": "^0.34.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "4.3.0"
+  },
+  "devDependencies": { "@types/js-yaml": "^4.0.9", "@types/node": "^22.13.14", "typescript": "^5.8.2", "vitest": "^3.1.1" }
+}

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../runtime/config.js';
 
 export function extractFrontmatterText(raw: string): string | null {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);

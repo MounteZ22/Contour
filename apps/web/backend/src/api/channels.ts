@@ -8,7 +8,7 @@ import {
   testChannelDirect,
   testChannelById,
   fetchModels,
-} from '../services/channelManager.js';
+} from '@contour/core/services';
 import type {
   Channel,
   ChannelCreateInput,

@@ -13,7 +13,7 @@ import {
   getAttachedDirectories,
   attachDirectory,
   detachDirectory,
-} from "../services/projectManager.js";
+} from "@contour/core/services";
 
 const router = Router();
 

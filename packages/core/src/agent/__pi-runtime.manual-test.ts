@@ -18,7 +18,7 @@
 
 import { PiRuntime } from "./pi-runtime.js";
 import type { AgentStreamEvent } from "./agent-runtime.js";
-import { CONFIG } from "../config.js";
+import { CONFIG } from "../runtime/config.js";
 import { fileURLToPath } from "node:url";
 
 const API_KEY = process.env.ANTHROPIC_AUTH_TOKEN;

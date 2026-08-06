@@ -8,14 +8,14 @@ let testDir: string;
 let vaultsDir: string;
 let legacyDir: string;
 
-vi.mock('../../config.js', async () => {
+vi.mock('../../runtime/config.js', async () => {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   testDir = join(tmpdir(), `contour-locate-test-${Date.now()}`);
   vaultsDir = join(testDir, 'vaults');
   legacyDir = join(testDir, 'legacy-vault');
   return {
-    CONFIG: {
+    CONFIG: { CONFIG_DIR: testDir, DATA_DIR: testDir, PROJECTS_DIR: testDir, 
       VAULTS_DIR: vaultsDir,
       LEGACY_VAULT: legacyDir,
     },
