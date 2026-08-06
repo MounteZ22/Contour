@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Provider as JotaiProvider } from 'jotai';
 import App from './App';
 import { ThemeProvider } from './components/ThemeProvider';
+import '../../../desktop/src/renderer/desktop-bridge';
 import './styles.css';
 import './styles/tokens.css';
 

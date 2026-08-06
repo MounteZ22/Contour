@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { PageSkeleton } from './components/ui/PageSkeleton';
 import { AgentPageSkeleton } from './components/ui/AgentPageSkeleton';
@@ -53,6 +53,7 @@ function LazyRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
   const [appData, setAppData] = useState<ContourAppData>({ projects: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,12 @@ export default function App() {
   useEffect(() => {
     refreshProjects();
   }, [refreshProjects]);
+
+  useEffect(() => {
+    const openNewAgentSession = () => navigate('/agent');
+    window.addEventListener('contour:new-agent-session', openNewAgentSession);
+    return () => window.removeEventListener('contour:new-agent-session', openNewAgentSession);
+  }, [navigate]);
 
   if (loading && appData.projects.length === 0) {
     return (
