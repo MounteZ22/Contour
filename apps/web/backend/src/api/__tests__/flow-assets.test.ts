@@ -3,11 +3,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { createTestHostContext } from './test-host.js';
 import { parseFrontmatter } from '@contour/core/vault';
 
-let testDir: string;
-let vaultsDir: string;
-let legacyDir: string;
+let testDir!: string;
+let vaultsDir!: string;
+let legacyDir!: string;
 let projectDir: string;
 let externalFile: string;
 
@@ -31,7 +32,9 @@ vi.mock('../../config.js', async () => {
   };
 });
 
-const flowsRouter = (await import('../flows.js')).default;
+await import('../../config.js');
+const { createFlowsRouter } = await import('../flows.js');
+const flowsRouter = createFlowsRouter(createTestHostContext({ dataDir: testDir, vaultsDir, legacyVault: legacyDir }));
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));

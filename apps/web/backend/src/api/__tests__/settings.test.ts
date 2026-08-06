@@ -3,6 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createTestHostContext } from './test-host.js';
 
 let configDir!: string;
 
@@ -13,7 +14,9 @@ vi.mock('../../config.js', async () => {
   return { CONFIG: { CONFIG_DIR: configDir } };
 });
 
-const settingsRouter = (await import('../settings.js')).default;
+await import('../../config.js');
+const { createSettingsRouter } = await import('../settings.js');
+const settingsRouter = createSettingsRouter(createTestHostContext({ dataDir: configDir, legacyVault: configDir }));
 const app = express();
 app.use(express.json());
 app.use('/api/settings', settingsRouter);

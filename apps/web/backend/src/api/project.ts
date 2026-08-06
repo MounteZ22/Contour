@@ -1,17 +1,17 @@
 import { Router } from 'express';
+import type { WebHostContext } from '../host.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
 import type { ProjectData } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue } from '@contour/core/vault';
 import { validateProjectId } from '@contour/core/services';
 
-const { invalidateCache, loadProjects, findProjectDir } = coreServices.vault;
-const { ensureProjectDir, getProjectConfig } = coreServices.projects;
+export function createProjectRouter(context: WebHostContext): Router {
+const { invalidateCache, loadProjects, findProjectDir } = context.coreServices.vault;
+const { ensureProjectDir, getProjectConfig } = context.coreServices.projects;
 
 const router = Router();
 
@@ -22,7 +22,7 @@ function sanitizePathSegment(input: string): string {
 
 /** 将项目目录移动到回收站（软删除） */
 async function moveToTrash(projectDir: string, projectName: string): Promise<void> {
-  const trashDir = path.join(CONFIG.DATA_DIR, '.trash');
+  const trashDir = path.join(context.config.DATA_DIR, '.trash');
   await fs.mkdir(trashDir, { recursive: true });
 
   const timestamp = Date.now();
@@ -85,7 +85,7 @@ router.post('/', async (req, res) => {
     const rawPathTitle = sanitizePathSegment(title.replace(/\s+/g, '_').toLowerCase());
     // 限制目录名长度，防止文件系统路径过长
     const safePathTitle = rawPathTitle.slice(0, 100);
-    const projectDir = path.join(CONFIG.VAULTS_DIR, `${projectId}_${safePathTitle}`);
+    const projectDir = path.join(context.config.VAULTS_DIR, `${projectId}_${safePathTitle}`);
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'background'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'flows'), { recursive: true });
@@ -280,4 +280,5 @@ router.get('/:projectId/search-mentions', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

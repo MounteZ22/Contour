@@ -1,15 +1,15 @@
 import { Router } from 'express';
+import type { WebHostContext } from '../host.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
-import { coreServices } from '../core.js';
 import { validateId, validateDocId, ValidationError } from '@contour/core/vault';
 import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 
-const { invalidateCache, loadProjects, findProjectDir } = coreServices.vault;
+export function createDocsRouter(context: WebHostContext): Router {
+const { invalidateCache, loadProjects, findProjectDir } = context.coreServices.vault;
 
 const router = Router();
 
@@ -298,4 +298,5 @@ router.delete('/:docId', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

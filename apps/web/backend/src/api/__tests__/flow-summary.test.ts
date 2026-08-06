@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { createTestHostContext } from './test-host.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-let testDir: string;
-let vaultsDir: string;
-let legacyDir: string;
+let testDir!: string;
+let vaultsDir!: string;
+let legacyDir!: string;
 
 vi.mock('../../config.js', async () => {
   const { tmpdir } = await import('node:os');
@@ -34,7 +35,9 @@ const testChannels = [
   { id: 'deepseek-channel', name: 'DeepSeek', provider: 'deepseek', baseUrl: 'https://api.deepseek.com/anthropic', apiKey: 'test-key', enabled: true, models: [{ id: 'deepseek-chat', name: 'DeepSeek', enabled: true }], createdAt: 0, updatedAt: 0 },
 ];
 
-const flowsRouter = (await import('../flows.js')).default;
+await import('../../config.js');
+const { createFlowsRouter } = await import('../flows.js');
+const flowsRouter = createFlowsRouter(createTestHostContext({ dataDir: testDir, vaultsDir, legacyVault: legacyDir }));
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));

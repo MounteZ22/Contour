@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { createTestHostContext } from './test-host.js';
 
 let testRoot!: string;
 let projectsDir!: string;
@@ -30,7 +31,9 @@ const openWithSystem = vi.fn();
 const revealInFileManager = vi.fn();
 vi.mock('../../services/hostFileActions.js', () => ({ openWithSystem, revealInFileManager }));
 
-const filesRouter = (await import('../files.js')).default;
+await import('../../config.js');
+const { createFilesRouter } = await import('../files.js');
+const filesRouter = createFilesRouter(createTestHostContext({ dataDir: testRoot, projectsDir, vaultsDir, legacyVault: legacyDir }));
 const app = express();
 app.use(express.json());
 app.use('/api/files', filesRouter);

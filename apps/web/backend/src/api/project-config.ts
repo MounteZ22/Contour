@@ -1,12 +1,13 @@
 /** 项目本机配置 API：管理外部文件夹与文件授权范围。 */
 
 import { Router, type Response } from "express";
+import type { WebHostContext } from '../host.js';
 import { ValidationError } from "@contour/core/vault";
-import { coreServices } from '../core.js';
 import { validateProjectId } from '@contour/core/services';
 
-const { attachDirectory, attachFile, detachDirectory, detachFile, getProjectConfigStatus, ensureProjectDir } = coreServices.projects;
-const { findProjectDir } = coreServices.vault;
+export function createProjectConfigRouter(context: WebHostContext): Router {
+const { attachDirectory, attachFile, detachDirectory, detachFile, getProjectConfigStatus, ensureProjectDir } = context.coreServices.projects;
+const { findProjectDir } = context.coreServices.vault;
 
 const router = Router();
 
@@ -81,4 +82,5 @@ router.delete("/:projectId/files", async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

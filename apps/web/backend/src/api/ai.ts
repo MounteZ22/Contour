@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
+import type { WebHostContext } from '../host.js';
 import { testLLMConnection } from '../services/aiService.js';
-import { coreServices } from '../core.js';
 import { channelToAgentRuntimeConfig, validateAgentChannelSelection } from '@contour/core/agent';
 import { PiRuntime } from '@contour/core/agent';
-import { CONFIG } from '../config.js';
 import { createTaskProgressTools } from '@contour/core/tools';
 import { createWebSearchTools } from '@contour/core/tools';
 import { resolvePermissionRequest } from '@contour/core/agent';
@@ -12,14 +11,20 @@ import { agentErrorHttpStatus, classifyAgentError, typedAgentError } from '@cont
 import type { AIContextItem } from '@contour/shared';
 import path from 'node:path';
 
-const { buildAgentPrompt } = coreServices.prompt;
-const { getChannelById } = coreServices.channels;
-const { findDefaultAgentChannel } = coreServices.agent;
-const { getWebSearchRuntimeConfig } = coreServices.settings;
-const { findProjectDir, loadProjects } = coreServices.vault;
-const { ensureProjectDir } = coreServices.projects;
-const { getEnabledProjectSkillDirectories } = coreServices.plugins;
-const { createContourCustomTools } = coreServices.tools;
+export interface AiRouterTestHandle {
+  register(requestId: string, manager: AskUserRequestManager): void;
+  clear(): void;
+}
+
+export function createAiRouter(context: WebHostContext, testHandle?: AiRouterTestHandle): Router {
+const { buildAgentPrompt } = context.coreServices.prompt;
+const { getChannelById } = context.coreServices.channels;
+const { findDefaultAgentChannel } = context.coreServices.agent;
+const { getWebSearchRuntimeConfig } = context.coreServices.settings;
+const { findProjectDir, loadProjects } = context.coreServices.vault;
+const { ensureProjectDir } = context.coreServices.projects;
+const { getEnabledProjectSkillDirectories } = context.coreServices.plugins;
+const { createContourCustomTools } = context.coreServices.tools;
 
 const router = Router();
 
@@ -27,15 +32,10 @@ const router = Router();
 // 请求真正的创建、超时和取消均由 AskUserRequestManager 按实例处理。
 const askUserManagers = new Map<string, AskUserRequestManager>();
 
-/** 仅供路由测试构造已登记的 AskUser 请求，不参与生产请求生命周期。 */
-export const __testOnlyAskUserResponseRegistry = {
-  register(requestId: string, manager: AskUserRequestManager): void {
-    askUserManagers.set(requestId, manager);
-  },
-  clear(): void {
-    askUserManagers.clear();
-  },
-};
+if (testHandle) {
+  testHandle.register = (requestId, manager) => askUserManagers.set(requestId, manager);
+  testHandle.clear = () => askUserManagers.clear();
+}
 
 function sendAgentHttpError(res: Response, error: unknown, status?: number): void {
   const payload = classifyAgentError(error);
@@ -98,7 +98,7 @@ interface PiChatRequestBody {
 
 router.post('/test', async (req, res) => {
   try {
-    const result = await testLLMConnection();
+    const result = await testLLMConnection(context.coreServices);
     res.json({ success: result.success, data: result });
   } catch (error) {
     console.error('AI test error:', error);
@@ -220,7 +220,7 @@ router.post('/pi-chat', async (req, res) => {
       projectStorageId: projectName,
       projectDir,
       sessionId: body.sessionId,
-      dataDir: CONFIG.DATA_DIR,
+      dataDir: context.config.DATA_DIR,
     });
 
     // Plan Mode 指令注入：当用户开启 Plan Mode 时，在 system prompt 前追加指令。
@@ -245,7 +245,7 @@ router.post('/pi-chat', async (req, res) => {
         authorizedFiles,
         permissionMode: body.permissionMode,
         sessionId: body.sessionId,
-        dataDir: CONFIG.DATA_DIR,
+        dataDir: context.config.DATA_DIR,
         projectDir,
         projectId: projectName,
         additionalSkillPaths,
@@ -263,10 +263,10 @@ router.post('/pi-chat', async (req, res) => {
 
     // 6. 通过 PiRuntime 初始化并发送消息
     runtime = new PiRuntime({
-      authorizedPaths: coreServices.authorizedPaths,
-      loader: coreServices.vault,
-      plugins: coreServices.plugins,
-      auditLog: coreServices.auditLog,
+      authorizedPaths: context.coreServices.authorizedPaths,
+      loader: context.coreServices.vault,
+      plugins: context.coreServices.plugins,
+      auditLog: context.coreServices.auditLog,
       askUserLifecycle: {
         onCreated: (requestId, manager) => askUserManagers.set(requestId, manager),
         onSettled: (requestId, manager) => {
@@ -410,4 +410,5 @@ router.post('/ask-user-response', (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

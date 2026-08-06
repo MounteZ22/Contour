@@ -1,40 +1,21 @@
 import 'dotenv/config';
-import cors from 'cors';
-import express from 'express';
-import rateLimit from 'express-rate-limit';
-import { CONFIG } from './config.js';
-import routes from './routes.js';
-import projectsRouter from './api/projects.js';
-import { errorHandler } from './middleware/errorHandler.js';
+import { CORE_RUNTIME_CONFIG, CONFIG } from './config.js';
+import { createWebHostContext } from './host.js';
+import { startServer } from './app.js';
 
-const app = express();
-
-app.use(cors({ origin: 'http://localhost:3000' }));
-app.use(express.json({ limit: '5mb' }));
-
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
+const context = createWebHostContext(CORE_RUNTIME_CONFIG, {
+  port: CONFIG.PORT,
+  mode: CONFIG.IS_DEV ? 'development' : 'production',
 });
-app.use('/api', apiLimiter);
+const started = await startServer({ context });
 
-app.use('/api', routes);
-app.use('/api/projects', projectsRouter);
+console.log(`Contour backend running on http://${started.host}:${started.port}`);
 
-// 全局错误处理（必须放在所有路由之后）
-app.use(errorHandler);
+async function shutdown(signal: string): Promise<void> {
+  console.log(`${signal} received, closing server...`);
+  await started.close();
+  process.exit(0);
+}
 
-const server = app.listen(CONFIG.PORT, () => {
-  console.log(`Contour backend running on http://localhost:${CONFIG.PORT}`);
-});
-
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
-  server.close(() => process.exit(0));
-});
-process.on('SIGINT', () => {
-  console.log('SIGINT received, closing server...');
-  server.close(() => process.exit(0));
-});
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));

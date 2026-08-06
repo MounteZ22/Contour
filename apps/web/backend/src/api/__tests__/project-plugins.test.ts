@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
+import { createTestHostContext } from './test-host.js';
 
 let testRoot!: string;
 let projectsDir!: string;
@@ -20,7 +21,9 @@ vi.mock("../../config.js", async () => {
   };
 });
 
-const router = (await import("../project-plugins.js")).default;
+await import('../../config.js');
+const { createProjectPluginsRouter } = await import("../project-plugins.js");
+const router = createProjectPluginsRouter(createTestHostContext({ dataDir: testRoot, projectsDir, vaultsDir, legacyVault: path.join(testRoot, "legacy") }));
 const app = express();
 app.use(express.json());
 app.use("/api/projects", router);

@@ -6,11 +6,10 @@
  */
 
 import { Router } from 'express';
+import type { WebHostContext } from '../host.js';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
 import type { ApiResponse } from '../types.js';
-import { coreServices } from '../core.js';
 import type { ChatMessage } from '@contour/shared';
 import {
   deleteProductSession,
@@ -21,6 +20,7 @@ import {
   updateProductSession,
 } from '@contour/core/agent';
 
+export function createAgentSessionsRouter(context: WebHostContext): Router {
 const router = Router();
 
 interface SessionSummary {
@@ -76,11 +76,11 @@ function extractLastMessage(records: Record<string, unknown>[]): string {
 
 router.get('/:projectId', async (req, res) => {
   try {
-    const productSessions = listProductSessions(CONFIG.DATA_DIR, req.params.projectId);
+    const productSessions = listProductSessions(context.config.DATA_DIR, req.params.projectId);
     // 优先从 registry 读取 lastMessage（O(1)），未缓存时回退到解析 JSONL
     const summaries = await Promise.all(productSessions.map(async (meta): Promise<SessionSummary> => {
       // 尝试通过 getSessionSummary（封装 Pi SDK）获取 title 和 messageCount
-      const summary = getSessionSummary(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+      const summary = getSessionSummary(context.config.DATA_DIR, req.params.projectId, meta.id);
 
       if (!summary) {
         // 无 Pi 会话文件，使用 registry 中的数据
@@ -97,7 +97,7 @@ router.get('/:projectId', async (req, res) => {
       let lastMessage = meta.lastMessage;
       if (!lastMessage) {
         // 回退：从 JSONL 解析最后一条消息（兼容旧数据）
-        const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+        const filePath = findPiSessionFile(context.config.DATA_DIR, req.params.projectId, meta.id);
         if (filePath) {
           try {
             const records = await parseJsonlFile(filePath);
@@ -112,7 +112,7 @@ router.get('/:projectId', async (req, res) => {
 
       let updatedAt = meta.updatedAt;
       try {
-        const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, meta.id);
+        const filePath = findPiSessionFile(context.config.DATA_DIR, req.params.projectId, meta.id);
         if (filePath) {
           const fileStat = await stat(filePath);
           updatedAt = fileStat.mtimeMs;
@@ -148,7 +148,7 @@ router.post('/:projectId', async (req, res) => {
       return;
     }
 
-    const handle = await ensureProductSession(CONFIG.DATA_DIR, req.params.projectId, sessionId, title);
+    const handle = await ensureProductSession(context.config.DATA_DIR, req.params.projectId, sessionId, title);
     const data: SessionSummary = {
       id: handle.meta.id,
       title: handle.meta.title,
@@ -165,13 +165,13 @@ router.post('/:projectId', async (req, res) => {
 
 router.get('/:projectId/:sessionId/messages', async (req, res) => {
   try {
-    const productSession = listProductSessions(CONFIG.DATA_DIR, req.params.projectId)
+    const productSession = listProductSessions(context.config.DATA_DIR, req.params.projectId)
       .find((session) => session.id === req.params.sessionId);
     if (!productSession) {
       res.status(404).json({ success: false, error: '会话不存在' });
       return;
     }
-    const messages = await coreServices.messageHistory.readSessionMessages(
+    const messages = await context.coreServices.messageHistory.readSessionMessages(
       req.params.projectId,
       req.params.sessionId,
     );
@@ -186,8 +186,8 @@ router.get('/:projectId/:sessionId/messages', async (req, res) => {
 
 router.get('/:projectId/:sessionId', async (req, res) => {
   try {
-    const filePath = findPiSessionFile(CONFIG.DATA_DIR, req.params.projectId, req.params.sessionId);
-    const productSession = listProductSessions(CONFIG.DATA_DIR, req.params.projectId)
+    const filePath = findPiSessionFile(context.config.DATA_DIR, req.params.projectId, req.params.sessionId);
+    const productSession = listProductSessions(context.config.DATA_DIR, req.params.projectId)
       .find((session) => session.id === req.params.sessionId);
     if (!productSession) {
       res.status(404).json({ success: false, error: '会话不存在' });
@@ -213,7 +213,7 @@ router.patch('/:projectId/:sessionId', async (req, res) => {
     }
 
     const meta = await updateProductSession(
-      CONFIG.DATA_DIR,
+      context.config.DATA_DIR,
       req.params.projectId,
       req.params.sessionId,
       { title: title.trim() },
@@ -223,7 +223,7 @@ router.patch('/:projectId/:sessionId', async (req, res) => {
       title: meta.title,
       lastMessage: meta.lastMessage || '空会话',
       updatedAt: meta.updatedAt,
-      messageCount: getSessionSummary(CONFIG.DATA_DIR, req.params.projectId, meta.id)?.messageCount ?? 0,
+      messageCount: getSessionSummary(context.config.DATA_DIR, req.params.projectId, meta.id)?.messageCount ?? 0,
     };
     res.json({ success: true, data });
   } catch (error) {
@@ -234,7 +234,7 @@ router.patch('/:projectId/:sessionId', async (req, res) => {
 
 router.delete('/:projectId/:sessionId', async (req, res) => {
   try {
-    const deleted = deleteProductSession(CONFIG.DATA_DIR, req.params.projectId, req.params.sessionId);
+    const deleted = deleteProductSession(context.config.DATA_DIR, req.params.projectId, req.params.sessionId);
     if (!deleted) {
       res.status(404).json({ success: false, error: '会话不存在' });
       return;
@@ -246,4 +246,5 @@ router.delete('/:projectId/:sessionId', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

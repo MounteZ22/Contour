@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { coreServices } from '../core.js';
+import type { WebHostContext } from '../host.js';
 import type { AppSettings } from '@contour/shared';
 import type { ApiResponse, WebSearchSettingsStatus } from '../types.js';
 
-const { getSettings, getWebSearchSettingsStatus, updateSettings, updateWebSearchSettings } = coreServices.settings;
+export function createSettingsRouter(context: WebHostContext): Router {
+const { getSettings, getWebSearchSettingsStatus, updateSettings, updateWebSearchSettings } = context.coreServices.settings;
 
 const router = Router();
 
@@ -56,4 +57,5 @@ router.post('/web-search', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

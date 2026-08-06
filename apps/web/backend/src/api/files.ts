@@ -1,13 +1,14 @@
 import { Router, type Response } from 'express';
+import type { WebHostContext } from '../host.js';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PathNotAuthorizedError } from '@contour/core/services';
-import { coreServices } from '../core.js';
 import { openWithSystem, revealInFileManager } from '../services/hostFileActions.js';
 import { ValidationError } from '@contour/core/vault';
 
-const { authorizeProjectPath } = coreServices.authorizedPaths;
-const { loadProjects } = coreServices.vault;
+export function createFilesRouter(context: WebHostContext): Router {
+const { authorizeProjectPath } = context.coreServices.authorizedPaths;
+const { loadProjects } = context.coreServices.vault;
 
 const router = Router();
 
@@ -212,4 +213,5 @@ router.post('/reveal', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

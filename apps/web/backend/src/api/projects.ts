@@ -6,12 +6,13 @@
  */
 
 import { Router } from "express";
+import type { WebHostContext } from '../host.js';
 import { stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { coreServices } from '../core.js';
 
-const { getAttachedDirectories, attachDirectory, detachDirectory } = coreServices.projects;
+export function createProjectsRouter(context: WebHostContext): Router {
+const { getAttachedDirectories, attachDirectory, detachDirectory } = context.coreServices.projects;
 
 const router = Router();
 
@@ -148,4 +149,5 @@ router.delete("/:name/attachments", (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

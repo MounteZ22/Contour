@@ -3,11 +3,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { createTestHostContext } from './test-host.js';
 
 // ── 在导入被测模块之前 mock config ─────────────────────────────────────────
-let testDir: string;
-let vaultsDir: string;
-let legacyDir: string;
+let testDir!: string;
+let vaultsDir!: string;
+let legacyDir!: string;
 
 vi.mock('../../config.js', async () => {
   const { tmpdir } = await import('node:os');
@@ -30,7 +31,9 @@ vi.mock('../../config.js', async () => {
 });
 
 // 动态导入被测模块
-const flowsRouter = (await import('../flows.js')).default;
+await import('../../config.js');
+const { createFlowsRouter } = await import('../flows.js');
+const flowsRouter = createFlowsRouter(createTestHostContext({ dataDir: testDir, vaultsDir, legacyVault: legacyDir }));
 
 // ── 创建 Express 应用 ──────────────────────────────────────────────────────
 const app = express();

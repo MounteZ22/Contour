@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { coreServices } from '../core.js';
+import type { WebHostContext } from '../host.js';
 import type {
   Channel,
   ChannelCreateInput,
@@ -19,7 +19,8 @@ function toPublicChannel(channel: Channel): PublicChannel {
   return publicChannel;
 }
 
-const { listChannels, createChannel, updateChannel, deleteChannel, listAgentModelOptions, testChannelDirect, testChannelById, fetchModels } = coreServices.channels;
+export function createChannelsRouter(context: WebHostContext): Router {
+const { listChannels, createChannel, updateChannel, deleteChannel, listAgentModelOptions, testChannelDirect, testChannelById, fetchModels } = context.coreServices.channels;
 
 const router = Router();
 
@@ -152,4 +153,5 @@ router.post('/fetch-models', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

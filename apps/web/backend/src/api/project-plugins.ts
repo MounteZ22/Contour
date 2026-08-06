@@ -1,13 +1,14 @@
 /** 项目插件配置 API。仅管理声明，绝不在此路由中启动 MCP 或加载技能。 */
 
 import { Router, type Response } from "express";
+import type { WebHostContext } from '../host.js';
 import { ValidationError } from "@contour/core/vault";
 import { validateProjectId } from '@contour/core/services';
-import { coreServices } from '../core.js';
 
-const { findProjectDir } = coreServices.vault;
-const { ensureProjectDir } = coreServices.projects;
-const { addMcpServer, addSkillDirectory, getProjectPluginConfig, removeMcpServer, removeSkillDirectory, setMcpServerEnabled, setSkillDirectoryEnabled } = coreServices.plugins;
+export function createProjectPluginsRouter(context: WebHostContext): Router {
+const { findProjectDir } = context.coreServices.vault;
+const { ensureProjectDir } = context.coreServices.projects;
+const { addMcpServer, addSkillDirectory, getProjectPluginConfig, removeMcpServer, removeSkillDirectory, setMcpServerEnabled, setSkillDirectoryEnabled } = context.coreServices.plugins;
 
 const router = Router();
 
@@ -111,4 +112,5 @@ router.delete("/:storageId/plugins/skills/:skillId", async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}

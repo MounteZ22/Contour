@@ -1,15 +1,22 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import aiRouter, { __testOnlyAskUserResponseRegistry } from '../ai.js';
+import { createAiRouter, type AiRouterTestHandle } from '../ai.js';
 import { AskUserRequestManager } from '@contour/core/agent';
+import { createTestHostContext } from './test-host.js';
+import path from 'node:path';
+import os from 'node:os';
 
+const testHandle = {} as AiRouterTestHandle;
 const app = express();
 app.use(express.json());
-app.use('/api/ai', aiRouter);
+app.use('/api/ai', createAiRouter(
+  createTestHostContext({ dataDir: path.join(os.tmpdir(), `contour-ai-api-${Date.now()}`) }),
+  testHandle,
+));
 
 afterEach(() => {
-  __testOnlyAskUserResponseRegistry.clear();
+  testHandle.clear();
 });
 
 function createPendingAskUser(): {
@@ -59,7 +66,7 @@ describe('POST /api/ai/pi-chat 错误协议', () => {
 describe('POST /api/ai/ask-user-response', () => {
   it('Given 已登记的 AskUser requestId, When 用户提交答案, Then 正确交给所属 manager 并返回 success', async () => {
     const pending = createPendingAskUser();
-    __testOnlyAskUserResponseRegistry.register(pending.requestId, pending.manager);
+    testHandle.register(pending.requestId, pending.manager);
 
     const response = await request(app).post('/api/ai/ask-user-response').send({
       requestId: pending.requestId,
@@ -84,8 +91,8 @@ describe('POST /api/ai/ask-user-response', () => {
   it('Given 两个 manager 的并发请求, When 分别提交各自 requestId, Then 答案不会串到另一个 manager', async () => {
     const first = createPendingAskUser();
     const second = createPendingAskUser();
-    __testOnlyAskUserResponseRegistry.register(first.requestId, first.manager);
-    __testOnlyAskUserResponseRegistry.register(second.requestId, second.manager);
+    testHandle.register(first.requestId, first.manager);
+    testHandle.register(second.requestId, second.manager);
 
     const firstResponse = await request(app).post('/api/ai/ask-user-response').send({
       requestId: first.requestId,

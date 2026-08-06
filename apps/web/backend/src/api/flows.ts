@@ -1,10 +1,9 @@
 import { Router } from 'express';
+import type { WebHostContext } from '../host.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
 import type { Flow } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
 import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicCreateFile, atomicWriteFile } from '@contour/core/vault';
@@ -15,9 +14,10 @@ import {
 } from '@contour/core/services';
 import { FlowSummaryError } from '@contour/core/services';
 
-const { loadProjects, invalidateCache, findFlowDir, findProjectDir } = coreServices.vault;
-const { addFlowLink, deleteFlowAttachment, removeFlowLink, uploadFlowAttachment } = coreServices.flowAssets;
-const { createFlowSummaryDraft, getFlowSummary, saveFlowSummary } = coreServices.flowSummary;
+export function createFlowsRouter(context: WebHostContext): Router {
+const { loadProjects, invalidateCache, findFlowDir, findProjectDir } = context.coreServices.vault;
+const { addFlowLink, deleteFlowAttachment, removeFlowLink, uploadFlowAttachment } = context.coreServices.flowAssets;
+const { createFlowSummaryDraft, getFlowSummary, saveFlowSummary } = context.coreServices.flowSummary;
 
 const router = Router();
 
@@ -756,4 +756,5 @@ async function updateFlowTimestamp(flowDir: string) {
   }
 }
 
-export default router;
+return router;
+}

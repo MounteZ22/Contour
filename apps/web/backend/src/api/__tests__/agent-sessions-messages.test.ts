@@ -47,7 +47,11 @@ vi.mock('../../config.js', async () => {
   };
 });
 
-const agentSessionsRouter = (await import('../agent-sessions.js')).default;
+const { createAgentSessionsRouter } = await import('../agent-sessions.js');
+const agentSessionsRouter = createAgentSessionsRouter({
+  config: { DATA_DIR: 'test-data' },
+  coreServices: { messageHistory: { readSessionMessages: mockMessages.readSessionMessages } },
+} as never);
 
 const app = express();
 app.use(express.json());

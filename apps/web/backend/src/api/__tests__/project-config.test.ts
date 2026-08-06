@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
+import { createTestHostContext } from './test-host.js';
 
 let testRoot!: string;
 let projectsDir!: string;
@@ -20,7 +21,9 @@ vi.mock("../../config.js", async () => {
   };
 });
 
-const projectConfigRouter = (await import("../project-config.js")).default;
+await import('../../config.js');
+const { createProjectConfigRouter } = await import("../project-config.js");
+const projectConfigRouter = createProjectConfigRouter(createTestHostContext({ dataDir: testRoot, projectsDir, vaultsDir, legacyVault: path.join(testRoot, "legacy") }));
 
 const app = express();
 app.use(express.json());

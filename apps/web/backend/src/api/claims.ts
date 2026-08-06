@@ -1,16 +1,16 @@
 import { Router } from 'express';
+import type { WebHostContext } from '../host.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONFIG } from '../config.js';
 import type { Claim } from '@contour/shared';
 import type { ApiResponse } from '../types.js';
-import { coreServices } from '../core.js';
 import { validateId, ValidationError } from '@contour/core/vault';
 import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 
-const { loadProjects, findProjectDir, findProjectDirForClaim, invalidateCache } = coreServices.vault;
+export function createClaimsRouter(context: WebHostContext): Router {
+const { loadProjects, findProjectDir, findProjectDirForClaim, invalidateCache } = context.coreServices.vault;
 
 const router = Router();
 
@@ -216,4 +216,5 @@ router.delete('/:claimId', async (req, res) => {
   }
 });
 
-export default router;
+return router;
+}
