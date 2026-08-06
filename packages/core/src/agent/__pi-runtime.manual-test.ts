@@ -51,6 +51,7 @@ const coreServices = createCoreServices({
 async function main() {
   const runtime = new PiRuntime({
     authorizedPaths: coreServices.authorizedPaths,
+    loader: coreServices.vault,
     plugins: coreServices.plugins,
     auditLog: coreServices.auditLog,
   });

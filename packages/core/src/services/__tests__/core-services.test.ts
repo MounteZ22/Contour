@@ -32,6 +32,32 @@ describe('createCoreServices runtime isolation', () => {
     expect(left.settings.getSettingsPath()).not.toBe(right.settings.getSettingsPath());
   });
 
+  it('Given two vaults with different project data, When A loads before B and each invalidates independently, Then cached results never cross container boundaries', async () => {
+    const left = createCoreServices(runtime('vault-left'));
+    const right = createCoreServices(runtime('vault-right'));
+    const leftProject = path.join(left.config.vaultsDir, 'left-project');
+    const rightProject = path.join(right.config.vaultsDir, 'right-project');
+
+    await fs.mkdir(path.join(leftProject, 'background'), { recursive: true });
+    await fs.mkdir(path.join(rightProject, 'background'), { recursive: true });
+    await fs.writeFile(path.join(leftProject, 'background', 'brief.md'), '---\ntitle: Left brief\n---\nLeft-only source data');
+    await fs.writeFile(path.join(rightProject, 'background', 'brief.md'), '---\ntitle: Right brief\n---\nRight-only source data');
+
+    const leftFirst = await left.vault.loadProjects();
+    const rightFirst = await right.vault.loadProjects();
+    expect(leftFirst[0]?.docs[0]?.content).toContain('Left-only source data');
+    expect(rightFirst[0]?.docs[0]?.content).toContain('Right-only source data');
+
+    await fs.writeFile(path.join(rightProject, 'background', 'brief.md'), '---\ntitle: Right brief\n---\nRight data after invalidation');
+    left.vault.invalidateCache();
+
+    expect((await left.vault.loadProjects())[0]?.docs[0]?.content).toContain('Left-only source data');
+    expect((await right.vault.loadProjects())[0]?.docs[0]?.content).toContain('Right-only source data');
+
+    right.vault.invalidateCache();
+    expect((await right.vault.loadProjects())[0]?.docs[0]?.content).toContain('Right data after invalidation');
+  });
+
   it('Given no host config was installed, When two containers are created directly, Then their supplied paths remain the only runtime paths', () => {
     const left = createCoreServices(runtime('isolated-left'));
     const right = createCoreServices(runtime('isolated-right'));

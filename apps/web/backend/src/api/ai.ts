@@ -264,6 +264,7 @@ router.post('/pi-chat', async (req, res) => {
     // 6. 通过 PiRuntime 初始化并发送消息
     runtime = new PiRuntime({
       authorizedPaths: coreServices.authorizedPaths,
+      loader: coreServices.vault,
       plugins: coreServices.plugins,
       auditLog: coreServices.auditLog,
       askUserLifecycle: {

@@ -10,7 +10,7 @@ import { extractFrontmatterText } from '@contour/core/vault';
 import { atomicWriteFile } from '@contour/core/vault';
 import { yamlSafeValue, parseFrontmatter, stringifyWithFrontmatter } from '@contour/core/vault';
 
-const { loadProjects, findProjectDir, findProjectDirForClaim } = coreServices.vault;
+const { loadProjects, findProjectDir, findProjectDirForClaim, invalidateCache } = coreServices.vault;
 
 const router = Router();
 
@@ -105,8 +105,6 @@ tags: []
 
 `;
     await atomicWriteFile(path.join(claimsDir, `${claimId}.md`), content);
-
-    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<{ claimId: string }> = { success: true, data: { claimId } };
@@ -171,8 +169,6 @@ router.put('/:claimId', async (req, res) => {
     }
 
     await atomicWriteFile(targetFile, finalContent);
-
-    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<null> = { success: true, data: null };
@@ -206,8 +202,6 @@ router.delete('/:claimId', async (req, res) => {
     } catch {
       // 文件不存在，忽略
     }
-
-    const { invalidateCache } = await import('@contour/core/vault');
     invalidateCache();
 
     const response: ApiResponse<null> = { success: true, data: null };

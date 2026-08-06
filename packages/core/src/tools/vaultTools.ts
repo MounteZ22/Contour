@@ -1,11 +1,10 @@
-import type { CoreRuntimeConfig } from '../runtime/config.js';
-import { loadProjects } from '../vault/loader.js';
+import type { ProjectLoader } from '../vault/loader.js';
 import { validateId } from '../vault/validate.js';
 import type { Flow, ProjectDoc } from '@contour/shared';
 
-export function createVaultTools(config: Readonly<CoreRuntimeConfig>) {
+export function createVaultTools(loader: Pick<ProjectLoader, 'loadProjects'>) {
   async function scopedProjects(projectId?: string) {
-    const projects = await loadProjects(config.vaultsDir, config.legacyVault);
+    const projects = await loader.loadProjects();
     return projectId ? projects.filter((project) => project.projectId === projectId) : projects;
   }
 

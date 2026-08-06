@@ -1,6 +1,6 @@
 import { assertRuntimeConfig, type CoreRuntimeConfig } from '../runtime/config.js';
 import { createVaultLocator } from '../vault/locate.js';
-import { loadProjects, invalidateCache } from '../vault/loader.js';
+import { createProjectLoader } from '../vault/loader.js';
 import { createProjectManager } from './projectManager.js';
 import { createProjectPluginConfig } from './project-plugin-config.js';
 import { createChannelManager } from './channelManager.js';
@@ -28,22 +28,22 @@ export function createCoreServices(input: CoreRuntimeConfig) {
   const auditLog = createAuditLog(config);
   const authorizedPaths = createAuthorizedPaths(projects, auditLog);
   const locator = createVaultLocator(config);
+  const loader = createProjectLoader(config.vaultsDir, config.legacyVault);
   const vault = {
     ...locator,
-    loadProjects: () => loadProjects(config.vaultsDir, config.legacyVault),
-    invalidateCache,
+    ...loader,
   };
-  const vaultTools = createVaultTools(config);
+  const vaultTools = createVaultTools(loader);
   const toolRegistry = createToolRegistry(vaultTools);
   const prompt = createPromptBuilder(config, {
-    loadProjects,
+    loadProjects: loader.loadProjects,
     getProjectConfigStatus: projects.getProjectConfigStatus,
   });
 
   const tools = { createContourCustomTools: (projectId?: string) => createContourCustomTools(toolRegistry, projectId) };
   const agent = createChannelAdapter(channels);
-  const flowAssets = createFlowAssets(locator);
-  const flowSummary = createFlowSummary(locator, channels, agent);
+  const flowAssets = createFlowAssets(locator, loader);
+  const flowSummary = createFlowSummary(locator, loader, channels, agent);
 
   return Object.freeze({
     config,

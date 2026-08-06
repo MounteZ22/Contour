@@ -11,7 +11,7 @@ import path from 'node:path';
 import { Type, type Static } from 'typebox';
 import type { AuthorizedPaths, AuthorizedPathKind } from '../services/authorizedPaths.js';
 import { ValidationError } from '../vault/validate.js';
-import { invalidateCache } from '../vault/loader.js';
+import type { ProjectLoader } from '../vault/loader.js';
 import { isInside, comparisonKey } from '../vault/path-utils.js';
 import { generateDiffString, generateUnifiedPatch, withFileMutationQueue } from '@earendil-works/pi-coding-agent';
 
@@ -37,6 +37,7 @@ export interface AuthorizedFileToolOptions {
   /** 是否提供受路径白名单保护的 write/edit 工具。 */
   allowWrite?: boolean;
   authorizedPaths: AuthorizedPaths;
+  loader: Pick<ProjectLoader, 'invalidateCache'>;
 }
 
 const readParams = Type.Object({
@@ -332,7 +333,7 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
           const existing = await fs.stat(confirmedTarget).catch(() => null);
           if (existing?.isDirectory()) throw new ValidationError('目标是文件夹，无法写入');
           await fs.writeFile(confirmedTarget, params.content, 'utf-8');
-          invalidateCache();
+          options.loader.invalidateCache();
           if (signal?.aborted) throw new Error('操作已中止');
           return textResult(`已写入 ${Buffer.byteLength(params.content, 'utf-8')} 字节到 ${params.path}`);
         });
@@ -388,7 +389,7 @@ export function createAuthorizedFileTools(options: AuthorizedFileToolOptions) {
           }
           authorizeWrite(params.path);
           await fs.writeFile(filePath, finalContent, 'utf-8');
-          invalidateCache();
+          options.loader.invalidateCache();
           if (signal?.aborted) throw new Error('操作已中止');
           const diff = generateDiffString(content, nextContent);
           return {

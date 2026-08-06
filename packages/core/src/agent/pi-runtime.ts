@@ -39,6 +39,7 @@ import { classifyAgentError, typedAgentError } from "./typed-error.js";
 import type { AuthorizedPaths } from "../services/authorizedPaths.js";
 import type { ProjectPluginConfigService } from "../services/project-plugin-config.js";
 import type { AuditLog } from "../services/audit-log.js";
+import type { ProjectLoader } from "../vault/loader.js";
 import { createAuthorizedFileTools } from "../tools/authorized-file-tools.js";
 import { applyAgentToolPolicy } from "./tool-policy.js";
 import { createProjectMcpTools, type ProjectMcpTools } from "../tools/project-mcp-tools.js";
@@ -72,6 +73,7 @@ export interface PiRuntimeOptions {
   /** AskUser 请求进入和离开时的路由生命周期回调。 */
   askUserLifecycle?: AskUserRequestLifecycle;
   authorizedPaths?: AuthorizedPaths;
+  loader?: Pick<ProjectLoader, "invalidateCache">;
   plugins?: Pick<ProjectPluginConfigService, "getEnabledProjectMcpServers">;
   auditLog?: AuditLog;
 }
@@ -283,7 +285,7 @@ export class PiRuntime implements AgentRuntime {
       throw new Error("[PiRuntime] 权限模式无效");
     }
     const allowWrite = permissionMode === "review" || permissionMode === "yolo";
-    if (!this.options.authorizedPaths || !this.options.plugins) {
+    if (!this.options.authorizedPaths || !this.options.plugins || !this.options.loader) {
       throw new Error("PiRuntime requires Core service dependencies");
     }
     const contourFileTools = createAuthorizedFileTools({
@@ -292,6 +294,7 @@ export class PiRuntime implements AgentRuntime {
         additionalFiles: config.authorizedFiles,
         allowWrite,
         authorizedPaths: this.options.authorizedPaths,
+        loader: this.options.loader,
       }) as Array<{ name: string }>;
     // readonly 不调用 bridge，因此不会启动任何外部 MCP 程序。review/yolo 都会
     // 创建桥接，但由 ResourceLoader 的强制确认名单确保每次调用先确认。

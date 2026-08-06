@@ -11,7 +11,7 @@ import { atomicWriteFile } from '../vault/atomic.js';
 import { validateId, ValidationError } from '../vault/validate.js';
 import { validateVaultProjectId } from './flowAssets.js';
 import { parseFrontmatter, stringifyWithFrontmatter } from '../vault/yaml-utils.js';
-import { invalidateCache } from '../vault/loader.js';
+import type { ProjectLoader } from '../vault/loader.js';
 
 const FLOW_SUMMARY_FILE = 'flow_summary.md';
 const MAX_FLOW_INPUT_CHARS = 32_000;
@@ -218,7 +218,7 @@ export async function getFlowSummary(locator: VaultLocator, projectId: unknown, 
   }
 }
 
-export async function saveFlowSummary(locator: VaultLocator, projectId: unknown, flowId: unknown, content: unknown): Promise<void> {
+export async function saveFlowSummary(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, projectId: unknown, flowId: unknown, content: unknown): Promise<void> {
   if (typeof content !== 'string') throw new FlowSummaryError('content 必须是字符串', 400);
   if (content.length > MAX_SUMMARY_CHARS) {
     throw new FlowSummaryError(`摘要不能超过 ${MAX_SUMMARY_CHARS.toLocaleString()} 个字符`, 400);
@@ -236,14 +236,14 @@ export async function saveFlowSummary(locator: VaultLocator, projectId: unknown,
   // 更新时间无法写入；保存成功后立刻失效缓存，后续 GET 可读取新值。
   await atomicWriteFile(path.join(flowDir, FLOW_SUMMARY_FILE), summaryFile);
   await atomicWriteFile(path.join(flowDir, 'flow.md'), stringifyWithFrontmatter(parsed.fm, parsed.body));
-  invalidateCache();
+  loader.invalidateCache();
 }
 
-export function createFlowSummary(locator: VaultLocator, channels: Pick<ChannelManager, "getChannelById">, adapter: Pick<ChannelAdapter, "findDefaultAgentChannel">) {
+export function createFlowSummary(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, channels: Pick<ChannelManager, "getChannelById">, adapter: Pick<ChannelAdapter, "findDefaultAgentChannel">) {
   return {
     createFlowSummaryDraft: (selection: FlowSummarySelection) => createFlowSummaryDraft(locator, channels, adapter, selection),
     getFlowSummary: (projectId: unknown, flowId: unknown) => getFlowSummary(locator, projectId, flowId),
-    saveFlowSummary: (projectId: unknown, flowId: unknown, content: unknown) => saveFlowSummary(locator, projectId, flowId, content),
+    saveFlowSummary: (projectId: unknown, flowId: unknown, content: unknown) => saveFlowSummary(locator, loader, projectId, flowId, content),
   };
 }
 

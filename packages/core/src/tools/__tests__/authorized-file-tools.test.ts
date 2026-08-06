@@ -19,7 +19,7 @@ let exactFile: string;
 let outsideFile: string;
 
 function tool(name: string, additionalFiles: string[] = [], allowWrite = false) {
-  return createAuthorizedFileTools({ projectId, workspaceDir, additionalFiles, allowWrite, authorizedPaths: core.authorizedPaths })
+  return createAuthorizedFileTools({ projectId, workspaceDir, additionalFiles, allowWrite, authorizedPaths: core.authorizedPaths, loader: core.vault })
     .find((item) => item.name === name)! as { execute: (...args: any[]) => Promise<any> };
 }
 

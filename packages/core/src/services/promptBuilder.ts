@@ -3,7 +3,7 @@ import type { CoreRuntimeConfig } from "../runtime/config.js";
 import type { AIContextItem, ProjectData } from "../types.js";
 import { getSessionWorkspaceDir } from "../agent/session-storage.js";
 import type { ProjectManager, ProjectConfigStatus } from "./projectManager.js";
-import { loadProjects } from "../vault/loader.js";
+import type { ProjectLoader } from "../vault/loader.js";
 import { ROLE_PROMPT } from "./prompts/role.js";
 import { TOOL_GUIDELINES_PROMPT } from "./prompts/tool-guidelines.js";
 import { buildWorkspaceInfo } from "./prompts/workspace-info.js";
@@ -30,7 +30,7 @@ export interface DynamicContextOptions {
 }
 
 export interface PromptBuilderDependencies {
-  loadProjects: typeof loadProjects;
+  loadProjects: ProjectLoader["loadProjects"];
   getProjectConfigStatus: ProjectManager["getProjectConfigStatus"];
 }
 
@@ -103,7 +103,7 @@ export async function buildDynamicContext(
   options: DynamicContextOptions,
   dependencies: PromptBuilderDependencies,
 ): Promise<string> {
-  const projects = await dependencies.loadProjects(runtime.vaultsDir, runtime.legacyVault);
+  const projects = await dependencies.loadProjects();
   const project = findCurrentProject(projects, options);
   let config = unavailableConfig(options.projectDir);
   let configWarning: string | undefined;

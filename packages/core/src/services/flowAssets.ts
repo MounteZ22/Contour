@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FlowLink } from '@contour/shared';
 import { atomicCreateFile, atomicWriteFile } from '../vault/atomic.js';
-import { invalidateCache } from '../vault/loader.js';
+import type { ProjectLoader } from '../vault/loader.js';
 import type { VaultLocator } from '../vault/locate.js';
 import { getFlowLinks } from '../vault/parser.js';
 import { ValidationError, validateId } from '../vault/validate.js';
@@ -171,7 +171,7 @@ async function readFlowDocument(flowDir: string): Promise<{
   }
 }
 
-export async function uploadFlowAttachment(locator: VaultLocator, input: {
+export async function uploadFlowAttachment(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, input: {
   flowId: string;
   projectId: unknown;
   filename: unknown;
@@ -193,12 +193,12 @@ export async function uploadFlowAttachment(locator: VaultLocator, input: {
       throw error;
     }
     await updateFlowTimestamp(flowDir);
-    invalidateCache();
+    loader.invalidateCache();
     return { filename, attachments: await listAttachmentNames(flowDir) };
   });
 }
 
-export async function deleteFlowAttachment(locator: VaultLocator, input: {
+export async function deleteFlowAttachment(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, input: {
   flowId: string;
   projectId: unknown;
   filename: unknown;
@@ -227,7 +227,7 @@ export async function deleteFlowAttachment(locator: VaultLocator, input: {
       }
       await fs.unlink(targetFile);
       await updateFlowTimestamp(flowDir);
-      invalidateCache();
+      loader.invalidateCache();
     } catch (error) {
       if (error instanceof ValidationError) throw error;
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -236,7 +236,7 @@ export async function deleteFlowAttachment(locator: VaultLocator, input: {
   });
 }
 
-export async function addFlowLink(locator: VaultLocator, input: {
+export async function addFlowLink(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, input: {
   flowId: string;
   projectId: unknown;
   path: unknown;
@@ -259,12 +259,12 @@ export async function addFlowLink(locator: VaultLocator, input: {
     document.fm.links = links;
     document.fm.updated = new Date().toISOString().split('T')[0];
     await atomicWriteFile(document.flowMdPath, stringifyWithFrontmatter(document.fm, document.body));
-    invalidateCache();
+    loader.invalidateCache();
     return { links, created: !existing };
   });
 }
 
-export async function removeFlowLink(locator: VaultLocator, input: {
+export async function removeFlowLink(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>, input: {
   flowId: string;
   projectId: unknown;
   path: unknown;
@@ -280,18 +280,18 @@ export async function removeFlowLink(locator: VaultLocator, input: {
       document.fm.links = nextLinks;
       document.fm.updated = new Date().toISOString().split('T')[0];
       await atomicWriteFile(document.flowMdPath, stringifyWithFrontmatter(document.fm, document.body));
-      invalidateCache();
+      loader.invalidateCache();
     }
     return { links: nextLinks };
   });
 }
 
-export function createFlowAssets(locator: VaultLocator) {
+export function createFlowAssets(locator: VaultLocator, loader: Pick<ProjectLoader, 'invalidateCache'>) {
   return {
-    uploadFlowAttachment: (input: Parameters<typeof uploadFlowAttachment>[1]) => uploadFlowAttachment(locator, input),
-    deleteFlowAttachment: (input: Parameters<typeof deleteFlowAttachment>[1]) => deleteFlowAttachment(locator, input),
-    addFlowLink: (input: Parameters<typeof addFlowLink>[1]) => addFlowLink(locator, input),
-    removeFlowLink: (input: Parameters<typeof removeFlowLink>[1]) => removeFlowLink(locator, input),
+    uploadFlowAttachment: (input: Parameters<typeof uploadFlowAttachment>[2]) => uploadFlowAttachment(locator, loader, input),
+    deleteFlowAttachment: (input: Parameters<typeof deleteFlowAttachment>[2]) => deleteFlowAttachment(locator, loader, input),
+    addFlowLink: (input: Parameters<typeof addFlowLink>[2]) => addFlowLink(locator, loader, input),
+    removeFlowLink: (input: Parameters<typeof removeFlowLink>[2]) => removeFlowLink(locator, loader, input),
   };
 }
 
