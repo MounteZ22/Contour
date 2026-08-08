@@ -27,6 +27,7 @@ let tray: Tray | null = null;
 let webServer: StartedWebServer | null = null;
 let isQuitting = false;
 let cleanupStarted = false;
+let windowStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getWindowStatePath(): string {
   return path.join(app.getPath('userData'), WINDOW_STATE_FILE);
@@ -48,6 +49,15 @@ function saveWindowState(): void {
   } catch (error) {
     console.warn('[Contour] 无法保存窗口位置:', error);
   }
+}
+
+// resize/move 高频事件防抖：250ms 内累积最后一次，避免每次同步写盘阻塞主进程。
+function scheduleWindowStateSave(): void {
+  if (windowStateTimer) clearTimeout(windowStateTimer);
+  windowStateTimer = setTimeout(() => {
+    windowStateTimer = null;
+    saveWindowState();
+  }, 250);
 }
 
 function showMainWindow(): void {
@@ -140,14 +150,20 @@ async function createMainWindow(): Promise<void> {
     openExternal(url);
   });
   mainWindow.on('close', (event) => {
+    // 关闭/隐藏前先 flush 尚未落盘的防抖保存。
+    if (windowStateTimer) {
+      clearTimeout(windowStateTimer);
+      windowStateTimer = null;
+      saveWindowState();
+    }
     if (shouldHideOnClose(isQuitting)) {
       event.preventDefault();
       saveWindowState();
       mainWindow?.hide();
     }
   });
-  mainWindow.on('resize', saveWindowState);
-  mainWindow.on('move', saveWindowState);
+  mainWindow.on('resize', scheduleWindowStateSave);
+  mainWindow.on('move', scheduleWindowStateSave);
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   await mainWindow.loadURL(origin);
 }
@@ -176,6 +192,13 @@ async function cleanup(): Promise<void> {
   tray?.destroy();
   tray = null;
   if (webServer) {
+    // 只有真正退出（isQuitting）时才强制销毁窗口：窗口销毁会断开其持有的
+    // SSE fetch 长连接，避免 webServer.close() 等待活跃连接；托盘常驻时
+    // shouldHideOnClose 不会触发销毁，不影响隐藏到托盘的行为。
+    if (isQuitting && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+      mainWindow = null;
+    }
     await webServer.close();
     webServer = null;
   }

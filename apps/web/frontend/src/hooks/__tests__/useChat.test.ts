@@ -762,6 +762,9 @@ describe('useChat', () => {
       await waitFor(() => expect(oldSignal).toBeDefined());
       rerender({ sessionId: 'session-b' });
       expect(oldSignal?.aborted).toBe(true);
+      // 切换会话后应重置流式状态并清空消息，避免 isStreaming 卡死 / 旧内容闪现
+      await waitFor(() => expect(result.current.isStreaming).toBe(false));
+      expect(result.current.messages).toEqual([]);
       act(() => oldCallbacks?.onChunk('不应写入新会话'));
       expect(result.current.streamingContent).toBe('');
     });

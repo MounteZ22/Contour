@@ -9,7 +9,7 @@
  * - user / assistant 的 text 块拼接为 content
  * - assistant 的 toolCall 块映射为 ToolActivity.input
  * - 后续 role=toolResult 的记录按 toolCallId 回填 result 与 error 状态
- * - Write / Edit 的 arguments.path | arguments.file_path 推导 filesChanged（去重）
+ * - write / edit 的 arguments.path | arguments.file_path 推导 filesChanged（去重，工具名大小写兼容）
  * - 以 user 消息为边界推导一致的 1-based turnIndex（仅 assistant 消息携带，
  *   与前端 TurnGroup 分组语义一致）
  * - 不展示 thinking / system 内容
@@ -73,11 +73,14 @@ function extractToolCalls(content: unknown): ContentBlock[] {
     .filter((block) => block.type === 'toolCall' && typeof block.name === 'string');
 }
 
-/** 从 Write/Edit 参数推导被修改的文件路径（path 或 file_path 兼容） */
+/** 从 write/edit 参数推导被修改的文件路径（path 或 file_path 兼容） */
 function filesChangedFromToolCalls(toolCalls: ContentBlock[]): string[] | undefined {
   const files = new Set<string>();
   for (const toolCall of toolCalls) {
-    if (toolCall.name !== 'Write' && toolCall.name !== 'Edit') continue;
+    // Pi SDK 工具名全小写（write/edit），但历史 JSONL 中可能残留大写，大小写兼容匹配
+    if (typeof toolCall.name !== 'string') continue;
+    const toolName = toolCall.name.toLowerCase();
+    if (toolName !== 'write' && toolName !== 'edit') continue;
     const args = isRecord(toolCall.arguments) ? toolCall.arguments : undefined;
     const filePath = args?.path ?? args?.file_path;
     if (typeof filePath === 'string' && filePath) files.add(filePath);

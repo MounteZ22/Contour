@@ -6,18 +6,8 @@ export type WebHostMode = 'development' | 'production';
 
 export interface WebHostConfig {
   port: number;
-  dataDir: string;
-  projectsDir: string;
-  vaultsDir: string;
-  legacyVault: string;
-  isDevelopment: boolean;
-  /** Legacy transport names, scoped to this host rather than module globals. */
-  PORT: number;
   DATA_DIR: string;
-  PROJECTS_DIR: string;
   VAULTS_DIR: string;
-  LEGACY_VAULT: string;
-  IS_DEV: boolean;
 }
 
 export interface WebHostOptions {
@@ -48,17 +38,8 @@ export function createWebHostContext(
   const mode = options.mode ?? (coreConfig.isDevelopment ? 'development' : 'production');
   const config: WebHostConfig = Object.freeze({
     port: options.port ?? 3001,
-    dataDir: coreConfig.dataDir,
-    projectsDir: coreConfig.projectsDir,
-    vaultsDir: coreConfig.vaultsDir,
-    legacyVault: coreConfig.legacyVault,
-    isDevelopment: mode === 'development',
-    PORT: options.port ?? 3001,
     DATA_DIR: coreConfig.dataDir,
-    PROJECTS_DIR: coreConfig.projectsDir,
     VAULTS_DIR: coreConfig.vaultsDir,
-    LEGACY_VAULT: coreConfig.legacyVault,
-    IS_DEV: mode === 'development',
   });
 
   return Object.freeze({

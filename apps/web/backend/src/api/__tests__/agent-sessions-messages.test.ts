@@ -120,13 +120,13 @@ describe('GET /api/agent/sessions/:projectId/:sessionId/messages', () => {
     expect(response.body).toMatchObject({ success: false, error: '会话不存在' });
   });
 
-  it('Given 读取失败, When 请求消息, Then 返回 400 错误与空会话区分开', async () => {
+  it('Given 读取失败, When 请求消息, Then 返回 500（IO/服务器错误）与空会话区分开', async () => {
     withSessionInRegistry();
     mockMessages.readSessionMessages.mockRejectedValue(new Error('磁盘读取失败'));
 
     const response = await request(app).get('/api/agent/sessions/project-a/session-1/messages');
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(500);
     expect(response.body).toMatchObject({ success: false, error: '读取会话消息失败' });
   });
 });

@@ -15,7 +15,7 @@ const missing = [...new Set(externalPackages)].filter(
 );
 if (missing.length > 0) throw new Error(`Missing staged external runtime packages: ${missing.join(', ')}`);
 
-for (const packageName of ['@earendil-works/pi-coding-agent', '@modelcontextprotocol/sdk', '@sinclair/typebox']) {
+for (const packageName of ['@earendil-works/pi-coding-agent', '@modelcontextprotocol/sdk', 'typebox']) {
   if (!existsSync(path.join(desktopDir, 'node_modules', packageName))) {
     throw new Error(`Required runtime package was not staged: ${packageName}`);
   }

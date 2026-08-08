@@ -190,7 +190,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                     getItemKey={(item) =>
                       item.type === 'message'
                         ? `msg-${item.message.id}`
-                        : `turn-${item.turnMessages[0]?.turnIndex ?? 'group'}`
+                        : `turn-${item.turnMessages[0]?.id ?? 'group'}`
                     }
                     renderItem={(item) => {
                       if (item.type === 'message') {

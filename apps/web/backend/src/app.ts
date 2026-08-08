@@ -23,8 +23,15 @@ export interface StartedWebServer {
   close: () => Promise<void>;
 }
 
+function resolveCoreConfig(options: CreateAppOptions): CoreRuntimeConfig {
+  if (!options.context && !options.coreConfig) {
+    throw new Error('createApp requires coreConfig or context');
+  }
+  return options.coreConfig!;
+}
+
 export function createApp(options: CreateAppOptions): Express {
-  const context = options.context ?? createWebHostContext(options.coreConfig!, options);
+  const context = options.context ?? createWebHostContext(resolveCoreConfig(options), options);
   const app = express();
 
   if (context.mode === 'development') {
@@ -37,7 +44,7 @@ export function createApp(options: CreateAppOptions): Express {
   }
 
   app.use(express.json({ limit: '5mb' }));
-  app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+  app.use('/api', rateLimit({ windowMs: 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false }));
   app.use('/api', createRoutes(context));
   app.use('/api/projects', createProjectsRouter(context));
 
@@ -52,7 +59,7 @@ export function createApp(options: CreateAppOptions): Express {
 }
 
 export async function startServer(options: CreateAppOptions): Promise<StartedWebServer> {
-  const context = options.context ?? createWebHostContext(options.coreConfig!, options);
+  const context = options.context ?? createWebHostContext(resolveCoreConfig(options), options);
   const app = createApp({ context });
   const server = await new Promise<Server>((resolve, reject) => {
     const candidate = app.listen(context.config.port, '127.0.0.1', () => resolve(candidate));
@@ -66,6 +73,15 @@ export async function startServer(options: CreateAppOptions): Promise<StartedWeb
     server,
     port: address.port,
     host: '127.0.0.1',
-    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+    close: () => new Promise((resolve, reject) => {
+      // 先断开空闲连接，再留 5s 兜底强制关闭活跃连接（如 SSE 长连接），
+      // 避免 Electron 退出时 server.close() 无限等待拖慢退出。
+      server.closeIdleConnections();
+      const forceCloseTimer = setTimeout(() => server.closeAllConnections(), 5_000);
+      server.close((error) => {
+        clearTimeout(forceCloseTimer);
+        error ? reject(error) : resolve();
+      });
+    }),
   };
 }

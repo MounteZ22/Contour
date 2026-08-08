@@ -168,21 +168,21 @@ describe('parseSessionJsonl 工具活动', () => {
 // ── 解析器：filesChanged 推导 ─────────────────────────────────────────────────
 
 describe('parseSessionJsonl filesChanged', () => {
-  it('Given Write/Edit 的 arguments 含 path 或 file_path, When 解析, Then 去重后写入 filesChanged', () => {
+  it('Given write/edit 的 arguments 含 path 或 file_path, When 解析, Then 去重后写入 filesChanged', () => {
     const jsonl = [
       messageRecord('u1', textContent('改文件')),
       messageRecord('a1', {
         role: 'assistant',
         content: [
           textBlock('开始修改'),
-          toolCallBlock('tool-W1', 'Write', { path: 'a.md' }),
-          toolCallBlock('tool-W2', 'Write', { path: 'a.md' }),
-          toolCallBlock('tool-E1', 'Edit', { file_path: 'b.ts' }),
+          toolCallBlock('tool-W1', 'write', { path: 'a.md' }),
+          toolCallBlock('tool-W2', 'write', { path: 'a.md' }),
+          toolCallBlock('tool-E1', 'edit', { file_path: 'b.ts' }),
         ],
       }),
-      toolResultRecord('r1', 'tool-W1', 'Write', 'ok'),
-      toolResultRecord('r2', 'tool-W2', 'Write', 'ok'),
-      toolResultRecord('r3', 'tool-E1', 'Edit', 'ok'),
+      toolResultRecord('r1', 'tool-W1', 'write', 'ok'),
+      toolResultRecord('r2', 'tool-W2', 'write', 'ok'),
+      toolResultRecord('r3', 'tool-E1', 'edit', 'ok'),
     ].join('\n');
 
     const messages = parseSessionJsonl(jsonl);
@@ -190,7 +190,25 @@ describe('parseSessionJsonl filesChanged', () => {
     expect(messages[1]!.filesChanged).toEqual(['a.md', 'b.ts']);
   });
 
-  it('Given 非 Write/Edit 工具, When 解析, Then 不产生 filesChanged', () => {
+  it('Given toolCall.name 大小写混写（WRITE/Edit）, When 解析, Then 大小写兼容仍写入 filesChanged', () => {
+    const jsonl = [
+      messageRecord('u1', textContent('改文件')),
+      messageRecord('a1', {
+        role: 'assistant',
+        content: [
+          toolCallBlock('tool-M1', 'WRITE', { path: 'legacy-a.md' }),
+          toolCallBlock('tool-M2', 'Edit', { file_path: 'legacy-b.ts' }),
+        ],
+      }),
+      toolResultRecord('r1', 'tool-M1', 'WRITE', 'ok'),
+      toolResultRecord('r2', 'tool-M2', 'Edit', 'ok'),
+    ].join('\n');
+
+    const messages = parseSessionJsonl(jsonl);
+    expect(messages[1]!.filesChanged).toEqual(['legacy-a.md', 'legacy-b.ts']);
+  });
+
+  it('Given 非 write/edit 工具, When 解析, Then 不产生 filesChanged', () => {
     const jsonl = [
       messageRecord('u1', textContent('查询')),
       messageRecord('a1', {

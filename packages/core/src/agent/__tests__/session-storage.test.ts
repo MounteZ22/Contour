@@ -4,9 +4,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createOrResumePiSession,
+  deleteProductSession,
   ensureProductSession,
   findPiSessionFile,
+  getSessionSummary,
   getSessionWorkspaceDir,
+  listPiSessionFiles,
+  listProductSessions,
+  scanSessionMessages,
   updateProductSession,
 } from '../session-storage.js';
 
@@ -100,5 +105,75 @@ describe('Agent Session 存储', () => {
     expect(updated.title).toBe('重命名后的会话');
     const reopened = await ensureProductSession(dataDir, 'project-a', 'session_rename');
     expect(reopened.meta.title).toBe('重命名后的会话');
+  });
+
+  it('deleteProductSession 应在互斥锁内删除 registry 记录与工作区目录', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'contour-session-'));
+    await createOrResumePiSession(dataDir, 'project-a', 'session_del', '待删除');
+
+    const deleted = await deleteProductSession(dataDir, 'project-a', 'session_del');
+    expect(deleted).toBe(true);
+    expect(listProductSessions(dataDir, 'project-a')).toHaveLength(0);
+
+    // 目录与记录已删除，重新创建应得到全新会话
+    const recreated = await ensureProductSession(dataDir, 'project-a', 'session_del');
+    expect(recreated.created).toBe(true);
+
+    const missing = await deleteProductSession(dataDir, 'project-a', 'ghost');
+    expect(missing).toBe(false);
+  });
+
+  it('scanSessionMessages 应流式统计消息数并提取最后一条消息文本', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'contour-session-'));
+    const handle = await createOrResumePiSession(dataDir, 'project-a', 'session_scan', '扫描会话');
+    handle.manager.appendMessage({ role: 'user', content: 'hello', timestamp: Date.now() } as never);
+    handle.manager.appendMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'world' }],
+      timestamp: Date.now(),
+      api: 'anthropic-messages', provider: 'anthropic', model: 'test', usage: {}, stopReason: 'stop',
+    } as never);
+
+    const scanned = await scanSessionMessages(handle.manager.getSessionFile()!);
+
+    expect(scanned.messageCount).toBe(2);
+    expect(scanned.lastMessage).toBe('world');
+  });
+
+  it('listPiSessionFiles 应一次性返回全部已写盘会话的 Pi 文件映射', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'contour-session-'));
+    const first = await createOrResumePiSession(dataDir, 'project-a', 'session_one');
+    const second = await createOrResumePiSession(dataDir, 'project-a', 'session_two');
+    // Pi SDK 延迟写盘：首个 assistant 回复到达时才 flush JSONL 文件
+    first.manager.appendMessage({ role: 'user', content: 'u1', timestamp: Date.now() } as never);
+    first.manager.appendMessage({
+      role: 'assistant', content: 'a1', timestamp: Date.now(),
+      api: 'anthropic-messages', provider: 'anthropic', model: 'test', usage: {}, stopReason: 'stop',
+    } as never);
+    second.manager.appendMessage({ role: 'user', content: 'u2', timestamp: Date.now() } as never);
+    second.manager.appendMessage({
+      role: 'assistant', content: 'a2', timestamp: Date.now(),
+      api: 'anthropic-messages', provider: 'anthropic', model: 'test', usage: {}, stopReason: 'stop',
+    } as never);
+
+    const files = listPiSessionFiles(dataDir, 'project-a');
+
+    expect(files.size).toBe(2);
+    expect(files.get('session_one')).toBe(first.manager.getSessionFile());
+    expect(files.get('session_two')).toBe(second.manager.getSessionFile());
+  });
+
+  it('getSessionSummary 应返回标题与消息数（缓存复用后结果一致）', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'contour-session-'));
+    const handle = await createOrResumePiSession(dataDir, 'project-a', 'session_summary', '缓存会话');
+    handle.manager.appendMessage({ role: 'user', content: 'hi', timestamp: Date.now() } as never);
+    handle.manager.appendMessage({ role: 'assistant', content: 'yo', timestamp: Date.now() } as never);
+
+    const first = getSessionSummary(dataDir, 'project-a', 'session_summary');
+    const second = getSessionSummary(dataDir, 'project-a', 'session_summary');
+
+    expect(first?.title).toBe('缓存会话');
+    expect(first?.messageCount).toBe(2);
+    expect(second).toEqual(first);
   });
 });

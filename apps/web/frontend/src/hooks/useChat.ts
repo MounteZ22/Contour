@@ -159,8 +159,9 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   useEffect(() => {
     // 任务浮层只属于正在进行的这一轮，切换会话时不能继承旧快照。
     setTaskActivities([]);
+    // 切换会话时先清空消息，避免闪现上一会话内容；新会话消息由下方异步加载后填充。
+    setMessages([]);
     if (!sessionId) {
-      setMessages([]);
       return;
     }
 
@@ -192,11 +193,19 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   }, [sessionId, projectId]);
 
   // 切换会话或卸载时必须终止旧 SSE，避免旧流回调覆盖新会话状态。
+  // 同时重置流式 UI 状态，防止切换会话后 isStreaming 等残留导致界面卡死。
   useEffect(() => {
     return () => {
       streamGenerationRef.current += 1;
       resumeWatchdogRef.current = null;
       abortControllerRef.current?.abort();
+      setIsStreaming(false);
+      setStreamingContent('');
+      setToolActivities([]);
+      setProcessActivities([]);
+      setError(null);
+      setPermissionRequest(null);
+      setTaskActivities([]);
     };
   }, [sessionId]);
 
