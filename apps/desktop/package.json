@@ -1,0 +1,36 @@
+{
+  "name": "@contour/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build:main": "esbuild src/main/index.ts --bundle --platform=node --format=cjs --outfile=dist/main.cjs --external:electron --external:@earendil-works/pi-coding-agent --external:@earendil-works/pi-agent-core --external:@earendil-works/pi-ai",
+    "build:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --outfile=dist/preload.cjs --external:electron",
+    "build": "npm run build:main && npm run build:preload && npm run sync:runtime-deps && npm run check:runtime-deps",
+    "sync:runtime-deps": "node scripts/sync-runtime-deps.mjs",
+    "check:runtime-deps": "node scripts/check-runtime-deps.mjs",
+    "dev": "npm run build && electronmon .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@contour/core": "0.1.0",
+    "@contour/web-backend": "1.0.0",
+    "@earendil-works/pi-coding-agent": "0.80.3"
+  },
+  "devDependencies": {
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3",
+    "electronmon": "2.0.4",
+    "esbuild": "0.28.1"
+  },
+  "build": {
+    "extends": "electron-builder.yml"
+  },
+  "electronmon": {
+    "patterns": ["dist/main.cjs", "dist/preload.cjs"]
+  }
+}

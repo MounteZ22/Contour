@@ -1,0 +1,47 @@
+appId: com.contour.app
+productName: Contour
+electronVersion: 43.3.0
+
+directories:
+  output: release
+  buildResources: resources
+
+asar: true
+asarUnpack:
+  - node_modules/@silvia-odwyer/photon-node/**
+  - node_modules/@earendil-works/pi-tui/native/**
+npmRebuild: false
+
+files:
+  - dist/**
+  - node_modules/@earendil-works/**
+  - node_modules/@modelcontextprotocol/**
+  - node_modules/@sinclair/**
+  - node_modules/@silvia-odwyer/**
+  - node_modules/**
+  - package.json
+  - "!dist/**/*.map"
+  - "!node_modules/electron/**"
+  - "!node_modules/electron-builder/**"
+  - "!node_modules/electronmon/**"
+  - "!node_modules/esbuild/**"
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip

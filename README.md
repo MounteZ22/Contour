@@ -52,7 +52,7 @@ Project（一个项目）
 
 ## 产品形态
 
-Contour 是一个本地运行的 Web 应用，包含三个核心页面：
+Contour 是一个本地运行的 Web 应用，也提供使用同一后端与数据目录的 Electron 桌面 MVP。Web 端包含三个核心页面：
 
 | 页面 | 功能 |
 |------|------|
@@ -64,29 +64,40 @@ Contour 是一个本地运行的 Web 应用，包含三个核心页面：
 
 ## 快速开始
 
+项目使用 npm workspaces。先在仓库根目录安装依赖：
+
 ```bash
 # 克隆仓库
 git clone https://github.com/MounteZ22/Contour.git
 cd Contour
-
-# 启动后端 (port 3001)
-cd contour-web/backend
 npm install
-npm run dev
-
-# 另起一个终端，启动前端 (port 3000，自动代理 API 到后端)
-cd contour-web/frontend
-npm install
-npm run dev
 ```
 
-打开 `http://localhost:3000`，Vault 数据默认读取 `D:\Contour`（Windows）或 `~/Contour`（macOS/Linux）。
+启动 Web 开发环境（后端 `127.0.0.1:3001`，前端 `127.0.0.1:3000`）：
 
-首次启动会自动创建该目录。如需自定义路径，编辑 `~/.contour/settings.json`：
+```bash
+npm run web:dev
+```
+
+打开 `http://127.0.0.1:3000`。Vault 数据默认读取 `D:\Contour`（Windows）或 `~/Contour`（macOS/Linux）。首次启动会自动创建配置目录和默认 Vault 路径。如需自定义路径，编辑 `~/.contour/settings.json`：
 
 ```json
 { "vaultsPath": "你的 vault 路径" }
 ```
+
+开发 Electron 桌面环境：
+
+```bash
+npm run desktop:dev
+```
+
+生产桌面构建会把前端静态文件和只监听 `127.0.0.1` 的本机 API 一起打包：
+
+```bash
+npm run desktop:build
+```
+
+Electron 桌面端的窗口状态保存在 Electron `userData`；业务配置、Agent 会话历史和 Vault 继续使用现有的 `~/.contour` 与 `vaultsPath` 配置。
 
 ## 技术栈
 
@@ -113,4 +124,4 @@ Agent 会话采用双层身份：前端和 API 始终使用稳定的 Contour `se
 
 ## License
 
-MIT
+AGPL-3.0。完整许可条款见根目录 [LICENSE](LICENSE)。

@@ -1,0 +1,35 @@
+{
+  "name": "contour",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/web/backend",
+    "apps/web/frontend",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "typecheck": "npm run build -w @contour/shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @contour/shared && npm run test --workspaces --if-present",
+    "build": "npm run build -w @contour/shared && npm run build --workspaces --if-present",
+    "web:dev": "npm run build -w @contour/shared && concurrently -k -n backend,frontend \"npm run dev -w @contour/web-backend\" \"npm run dev -w @contour/web-frontend\"",
+    "desktop:dev": "npm run build -w @contour/shared && npm run build -w @contour/core && npm run build -w @contour/web-backend && npm run build -w @contour/desktop && concurrently -k -n backend,frontend,electron \"npm run dev -w @contour/web-backend\" \"npm run dev -w @contour/web-frontend\" \"npm run dev -w @contour/desktop\"",
+    "desktop:build": "npm run build -w @contour/shared && npm run build -w @contour/core && npm run build -w @contour/web-backend && npm run build -w @contour/web-frontend -- --outDir ../../desktop/dist/renderer && npm run dist -w @contour/desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  },
+  "overrides": {
+    "postcss": "8.5.25",
+    "esbuild": "0.28.1",
+    "gray-matter": {
+      "js-yaml": "3.15.0"
+    },
+    "@earendil-works/pi-coding-agent": {
+      "minimatch": {
+        "brace-expansion": "5.0.8"
+      }
+    }
+  }
+}
