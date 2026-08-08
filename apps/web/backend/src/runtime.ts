@@ -37,8 +37,10 @@ export function resolveRuntimeConfig(options: RuntimeConfigResolverOptions): Res
     // A malformed legacy settings file falls back to the documented default.
   }
 
+  // 跨平台默认：vaults 目录跟随用户主目录，避免 Windows 硬编码 D 盘路径。
+  // 仍保留 settings.json 中 vaultsPath 的显式覆盖机制。
   const defaultVaultPath = options.defaultVaultPath
-    ?? (options.isDevelopment ? 'D:\\Contour-dev' : 'D:\\Contour');
+    ?? path.join(options.homeDir, options.isDevelopment ? 'Contour-dev' : 'Contour');
   const vaultsDir = savedVaultsPath ?? defaultVaultPath;
   const coreConfig: CoreRuntimeConfig = Object.freeze({
     dataDir: configDir,

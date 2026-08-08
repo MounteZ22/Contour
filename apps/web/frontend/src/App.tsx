@@ -87,6 +87,18 @@ export default function App() {
     return () => window.removeEventListener('contour:new-agent-session', openNewAgentSession);
   }, [navigate]);
 
+  // 托盘「最近项目」点击：跳转到对应项目的 Contour 视图。
+  // projectId 通过 CustomEvent.detail 传递（desktop-bridge 转发）。
+  useEffect(() => {
+    const openProject = (event: Event) => {
+      const projectId = (event as CustomEvent<string>).detail;
+      if (!projectId) return;
+      navigate(`/project/${encodeURIComponent(projectId)}`);
+    };
+    window.addEventListener('contour:project-open', openProject);
+    return () => window.removeEventListener('contour:project-open', openProject);
+  }, [navigate]);
+
   if (loading && appData.projects.length === 0) {
     return (
       <div className="min-h-screen bg-background">
@@ -124,6 +136,8 @@ export default function App() {
           >
             <Route element={<Navigate replace to="/contour" />} index />
             <Route element={<LazyRoute><ContourView /></LazyRoute>} path="contour" />
+            {/* 托盘最近项目导航到项目级 Contour 视图，ShellLayout 通过 routeProjectId 选中该项目 */}
+            <Route element={<LazyRoute><ContourView /></LazyRoute>} path="project/:projectId" />
             <Route element={<LazyRoute><AgentView /></LazyRoute>} path="agent" />
             <Route element={<LazyRoute><AgentSessionView /></LazyRoute>} path="agent/:sessionId" />
             <Route element={<LazyRoute><FlowWorkspacePage /></LazyRoute>} path="project/:projectId/flows/:flowId" />

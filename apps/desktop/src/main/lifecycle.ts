@@ -3,6 +3,7 @@ export interface SavedWindowState {
   y?: number;
   width: number;
   height: number;
+  maximized?: boolean;
 }
 
 export function normalizeWindowState(value: unknown): SavedWindowState | undefined {
@@ -14,6 +15,7 @@ export function normalizeWindowState(value: unknown): SavedWindowState | undefin
     y: Number.isFinite(state.y) ? Math.round(state.y!) : undefined,
     width: Math.min(Math.max(Math.round(state.width!), 900), 3840),
     height: Math.min(Math.max(Math.round(state.height!), 640), 2160),
+    maximized: state.maximized === true,
   };
 }
 

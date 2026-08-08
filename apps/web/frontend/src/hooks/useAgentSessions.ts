@@ -151,11 +151,26 @@ export function useAgentSessions(projectId?: string) {
     let cancelled = false;
 
     // 一次性迁移：清理无 projectId 的旧会话记录
+    // 安全策略（P1-U）：清理前先把被删会话备份到 localStorage 的备份 key，
+    // 避免静默丢失数据；备份写入失败时放弃清理、保留原数据。
     const allSessions = readSessions();
     const orphaned = allSessions.filter((s) => !s.projectId);
     if (orphaned.length > 0) {
-      const cleaned = allSessions.filter((s) => s.projectId);
-      writeSessions(cleaned);
+      const backupKey = `contour:sessions-backup:${Date.now()}`;
+      try {
+        localStorage.setItem(backupKey, JSON.stringify(orphaned));
+      } catch (err) {
+        console.warn('[AgentSessions] 孤儿会话备份失败，跳过迁移清理，保留原数据:', err);
+      }
+      if (localStorage.getItem(backupKey)) {
+        // 备份成功确认后才清理，并提示用户可通过该 key 恢复
+        const cleaned = allSessions.filter((s) => s.projectId);
+        writeSessions(cleaned);
+        console.warn(
+          `[AgentSessions] 已备份并清理 ${orphaned.length} 个无 projectId 的旧会话，` +
+          `如需恢复请读取 localStorage key: ${backupKey}`,
+        );
+      }
     }
 
     fetchBackendSessions(projectId).then((backendSessions) => {

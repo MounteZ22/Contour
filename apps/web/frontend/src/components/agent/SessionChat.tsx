@@ -60,6 +60,32 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
   const { updateSession } = useAgentSessions();
   const modelSelector = useSessionModelSelection(session.id);
 
+  // ── 贴底跟随（P1-R）：仅当用户位于底部附近时才自动滚动，回看历史时不打扰 ──
+  const STICKY_SCROLL_THRESHOLD = 80;
+  const isStickyToBottomRef = useRef(true);
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // 距底部小于阈值视为贴底；用户向上滚动回看时置为 false，不再被拽回
+    isStickyToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < STICKY_SCROLL_THRESHOLD;
+  }, []);
+
+  // ── 折叠状态保持（P1-S）：TurnGroup 展开状态按 item key 保存在父级，
+  //    虚拟滚动回收视口外 DOM 后重新挂载时仍能恢复 ──
+  const [expandedTurns, setExpandedTurns] = useState<Map<string, boolean>>(() => new Map());
+  const toggleTurn = useCallback((itemKey: string, defaultExpanded: boolean) => {
+    setExpandedTurns((prev) => {
+      const next = new Map(prev);
+      next.set(itemKey, !(prev.get(itemKey) ?? defaultExpanded));
+      return next;
+    });
+  }, []);
+  // 与 getItemKey 保持一致：历史轮按组内首条消息 id 生成稳定 key
+  const turnKeyFor = useCallback((item: ChatDisplayItem) => {
+    return item.type === 'turnGroup' ? `turn-${item.turnMessages[0]?.id ?? 'group'}` : '';
+  }, []);
+
   const {
     messages,
     inputValue,
@@ -129,8 +155,10 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
   const smoothContent = isStreaming || streamingContent ? rawSmoothContent : '';
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, toolActivities]);
+    // 仅在用户贴底时跟随新内容；流式生成时用 auto 即时跟随避免 smooth 动画被打断
+    if (!isStickyToBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
+  }, [messages, streamingContent, toolActivities, isStreaming]);
 
   useEffect(() => {
     const latest = messages[messages.length - 1];
@@ -151,7 +179,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
   return (
     <div className="h-full min-h-0 flex flex-col bg-background">
       {/* 权限确认弹窗已移除 — 改用内联横幅，嵌入下方消息流中 */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
         <div className="max-w-[720px] mx-auto">
           {messages.length === 0 && !isStreaming ? (
             <div className="min-h-[45vh] rounded-2xl border border-dashed border-border bg-surface/70 p-8 flex flex-col items-center justify-center text-center">
@@ -190,7 +218,7 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                     getItemKey={(item) =>
                       item.type === 'message'
                         ? `msg-${item.message.id}`
-                        : `turn-${item.turnMessages[0]?.id ?? 'group'}`
+                        : turnKeyFor(item)
                     }
                     renderItem={(item) => {
                       if (item.type === 'message') {
@@ -202,10 +230,14 @@ export function SessionChat({ session, initialMessage }: { session: AgentSession
                           />
                         );
                       }
+                      // 受控展开状态：默认当前轮展开、历史轮折叠；
+                      // 用户切换后按 key 记录，虚拟滚动重建不丢失（P1-S）
+                      const turnKey = turnKeyFor(item);
                       return (
                         <TurnGroup
                           turnMessages={item.turnMessages}
-                          defaultExpanded={item.isLatest}
+                          expanded={expandedTurns.get(turnKey) ?? item.isLatest}
+                          onToggle={() => toggleTurn(turnKey, item.isLatest)}
                           onAskUserAnswered={handleAskUserAnswered}
                         />
                       );

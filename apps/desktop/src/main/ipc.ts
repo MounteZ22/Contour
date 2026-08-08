@@ -5,6 +5,9 @@ export const IPC_CHANNELS = {
   show: 'contour:window:show',
   close: 'contour:window:close',
   quit: 'contour:app:quit',
+  // 主进程 → 渲染进程的单向推送渠道（ipcMain 无对应 handle，供 preload 订阅）。
+  newAgentSession: 'contour:tray:new-agent-session',
+  projectOpen: 'contour:project:open',
 } as const;
 
 export function registerIpcHandlers(

@@ -6,8 +6,9 @@ export function createTray(
   actions: TrayActions,
   loadRecentProjects: () => Promise<RecentProject[]>,
 ): Tray {
+  // Windows 托盘对 SVG dataURL 支持不稳定，使用 16x16 PNG dataURL（蓝色实心圆，深色/浅色主题下均可见）。
   const image = nativeImage.createFromDataURL(
-    'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><circle cx="8" cy="8" r="6" fill="%230ea5e9"/></svg>',
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAXUlEQVR42mPgW/qSgRLMQCsDSvmWvjzDt/TlTyg+AxUjaIAyVPF/HPgMVA1OA/BpRjYEqwGlRGiG4VJsBpwhwYAz2Az4SYIBP2liAMVeoDgQKY5GqiQkipMy/XMjALfyDIOej4PjAAAAAElFTkSuQmCC',
   );
   const tray = new Tray(image);
   tray.setToolTip('Contour');

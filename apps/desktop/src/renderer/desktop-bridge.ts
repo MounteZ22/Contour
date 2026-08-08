@@ -4,6 +4,7 @@ export interface ContourDesktopBridge {
   close(): Promise<void>;
   quit(): Promise<void>;
   onNewAgentSession(listener: () => void): () => void;
+  onOpenProject(listener: (projectId: string) => void): () => void;
 }
 
 declare global {
@@ -15,6 +16,9 @@ declare global {
 export function installDesktopBridge(): void {
   window.contourDesktop?.onNewAgentSession(() => {
     window.dispatchEvent(new Event('contour:new-agent-session'));
+  });
+  window.contourDesktop?.onOpenProject((projectId) => {
+    window.dispatchEvent(new CustomEvent<string>('contour:project-open', { detail: projectId }));
   });
 }
 

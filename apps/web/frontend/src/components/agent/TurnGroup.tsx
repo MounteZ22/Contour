@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { ChevronRight, FileText } from 'lucide-react';
 import type { ChatMessage } from '@contour/shared';
 import { ChatMessageItem } from '../ChatMessage';
@@ -12,21 +11,23 @@ import { ChatMessageItem } from '../ChatMessage';
  * - 折叠时：仅显示摘要行
  *
  * 用法：由 SessionChat 按 turnIndex 分组后传入 turnMessages。
+ * 展开状态为受控（expanded/onToggle 由父级按 item key 保存，P1-S）：
+ * 虚拟滚动会回收视口外 DOM，若状态留在组件内部，重新挂载后展开状态会丢失。
  */
 export function TurnGroup({
   turnMessages,
-  defaultExpanded,
+  expanded,
+  onToggle,
   onAskUserAnswered,
 }: {
   /** 本轮的所有消息（至少 1 条 assistant 消息） */
   turnMessages: ChatMessage[];
-  /** 是否默认展开（当前轮为 true，历史轮为 false） */
-  defaultExpanded: boolean;
+  /** 是否展开（由父级控制，默认当前轮展开、历史轮折叠） */
+  expanded: boolean;
+  /** 展开/折叠切换回调 */
+  onToggle: () => void;
   onAskUserAnswered?: (requestId: string, answers: Record<string, string>) => void;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [wasEverExpanded, setWasEverExpanded] = useState(defaultExpanded);
-
   // 从第一条消息提取轮次序号
   const turnIndex = turnMessages[0]?.turnIndex;
   const turnLabel = turnIndex != null ? `第 ${turnIndex} 轮` : '对话';
@@ -42,18 +43,13 @@ export function TurnGroup({
   }
   const filesChanged = [...allFiles];
 
-  const handleToggle = () => {
-    setExpanded((prev) => !prev);
-    if (!wasEverExpanded) setWasEverExpanded(true);
-  };
-
   return (
     <div className="turn-group rounded-lg border border-border overflow-hidden">
       {/* ── 头部：轮次摘要 ── */}
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-2 text-left bg-surface-sunken/50 hover:bg-surface-sunken transition-colors cursor-pointer"
-        onClick={handleToggle}
+        onClick={onToggle}
         aria-expanded={expanded}
       >
         <ChevronRight
@@ -71,8 +67,8 @@ export function TurnGroup({
       </button>
 
       {/* ── 展开时：消息列表 + 文件改动 ── */}
-      {(expanded || wasEverExpanded) && (
-        <div className={expanded ? '' : 'hidden'}>
+      {expanded && (
+        <div>
           <div className="px-4 py-3 flex flex-col gap-3">
             {turnMessages.map((msg) => (
               <ChatMessageItem

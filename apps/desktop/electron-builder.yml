@@ -27,6 +27,7 @@ files:
   - "!node_modules/esbuild/**"
 
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch:
@@ -39,6 +40,7 @@ nsis:
   createStartMenuShortcut: true
 
 mac:
+  icon: build/icon.png
   category: public.app-category.productivity
   target:
     - dmg

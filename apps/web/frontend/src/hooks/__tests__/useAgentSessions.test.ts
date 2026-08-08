@@ -71,6 +71,61 @@ describe('useAgentSessions', () => {
     });
   });
 
+  // ── 孤儿会话迁移安全策略（P1-U） ─────────────────────────────────────
+  describe('孤儿会话迁移安全策略', () => {
+    it('清理无 projectId 的旧会话前应备份到 localStorage，且保留可恢复的备份 key', () => {
+      localStorageStore['contour:agent-sessions'] = JSON.stringify([
+        { id: 's1', title: '项目 A', createdAt: 1, updatedAt: 2, contextItems: [], projectId: 'project-a' },
+        { id: 's2', title: '孤儿会话', createdAt: 1, updatedAt: 2, contextItems: [] },
+      ] satisfies AgentSession[]);
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const { unmount } = renderHook(() => useAgentSessions('project-a'));
+
+      // 迁移后主 key 只保留带 projectId 的会话
+      const stored = JSON.parse(localStorageStore['contour:agent-sessions']);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].id).toBe('s1');
+      // 被删会话已备份到带时间戳的备份 key，且给出可恢复提示
+      const backupKeys = Object.keys(localStorageStore).filter((key) =>
+        key.startsWith('contour:sessions-backup:'),
+      );
+      expect(backupKeys).toHaveLength(1);
+      const backup = JSON.parse(localStorageStore[backupKeys[0]]);
+      expect(backup).toHaveLength(1);
+      expect(backup[0].id).toBe('s2');
+      expect(warnSpy).toHaveBeenCalled();
+      unmount();
+    });
+
+    it('备份失败时应放弃迁移清理，保留原数据', () => {
+      localStorageStore['contour:agent-sessions'] = JSON.stringify([
+        { id: 's1', title: '项目 A', createdAt: 1, updatedAt: 2, contextItems: [], projectId: 'project-a' },
+        { id: 's2', title: '孤儿会话', createdAt: 1, updatedAt: 2, contextItems: [] },
+      ] satisfies AgentSession[]);
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      // 备份 key 写入失败（模拟存储满），其他写入仍走默认实现
+      vi.mocked(localStorage.setItem).mockImplementationOnce(
+        (key: string, value: string) => {
+          if (key.startsWith('contour:sessions-backup:')) {
+            throw new Error('QuotaExceededError');
+          }
+          localStorageStore[key] = value;
+        },
+      );
+
+      const { unmount } = renderHook(() => useAgentSessions('project-a'));
+
+      // 主 key 保留全部会话（未清理），避免备份不可靠时仍删除数据
+      const stored = JSON.parse(localStorageStore['contour:agent-sessions']);
+      expect(stored).toHaveLength(2);
+      expect(warnSpy).toHaveBeenCalled();
+      unmount();
+    });
+  });
+
   // ── 创建会话 ────────────────────────────────────────────────────────────
   describe('createSession', () => {
     it('应该创建新会话并返回 session 对象', () => {

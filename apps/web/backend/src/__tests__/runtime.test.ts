@@ -29,7 +29,7 @@ describe('resolveRuntimeConfig', () => {
 
     expect(result.coreConfig).toMatchObject({
       dataDir: 'C:\\Users\\ContourUser\\.contour-dev',
-      vaultsDir: 'D:\\Contour-dev',
+      vaultsDir: 'C:\\Users\\ContourUser\\Contour-dev',
       isDevelopment: true,
     });
   });
@@ -41,6 +41,6 @@ describe('resolveRuntimeConfig', () => {
       legacyVault: 'D:\\Contour\\example_vault',
       readSettingsFile: () => '{not-json',
     });
-    expect(result.coreConfig.vaultsDir).toBe('D:\\Contour');
+    expect(result.coreConfig.vaultsDir).toBe('C:\\Users\\ContourUser\\Contour');
   });
 });

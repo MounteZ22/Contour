@@ -493,9 +493,13 @@ export function useChat(initialContext: AIContextItem[] = [], options: UseChatOp
   const handleRetry = useCallback(async () => {
     const failedMessage = failedMessageRef.current;
     if (!failedMessage) return;
+    // 重试语义（P1-T）：原问题已作为 user 消息存在于历史中（后端按 sessionId
+    // 恢复对话上下文），这里不再重复追加原问题，只发送一条明确的「重试」指令，
+    // 避免模型上下文出现两条连续用户消息导致 Agent 混淆或重复作答。
+    // 若失败前已生成部分内容，将其作为上下文携带，让模型知道应从何处继续。
     const retryMessage = failedMessage.partialContent
-      ? `${failedMessage.message}\n\n上次回答在生成中断。请从以下已生成内容继续，不要重复已有内容：\n${failedMessage.partialContent}`
-      : failedMessage.message;
+      ? `上次回答在生成中断，已生成的内容如下：\n${failedMessage.partialContent}\n\n请基于以上内容继续完成回答，不要重复已生成的内容。`
+      : '上次回答生成失败，请重新回答这个问题。';
     await sendMessage(retryMessage, false);
   }, [sendMessage]);
 

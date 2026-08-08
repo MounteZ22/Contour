@@ -6,6 +6,7 @@ const channels = {
   close: 'contour:window:close',
   quit: 'contour:app:quit',
   newAgentSession: 'contour:tray:new-agent-session',
+  projectOpen: 'contour:project:open',
 } as const;
 
 contextBridge.exposeInMainWorld('contourDesktop', {
@@ -17,5 +18,10 @@ contextBridge.exposeInMainWorld('contourDesktop', {
     const wrapped = () => listener();
     ipcRenderer.on(channels.newAgentSession, wrapped);
     return () => ipcRenderer.removeListener(channels.newAgentSession, wrapped);
+  },
+  onOpenProject: (listener: (projectId: string) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, projectId: string) => listener(projectId);
+    ipcRenderer.on(channels.projectOpen, wrapped);
+    return () => ipcRenderer.removeListener(channels.projectOpen, wrapped);
   },
 });

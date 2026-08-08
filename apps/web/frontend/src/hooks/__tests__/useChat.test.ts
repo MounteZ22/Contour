@@ -398,7 +398,7 @@ describe('useChat', () => {
 
       expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
         2,
-        '请分析这段内容',
+        '上次回答生成失败，请重新回答这个问题。',
         expect.any(Array),
         expect.any(Object),
         expect.any(String),
@@ -439,7 +439,7 @@ describe('useChat', () => {
 
       expect(mockSendChatMessageStream).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining('请写一份摘要'),
+        expect.stringContaining('第一部分已经完成。'),
         expect.any(Array),
         expect.any(Object),
         expect.any(String),
@@ -448,6 +448,8 @@ describe('useChat', () => {
         expect.any(AbortSignal),
         expect.any(Boolean),
       );
+      // 重试指令不应重复追加原问题（原问题已在历史中），避免两条连续用户消息
+      expect(mockSendChatMessageStream.mock.calls[1][0]).not.toContain('请写一份摘要');
     });
   });
 
