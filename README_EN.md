@@ -1,124 +1,168 @@
 # Contour
 
-> A local-first cognition workspace — turning thinking, experiments, and discussions into structured knowledge threads.
+> A local-first AI research workbench — turning thinking, experiments, and discussions into structured research threads, with a guarded-file-access Agent to help you read, organize, and move forward.
 
-## What This Is
+Contour is built for researchers and deep knowledge workers. It uses **Markdown + YAML files** as its single data format (no database, no lock-in), organizes research processes as a **network of Flow work units**, and ships with an Agent powered by the **Pi SDK** that works around your current context to help with reading, organizing, and advancing your work. Formal records are always confirmed by you.
 
-Contour helps you turn the judgments, evidence, uncertainties, and dead ends from your work process into traceable, collaborative structured knowledge.
+## What It Can Do
 
-Most knowledge work is not linear. An experiment, a dataset, a discussion, a rejected hypothesis — these fragmented pieces of cognition need to be recorded, connected, and traced. Contour uses **Flows** to organize your work units. Each Flow contains custom sections, records of judgments and evidence, and tracking of unresolved questions. AI assists with organization and discussion around your current working context, but all formal records require your confirmation.
+### Research-thread Visualization (ContourMap)
+- DAG auto-layout (strongly-connected-component condensation + topological layering) renders the Flow dependency network as a browsable research-path canvas
+- Flow card hover previews title / status / AI summary; Claims are visually linked to Flows (badges + confidence color scale)
+- Create child Flows directly on the canvas, or multi-select nodes to add to Agent context
 
-## Who This Is For
+### Flow Workspace
+- Three-panel layout: Section navigation + Markdown reading/editing + AI collaboration entry
+- Each Flow has custom sections, status (in_progress / done / etc.), attachments (`attachments/`), and external links
+- Generate `flow_summary.md` in one click (legacy `context_summary.md` remains readable)
 
-Anyone whose work involves **structured recording of cognitive processes, tracing the origins of judgments, and collaborative knowledge accumulation**:
+### Agent Conversation (Pi SDK)
+- **Guarded file access**: the Agent's file tools may only touch the current project Vault, attached paths, exact files, and the session workspace — a path in the prompt is not authorization
+- **Permission modes**: `readonly` (read-only) / `review` (confirm each write) / `yolo` (everything open)
+- **Plan Mode**: the Agent researches first, produces a plan, and waits for your approval before executing
+- **AskUser structured questions**: single-choice / multi-choice / text input, embedded in the conversation
+- **Tool-call visualization**: what tool ran, what was passed, what came back — grouped by turn, with a per-turn changed-files summary
+- **@ context mentions**: reference Flows / Documents in the input to inject Agent context
+- **Message history recovery**: session JSONL is stream-parsed into a scrollable, turn-grouped history view; supports stop generation, retry, auto-naming, and draft persistence
+- **Web search**: built-in Tavily Web Search (SSRF / DNS / credential-redaction hardened)
 
-- Experimental research and data analysis — documenting hypotheses, observations, conclusions, and open questions for every experiment
-- Literature review and theory building — tracing sources of ideas, evidence chains, and reasoning processes
-- Team knowledge management — maintaining a shared cognitive map for collaborative work, instead of fragmented information scattered across chat logs
-- Personal knowledge bases — turning scattered notes into traceable, reusable structured knowledge
+### Extensions & Integrations
+- **MCP plugins**: per-project stdio MCP servers, command allowlist + per-invocation confirmation
+- **Built-in previews**: PDF and Excel rendered in-app
+- **Multi-channel models**: configure multiple LLM channels; pick a model per session
 
 ## Core Concepts
 
-### Flow (Work Unit)
+- **Project** — One research topic maps to one project, containing Flows, Documents, Claims, and its own Agent sessions.
+- **Flow (work unit)** — An experiment, an argument, or a self-contained cognitive unit that can produce a conclusion. Flows form a dependency network (DAG) via `parentFlows` — a research path that keeps branching and advancing.
+- **Document (background)** — Literature notes, methodology summaries, and other background knowledge that provide a "commonsense layer" for Flows and are injected on demand during AI collaboration.
+- **Claim** — A conclusion statement, optionally linked to Flows and Documents, annotated with confidence; multiple Claims form a project's research-proposition network.
+- **Agent session** — An independent AI conversation per project, with its own local working directory and message history, able to reference Flows / Documents as context.
 
-A self-contained cognitive unit that produces a judgment or conclusion. It can be:
-- An experiment or data analysis
-- A literature argument or theoretical derivation
-- A discussion or decision record
+All data is plain files — manage it directly with Obsidian, VS Code, or Git.
 
-Each Flow contains:
-- **User-defined sections** — such as Methods, Results, Discussion, Next Steps (structure is not fixed)
-- **Records of judgments and evidence** — what conclusions were formed, based on what evidence, with what confidence
-- **Uncertainty tracking** — unresolved questions, rejected alternatives, unexplained phenomena
-- **`flow_summary.md`** — provides the most relevant working context to AI (legacy `context_summary.md` remains readable)
-- **Attachments and links** — Flow directories store owned files in `attachments/`; frontmatter `links` records external file references
+## Product Forms
 
-### Document (Background)
+Contour offers two ways to run it, sharing the same backend, data directory, and Agent core:
 
-Accumulated background knowledge — literature notes, methodology summaries, reference materials, etc. Documents provide the "commonsense layer" that supports Flows, and are injected on demand during AI collaboration.
-
-### How They Relate
-
-```
-Project (a project)
-├── Flows (network of work units, can form parent/child relationships)
-│   ├── F001 Initial Exploration
-│   ├── F002 Condition Optimization (based on F001)
-│   └── F003 Verification Experiment (based on F002)
-└── Documents (background document library)
-    ├── Technical Review
-    └── Methodology Reference
-```
-
-## Product Form
-
-Contour is a locally running Web application and an Electron desktop MVP that share the same backend and business-data locations. The Web application has three core pages:
-
-| Page | Function |
-|------|----------|
-| **Dashboard** | Project list + Work progress outline (ContourMap node canvas) |
-| **Flow Workspace** | Three-panel layout: Section navigation + Markdown reading/editing + AI collaboration panel |
-| **Background Library** | Reading and management of background documents |
-
-All data is stored as Markdown + YAML frontmatter in your local file system. You can manage it directly with Obsidian, VS Code, or Git.
+| Form | Description |
+|------|-------------|
+| **Web app** | Local React frontend + Express backend (`127.0.0.1:3000` / `:3001`) |
+| **Electron desktop** | Same frontend + a process-embedded loopback API server, packageable as Windows / macOS installers; system tray, single-instance lock, and window-state memory |
 
 ## Quick Start
 
-The project uses npm workspaces. Install dependencies from the repository root:
+The project is an npm workspaces monorepo. Install dependencies from the repository root:
 
 ```bash
-# Clone the repository
 git clone https://github.com/MounteZ22/Contour.git
 cd Contour
 npm install
 ```
 
-Start the Web development environment (backend on `127.0.0.1:3001`, frontend on `127.0.0.1:3000`):
+### Web development
 
 ```bash
-npm run web:dev
+npm run web:dev   # starts backend (127.0.0.1:3001) + frontend (127.0.0.1:3000)
 ```
 
-Open `http://127.0.0.1:3000`. Vault data is read from `D:\Contour` (Windows) or `~/Contour` (macOS/Linux) by default. The configuration directory and default Vault path are created on first launch. To customize the path, edit `~/.contour/settings.json`:
+Open `http://127.0.0.1:3000`.
+
+### Desktop development / packaging
+
+```bash
+npm run desktop:dev     # build and launch the Electron dev environment
+npm run desktop:build   # production package → apps/desktop/release/
+```
+
+### Other commands
+
+```bash
+npm run typecheck       # full-repo type checking
+npm run test            # full-repo tests
+npm run build           # full-repo build
+```
+
+## Local Data
+
+The config directory follows the system home: `~/.contour` (production) / `~/.contour-dev` (development). The Vault data directory defaults to:
+
+| Mode | Default path |
+|------|--------------|
+| Development | `~/Contour-dev` |
+| Production | `~/Contour` |
+
+To customize the Vault path, edit `~/.contour/settings.json` (or `~/.contour-dev/settings.json`):
 
 ```json
 { "vaultsPath": "your vault path" }
 ```
 
-Run the Electron desktop development environment:
+Agent sessions use a dual identity: the frontend and API always use the stable Contour `sessionId`, while the Pi SDK's own `sdkSessionId` lives only in the backend registry for model-context recovery. Each session has its own isolated local working directory — the project Vault is never used directly as the Agent cwd.
 
-```bash
-npm run desktop:dev
+## Architecture
+
+```
+npm workspaces monorepo
+├── packages/shared   cross-platform shared types & chat contracts (pure types, no runtime deps)
+├── packages/core     business core: Agent runtime (Pi SDK), services, tools, vault
+├── apps/web/backend  Express API host (composition root createWebHostContext, multi-host capable)
+├── apps/web/frontend React + Vite frontend
+└── apps/desktop      Electron desktop (process-embedded Express, tray / IPC / preload)
 ```
 
-A production desktop build packages the frontend with a same-origin API server bound only to `127.0.0.1`:
-
-```bash
-npm run desktop:build
-```
-
-The Electron window state is stored in Electron's `userData` directory. Business configuration, Agent session history, and Vault data continue to use the existing `~/.contour` and `vaultsPath` configuration.
-
-## Tech Stack
+### Tech Stack
 
 | Layer | Choice |
 |-------|--------|
-| Frontend | Vite + React 19 + TypeScript + Tailwind v4 |
-| Routing | React Router v7 |
-| State Management | Jotai (theme state only) |
+| Frontend | React 19 + Vite + TypeScript + Tailwind v4 + ShadcnUI-style components |
+| Routing / State | React Router v7 + Jotai |
+| Virtual list | @tanstack/react-virtual |
 | Backend | Node.js + Express + TypeScript |
-| Data | Markdown + YAML frontmatter + File system (no database) |
-| Markdown | react-markdown + remark-gfm |
+| Agent | Pi SDK (`@earendil-works/pi-coding-agent`) |
+| MCP | @modelcontextprotocol/sdk (stdio bridge) |
+| Data | Markdown + YAML frontmatter + file system (no database) |
+| Desktop | Electron 43 + electron-builder |
 
-## Core Design Principles
+## Development
 
-- **Knowledge structure first**, not AI first
-- **Augment humans, don't replace them** — AI proposal → user review → formal record
-- **Failed paths are first-class citizens** — preserve rejected hypotheses, anomalous data, unexplained phenomena
-- **Progressive disclosure** — AI collaboration injects flow summary by default, reads details on demand
-- **Files over databases** — vault can be managed directly with Obsidian, VS Code, Git
-- **Guarded file access** — Agent file tools are limited to the current project Vault, configured paths, exact files, and the session workspace; a path in the prompt is not authorization
+Development requires Node.js 21+.
+
+- Full-repo commands are in "Quick Start"; per-package commands use `npm run <script> -w <workspace>` (e.g. `npm run build -w @contour/core`)
+- Tests: Vitest, ~400+ cases across the repo
+- Type checking: `npm run typecheck`
+
+## Acknowledgements
+
+Contour would not exist without the following open-source projects and tools:
+
+- **[Proma](https://proma.cool)** — the vast majority of this project's development (architecture discussions, coding, testing, and code review) was done inside Proma; Proma's desktop app and Agent architecture are also a major reference for Contour.
+- **[Pi SDK](https://github.com/earendil-works/pi)** (`@earendil-works/pi-coding-agent`) — the Agent runtime core; sessions, tools, and the permission system are all built on it.
+- **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** and **[Chatbox](https://github.com/Bin-Huang/chatbox)** — product-form inspiration for multi-provider desktop AI apps.
+- **[ShadcnUI](https://ui.shadcn.com/)** — UI component style and design language.
+- **[TanStack Virtual](https://tanstack.com/virtual)** — virtual scrolling for long sessions.
+
+## Contributing
+
+Bug fixes, documentation, tests, and UX improvements are welcome — as are new Skills, MCP configs, or Agent workflows around real research scenarios.
+
+Before opening a PR, please confirm:
+
+- Use npm / workspaces; don't mix pnpm / bun lockfiles.
+- Use Jotai for state management.
+- Stay local-first; prefer config files; don't introduce a local database.
+- No `any` in TypeScript; prefer `interface` for object structures.
+- When adding IPC, update shared types, the main handler, the preload bridge, and the renderer caller together.
+- Cover behavior with tests where feasible (Vitest).
 
 ## License
 
-AGPL-3.0. See the complete terms in the root [LICENSE](LICENSE) file.
+Contour is open-sourced under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE). See the root `LICENSE` file for full terms.
+
+**Personal / non-commercial use**: free to use, modify, and distribute, subject only to AGPL-3.0.
+
+**Commercial use**: permitted while fully complying with AGPL-3.0 — including but not limited to distributing the software in source or modified form, and making complete modified source (including network interaction layers) publicly available when offering the software as a network service; derivative works must remain AGPL-3.0.
+
+**Commercial licensing (AGPL-3.0 exemption)**: if you wish to integrate Contour into closed-source products or offer SaaS without disclosing derivative code, or have other commercial scenarios that cannot satisfy AGPL-3.0, contact the maintainer via GitHub Issues or Discussions.
+
+By submitting a Pull Request, you agree to license your contribution under AGPL-3.0 and future commercial licensing terms.
